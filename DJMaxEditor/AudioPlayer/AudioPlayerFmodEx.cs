@@ -115,11 +115,12 @@ namespace DJMaxEditor
 
         public void StopAllSounds()
         {
-            for (uint i = 0; i < MAX_CHANNEL; i++)
+            if (m_playbackGroup != null)
             {
-                StopSound(i);
+                m_playbackGroup.stop();
+                m_playbackGroup.setPaused(false);
             }
-
+            Array.Clear(_channels, 0, _channels.Length);
         }
 
         public bool PlaySound(uint channelIndex, uint soundIndex, float volume, byte pan, uint offset = 0)
@@ -165,6 +166,10 @@ namespace DJMaxEditor
             if (result == FMODEX.RESULT.OK)
             {
                 chan = _channels[channelIndex];
+                if (m_playbackGroup != null)
+                {
+                    chan.setChannelGroup(m_playbackGroup);
+                }
                 chan.setVolume(volume);
                 chan.setPan(fpan);
                 chan.setPaused(false);
@@ -214,15 +219,23 @@ namespace DJMaxEditor
 
         public void PauseAllSounds()
         {
-            for (uint i = 0; i < MAX_CHANNEL; i++)
+            if (m_playbackGroup == null)
             {
-                PauseSound(i);
+                return;
+            }
+
+            bool paused = false;
+            if (m_playbackGroup.getPaused(ref paused) == FMODEX.RESULT.OK)
+            {
+                m_playbackGroup.setPaused(!paused);
             }
         }
 
         private Timer m_updateTimer = new Timer(); 
 
         private FMODEX.System m_system = null;
+
+        private FMODEX.ChannelGroup m_playbackGroup = null;
 
         private FMODEX.Channel[] _channels = new FMODEX.Channel[MAX_CHANNEL];
 
@@ -287,8 +300,13 @@ namespace DJMaxEditor
 
             m_system.setSoftwareFormat(44100, FMODEX.SOUND_FORMAT.PCMFLOAT, 0, 0, FMODEX.DSP_RESAMPLER.LINEAR);
 
-            m_system.init(32, FMODEX.INITFLAGS.NORMAL, (IntPtr)null);
-            return FMODEX.RESULT.OK;
+            result = m_system.init(32, FMODEX.INITFLAGS.NORMAL, (IntPtr)null);
+            if (result != FMODEX.RESULT.OK)
+            {
+                return result;
+            }
+
+            return m_system.createChannelGroup("DJMax Editor playback", ref m_playbackGroup);
         }
     }
 }

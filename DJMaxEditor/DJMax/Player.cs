@@ -49,6 +49,11 @@ namespace DJMaxEditor.DJMax
             m_curMsTime = 0;
             m_period = 1.0;
             m_curTempo = m_playerData?.Tempo ?? 120.0f;
+            if (m_playerData?.SourceFormat == Files.FormatDetection.ChartFormat.BmsClassic &&
+                m_curTempo > 0.0f)
+            {
+                SetTempo(m_curTempo);
+            }
             IsStopped = true;
             IsPaused = false;
             TriggerStatusChange();

@@ -7,6 +7,8 @@ using DJMaxEditor.Controls.Editor.Renderers;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Controls.Editor;
 using DJMaxEditor.Controls.Editor.Handlers;
+using DJMaxEditor.Editor;
+using DJMaxEditor.UI;
 
 namespace DJMaxEditor 
 {
@@ -14,17 +16,36 @@ namespace DJMaxEditor
     {
         public Point BlockSize = new Point(1, 1);
 
+        public int HitTolerance = 8;
+
         public event EventDataHandler OnSelectEvents;
 
         public event ChangeEventDataPositionHandler OnChangeEventPosition;
 
         public event EventDataHandler OnDeleteEvent;
 
-        public EventSelectMode(EditorControl editor, PlayerData playerData, EventsRenderer eventsRenderer)
+        public EventSelectMode(
+            EditorControl editor,
+            PlayerData playerData,
+            EventsRenderer eventsRenderer,
+            ChartSelectionService sharedSelection)
         {
             m_playerData = playerData;
             m_editor = editor;
             m_eventsRenderer = eventsRenderer;
+            m_sharedSelection = sharedSelection ?? new ChartSelectionService();
+            m_sharedSelection.SelectionChanged += SharedSelectionChanged;
+            SharedSelectionChanged(this, EventArgs.Empty);
+        }
+
+        public IList<EventData> SelectedItems
+        {
+            get { return m_selectedObjects.AsReadOnly(); }
+        }
+
+        public void Dispose()
+        {
+            m_sharedSelection.SelectionChanged -= SharedSelectionChanged;
         }
 
         /// <summary>
@@ -34,6 +55,7 @@ namespace DJMaxEditor
         {
             OnDeleteEvent?.Invoke(this, m_selectedObjects.ToArray());            
             m_selectedObjects.Clear();
+            PublishSharedSelection();
             m_editor.Repaint();
         }
 
@@ -54,6 +76,7 @@ namespace DJMaxEditor
             {
                 m_selectedObjects.Add(eventData);
             }
+            PublishSharedSelection();
         }
 
         /// <summary>
@@ -68,6 +91,7 @@ namespace DJMaxEditor
                 m_selectedObjects.Add(eventData);
             }
 
+            PublishSharedSelection();
             m_editor.Redraw();
         }
 
@@ -86,6 +110,7 @@ namespace DJMaxEditor
 
                 m_selectedObjects.Add(eventData);
             }
+            PublishSharedSelection();
         }
 
         public bool ToggleSelectionAtPos(int x1, int y1, int x2, int y2, bool singleFile = false, bool tootle = false)
@@ -118,10 +143,12 @@ namespace DJMaxEditor
                 didSelect |= res;
                 if (singleFile && res)
                 {
+                    PublishSharedSelection();
                     return didSelect;
                 }
             }
 
+            PublishSharedSelection();
             return didSelect;
         }
 
@@ -131,6 +158,7 @@ namespace DJMaxEditor
             foreach (EventData o in m_playerData.Tracks.Events)
             {
                 Rectangle eventRectangle = m_eventsRenderer.GetEventRectangle(o, (int)o.TrackId * EventsRenderer.VirtualTrackheight);
+                eventRectangle.Inflate(HitTolerance, HitTolerance);
                 if (eventRectangle.IntersectsWith(rect))
                 {
                     return o;
@@ -154,6 +182,15 @@ namespace DJMaxEditor
                 Rectangle rec = eventsRenderer.GetEventRectangle(o, (int)o.TrackId * EventsRenderer.VirtualTrackheight);
                 g.FillRectangle(tbrush, rec);
                 g.DrawRectangle(selection_border, rec);
+                if (o.EventType == EventType.Note && o.VirtualDuration > 0)
+                {
+                    const int handleSize = 8;
+                    int handleY = rec.Top + Math.Max(0, (rec.Height - handleSize) / 2);
+                    g.FillRectangle(Brushes.White,
+                        rec.Left - (handleSize / 2), handleY, handleSize, handleSize);
+                    g.FillRectangle(Brushes.White,
+                        rec.Right - (handleSize / 2), handleY, handleSize, handleSize);
+                }
             }
         }
 
@@ -204,6 +241,7 @@ namespace DJMaxEditor
         public void MouseUp()
         {
             m_drag.Stop();
+            PublishSharedSelection();
             OnSelectEvents?.Invoke(this, m_selectedObjects.ToArray());
         }
 
@@ -216,6 +254,7 @@ namespace DJMaxEditor
         public void ClearSelection()
         {
             m_selectedObjects.Clear();
+            PublishSharedSelection();
         }
 
         public void MouseDrag(int x, int y)
@@ -283,13 +322,48 @@ namespace DJMaxEditor
         /// </summary>
         private List<EventData> m_selectedObjects = new List<EventData>();
 
-        private Brush tbrush = new SolidBrush(Color.FromArgb(60, 183, 209, 238));
+        private Brush tbrush = new SolidBrush(Color.FromArgb(62, StudioDesignSystem.PulseCyan));
 
-        private Pen selection_border = new Pen(Color.FromArgb(255, 51, 153, 255));
+        private Pen selection_border = new Pen(StudioDesignSystem.PulseCyan, 2f);
 
         private void RenderSelectedObject(EventData o, Graphics g) { }
 
         private EventsRenderer m_eventsRenderer;
+
+        private readonly ChartSelectionService m_sharedSelection;
+
+        private void PublishSharedSelection()
+        {
+            m_sharedSelection.Replace(m_selectedObjects);
+        }
+
+        private void SharedSelectionChanged(object sender, EventArgs e)
+        {
+            if (SameSelection(m_sharedSelection.Items))
+            {
+                return;
+            }
+
+            m_selectedObjects.Clear();
+            m_selectedObjects.AddRange(m_sharedSelection.Items);
+            m_editor.Repaint();
+        }
+
+        private bool SameSelection(IList<EventData> selection)
+        {
+            if (selection == null || selection.Count != m_selectedObjects.Count)
+            {
+                return false;
+            }
+            for (int i = 0; i < selection.Count; i++)
+            {
+                if (!object.ReferenceEquals(selection[i], m_selectedObjects[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         private bool selectIfInside(EventData it, Rectangle r)
         {
@@ -299,6 +373,7 @@ namespace DJMaxEditor
             }
 
             Rectangle eventRectangle = this.m_eventsRenderer.GetEventRectangle(it, (int)it.TrackId * EventsRenderer.VirtualTrackheight);
+            eventRectangle.Inflate(HitTolerance, HitTolerance);
 
             if (r.IntersectsWith(eventRectangle))
             {
@@ -330,6 +405,7 @@ namespace DJMaxEditor
                 Rectangle r = new Rectangle(x, y, 0, 0);
 
                 Rectangle eventRectangle = this.m_eventsRenderer.GetEventRectangle(o, (int)o.TrackId * EventsRenderer.VirtualTrackheight);
+                eventRectangle.Inflate(HitTolerance, HitTolerance);
                 if (r.IntersectsWith(eventRectangle)) {
                     return 1;
                 }
@@ -351,6 +427,7 @@ namespace DJMaxEditor
                 Rectangle r = new Rectangle(x, y, 0, 0);
 
                 Rectangle eventRectangle = this.m_eventsRenderer.GetEventRectangle(o, (int)o.TrackId * EventsRenderer.VirtualTrackheight);
+                eventRectangle.Inflate(HitTolerance, HitTolerance);
                 
 
                 if (r.IntersectsWith(eventRectangle))

@@ -109,8 +109,8 @@
             // 
             // RenderTimer
             // 
-            this.RenderTimer.Enabled = true;
-            this.RenderTimer.Interval = 1;
+            this.RenderTimer.Enabled = false;
+            this.RenderTimer.Interval = 16;
             this.RenderTimer.Tick += new System.EventHandler(this.timer1_Tick);
             // 
             // menuStrip1
@@ -282,7 +282,7 @@
             // 
             this.playPauseToolStripMenuItem.Image = global::DJMaxEditor.Resources.icon_play;
             this.playPauseToolStripMenuItem.Name = "playPauseToolStripMenuItem";
-            this.playPauseToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Space)));
+            this.playPauseToolStripMenuItem.ShortcutKeyDisplayString = "Space";
             this.playPauseToolStripMenuItem.Size = new System.Drawing.Size(244, 26);
             this.playPauseToolStripMenuItem.Text = "Play/Pause";
             this.playPauseToolStripMenuItem.Click += new System.EventHandler(this.toolStripButton1_Click);
@@ -581,7 +581,7 @@
             // PlayerTimer
             // 
             this.PlayerTimer.Enabled = true;
-            this.PlayerTimer.Interval = 8;
+            this.PlayerTimer.Interval = 16;
             this.PlayerTimer.Tick += new System.EventHandler(this.PlayerTimer_Tick);
             // 
             // dockPanel
@@ -732,4 +732,3 @@
         private System.Windows.Forms.Timer PlayerTimer;
     }
 }
-

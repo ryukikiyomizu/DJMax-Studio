@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Drawing.Drawing2D;
@@ -10,6 +11,7 @@ using DJMaxEditor.Controls.Editor.Renderers.Events;
 using DJMaxEditor.Controls.Editor.Renderers.Zones;
 using DJMaxEditor.Controls.Editor;
 using DJMaxEditor.Controls.Editor.Handlers;
+using DJMaxEditor.Editor;
 
 namespace DJMaxEditor 
 {
@@ -21,6 +23,8 @@ namespace DJMaxEditor
 
         public event EventRequestHandler OnRequestEvent;
 
+        public event EventHandler ViewSettingsChanged;
+
         public UndoManager UndoManager = UndoManager.GetInstance();
 
         public const float MinZoom = 0.20f;
@@ -30,9 +34,27 @@ namespace DJMaxEditor
         // template event to add an event in PlayerData
         public EventData TemplateEvent = null;
 
-        public bool FollowTracksProgressWhilePlaying = false;
+        public bool FollowTracksProgressWhilePlaying
+        {
+            get { return _followTracksProgressWhilePlaying; }
+            set
+            {
+                if (_followTracksProgressWhilePlaying == value) return;
+                _followTracksProgressWhilePlaying = value;
+                RaiseViewSettingsChanged();
+            }
+        }
 
-        public bool IsPlayerPlaying = false;
+        public bool IsPlayerPlaying
+        {
+            get { return _isPlayerPlaying; }
+            set
+            {
+                if (_isPlayerPlaying == value) return;
+                _isPlayerPlaying = value;
+                RaiseViewSettingsChanged();
+            }
+        }
 
         public event EventDataHandler OnSelectItem;
 
@@ -49,6 +71,7 @@ namespace DJMaxEditor
             {
                 EventsRenderer.Theme = value;
                 Redraw();
+                RaiseViewSettingsChanged();
             }
         }
 
@@ -61,6 +84,7 @@ namespace DJMaxEditor
             {
                 ZonesRenderer.Theme = value;
                 Redraw();
+                RaiseViewSettingsChanged();
             }
         }
 
@@ -74,6 +98,7 @@ namespace DJMaxEditor
             {
                 _noteValue = value;
                 UpdateBlockSize();
+                RaiseViewSettingsChanged();
             }
         }
 
@@ -102,7 +127,7 @@ namespace DJMaxEditor
 
             InitializeComponent();
 
-            DrawingArea.BackColor = Color.FromArgb(255, 49, 56, 64);
+            DrawingArea.BackColor = UI.StudioDesignSystem.Void;
             MouseWheel += DrawingArea_MouseWheel;
             DrawingArea.MouseWheel += DrawingArea_MouseWheel;
 
@@ -112,6 +137,21 @@ namespace DJMaxEditor
         public void SelectAll()
         {
             _selectMode.SelectAll();
+        }
+
+        public int SelectedEventCount
+        {
+            get { return _selectMode == null ? 0 : _selectMode.SelectedItems.Count; }
+        }
+
+        public IList<EventData> SelectedEvents
+        {
+            get
+            {
+                return _selectMode == null
+                    ? new List<EventData>().AsReadOnly()
+                    : _selectMode.SelectedItems;
+            }
         }
 
         public void Deselect()
@@ -128,6 +168,12 @@ namespace DJMaxEditor
 
         private void TextBoxKeyPressed(object sender, KeyPressEventArgs e)
         {
+            if (!CanMutateDocument)
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (e.KeyChar == Convert.ToChar(Keys.Enter))
             {
                 ActiveControl = null;
@@ -138,6 +184,11 @@ namespace DJMaxEditor
 
         private void TextBoxLostFocus(object sender, EventArgs e)
         {
+            if (!CanMutateDocument)
+            {
+                return;
+            }
+
             UndoManager.ExecAction(new RenameTrackAction(_mSelectedTrack, _mTextBox.Text));
         }
 
@@ -163,6 +214,11 @@ namespace DJMaxEditor
 
             contextMenu.MenuItems.Clear();
 
+            if (!CanMutateDocument)
+            {
+                return;
+            }
+
             var screenPoint = Cursor.Position;
             var pictureBoxPoint = contextMenu.SourceControl.PointToClient(screenPoint);
 
@@ -174,9 +230,34 @@ namespace DJMaxEditor
 
             if (eventData != null)
             {
-                //m_textBox.Left = pictureBoxPoint.X;
-                //m_textBox.Top = pictureBoxPoint.Y;
-                //contextMenu.MenuItems.Add("&Setting", new EventHandler(OpenTrackRename));
+                if (_documentContext != null)
+                {
+                    if (!_documentContext.Selection.Items.Contains(eventData))
+                    {
+                        _documentContext.Selection.Replace(new[] { eventData });
+                    }
+                    contextMenu.MenuItems.Add("Cu&t", delegate
+                    {
+                        _documentContext.Clipboard.CutSelection();
+                    });
+                    contextMenu.MenuItems.Add("&Copy", delegate
+                    {
+                        _documentContext.Clipboard.CopySelection();
+                    });
+                    contextMenu.MenuItems.Add("&Duplicate", delegate
+                    {
+                        _documentContext.Clipboard.DuplicateSelection(QuantizeVirtualStep);
+                    });
+                    contextMenu.MenuItems.Add("-");
+                    contextMenu.MenuItems.Add("&Delete", delegate
+                    {
+                        _documentContext.Edits.DeleteSelection();
+                    });
+                    contextMenu.MenuItems.Add("Reveal in &Inspector", delegate
+                    {
+                        OnSelectItem?.Invoke(this, _documentContext.Selection.Items.ToArray());
+                    });
+                }
                 return;
             }
 
@@ -220,7 +301,30 @@ namespace DJMaxEditor
             _drawableZone.Width = (int)_playerData.VirtualMaxTick;
         }
 
-        public void Initialize(PlayerData playerData) 
+        public void Bind(EditorDocumentContext document)
+        {
+            if (document == null) throw new ArgumentNullException("document");
+            if (_documentContext != null)
+            {
+                _documentContext.Selection.SelectionChanged -= SharedSelectionChanged;
+            }
+            _documentContext = document;
+            UndoManager = document.UndoManager;
+            _documentContext.Selection.SelectionChanged += SharedSelectionChanged;
+            InitializeCore(document.Model, document.Selection);
+        }
+
+        public void Initialize(PlayerData playerData)
+        {
+            if (_documentContext != null)
+            {
+                _documentContext.Selection.SelectionChanged -= SharedSelectionChanged;
+            }
+            _documentContext = null;
+            InitializeCore(playerData, new ChartSelectionService());
+        }
+
+        private void InitializeCore(PlayerData playerData, ChartSelectionService selection)
         {
             hScrollBar.Visible = true;
             vScrollBar.Visible = true;
@@ -238,7 +342,8 @@ namespace DJMaxEditor
 
             UpdateDrawableZone();
             
-            _selectMode = new EventSelectMode(this, _playerData, EventsRenderer);
+            _selectMode?.Dispose();
+            _selectMode = new EventSelectMode(this, _playerData, EventsRenderer, selection);
 
             _selectMode.OnSelectEvents += selectMode_OnSelect;
 
@@ -250,6 +355,11 @@ namespace DJMaxEditor
             _ready = true;
 
             SetZoom(_zoom);
+        }
+
+        private void SharedSelectionChanged(object sender, EventArgs e)
+        {
+            Redraw();
         }
 
         public void SetZoom(float nZoom) 
@@ -317,7 +427,28 @@ namespace DJMaxEditor
 
         private PlayerData _playerData;
 
+        private EditorDocumentContext _documentContext;
+
+        private object _activeMoveUndoGroup;
+
+        private object _activeResizeUndoGroup;
+
+        private int _activeResizeLastX;
+
+        private bool CanMutateDocument
+        {
+            get
+            {
+                string reason;
+                return DocumentMutationGuard.CanMutate(_playerData, true, out reason);
+            }
+        }
+
         private bool _ignoreMouse = false;
+
+        private bool _followTracksProgressWhilePlaying;
+
+        private bool _isPlayerPlaying;
 
         private float _zoom = 0.5f;
 
@@ -339,7 +470,13 @@ namespace DJMaxEditor
             {
                 EventsRenderer.EventDisplayMode = value;
                 Redraw();
+                RaiseViewSettingsChanged();
             }
+        }
+
+        private void RaiseViewSettingsChanged()
+        {
+            ViewSettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void EditorControl_SizeChanged(object sender, EventArgs e) 
@@ -351,26 +488,67 @@ namespace DJMaxEditor
         private void UpdateBlockSize() 
         {
             if (!_ready) { return; }
-            _selectMode.BlockSize.X = (int)((_playerData.TickPerMinute / _noteValue) * EventData.VirtualTickSize);
+            _selectMode.BlockSize.X = QuantizeVirtualStep;
             _selectMode.BlockSize.Y = EventsRenderer.VirtualTrackheight;
+        }
+
+        private int QuantizeVirtualStep
+        {
+            get
+            {
+                return Math.Max(
+                    EventData.VirtualTickSize,
+                    (int)((_playerData.TickPerMinute / Math.Max(1, _noteValue)) *
+                        EventData.VirtualTickSize));
+            }
         }
 
         private void selectMode_OnChangePosition(List<EventData> eventData, int trackDelta, int positionDelta) 
         {
+            if (!CanMutateDocument)
+            {
+                return;
+            }
+
             if (positionDelta != 0 || trackDelta != 0)
             {
-                UndoManager.ExecAction(new MoveEventAction(_playerData, eventData, trackDelta, positionDelta));
+                if (_documentContext != null)
+                {
+                    _documentContext.Edits.MoveSelection(
+                        trackDelta,
+                        positionDelta,
+                        _activeMoveUndoGroup);
+                }
+                else
+                {
+                    UndoManager.ExecAction(new MoveEventAction(_playerData, eventData, trackDelta, positionDelta));
+                }
             }
         }
 
         private void SelectMode_OnDeleteEvent(object sender, EventData[] events)
         {
-            UndoManager.ExecAction(new RemoveEventAction(_playerData, events));
+            if (!CanMutateDocument)
+            {
+                return;
+            }
+
+            if (_documentContext != null)
+            {
+                _documentContext.Edits.DeleteSelection();
+            }
+            else
+            {
+                UndoManager.ExecAction(new RemoveEventAction(_playerData, events));
+            }
         }
 
         private void selectMode_OnSelect(object sender, EventData[] events) 
         {
-            OnSelectItem?.Invoke(this, events);
+            if (_documentContext == null)
+            {
+                OnSelectItem?.Invoke(this, events);
+            }
         }
 
         private void DrawingArea_MouseWheel(object sender, MouseEventArgs e)
@@ -404,16 +582,9 @@ namespace DJMaxEditor
 
         private bool IsFollowing => FollowTracksProgressWhilePlaying && IsPlayerPlaying && (_playerData.CurrentTick < _playerData.MaxTick);
 
-        private FrameRateLimiter m_rameRateLimiter = new FrameRateLimiter(60);
-
         private void DrawToBuffer(Graphics g) 
         {
             if (!_ready) { return; }
-
-            if (!m_rameRateLimiter.ShouldAnimateNextFrame())
-            {
-                return;
-            }
 
             var gw = m_gw;
             gw.UpdateGraphics(g);
@@ -541,22 +712,81 @@ namespace DJMaxEditor
                 Redraw();
             }
 
-            // alt + left click || middle click, enter in screen move
-            if (e.Button == MouseButtons.Middle || e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Alt)
+            TimelineTool activeTool = _documentContext == null
+                ? TimelineTool.Select
+                : _documentContext.Interaction.Tool;
+
+            // Alt + left, middle click, or the explicit Pan tool enters viewport movement.
+            if (e.Button == MouseButtons.Middle ||
+                e.Button == MouseButtons.Left &&
+                    (Control.ModifierKeys == Keys.Alt || activeTool == TimelineTool.Pan))
             {
                 _drag.Start(e.X, e.Y, 0, 0);
                 return;
             }
 
-            bool leftAndControlPressed = e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Control;
+            int virtualX = (int)(e.X / _zoom) + _viewablePixels.X;
+            int virtualY = (int)(e.Y / _zoom) + _viewablePixels.Y;
+
+            if (e.Button == MouseButtons.Left &&
+                activeTool == TimelineTool.Draw &&
+                _documentContext != null)
+            {
+                CreateEventAt(virtualX, virtualY);
+                return;
+            }
+
+            if (e.Button == MouseButtons.Left &&
+                activeTool == TimelineTool.Erase &&
+                _documentContext != null)
+            {
+                EventData eraseTarget = _selectMode.GetEventAtPos(virtualX, virtualY);
+                if (eraseTarget != null)
+                {
+                    _documentContext.Selection.Replace(new[] { eraseTarget });
+                    _documentContext.Edits.DeleteSelection();
+                }
+                return;
+            }
+
+            if (e.Button == MouseButtons.Left &&
+                activeTool == TimelineTool.Resize &&
+                _documentContext != null)
+            {
+                EventData resizeTarget = _selectMode.GetEventAtPos(virtualX, virtualY);
+                if (resizeTarget != null && resizeTarget.EventType == EventType.Note)
+                {
+                    if (!_documentContext.Selection.Items.Contains(resizeTarget))
+                    {
+                        _documentContext.Selection.Replace(new[] { resizeTarget });
+                    }
+                    _activeResizeUndoGroup = new object();
+                    _activeResizeLastX = _selectMode.EvaluateBlock(virtualX, true);
+                    _documentContext.Interaction.Begin(
+                        TimelineInteractionKind.ResizingEnd,
+                        new TimelineInteractionAnchor(
+                            resizeTarget.VirtualTick + resizeTarget.VirtualDuration,
+                            (int)resizeTarget.TrackId));
+                    Cursor = Cursors.SizeWE;
+                }
+                return;
+            }
+
+            bool leftAndControlPressed =
+                e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Control;
+            bool additiveSelection =
+                e.Button == MouseButtons.Left &&
+                (Control.ModifierKeys == Keys.Shift || leftAndControlPressed);
+
+            _activeMoveUndoGroup = new object();
 
             if (_selectMode != null)
             {
                 bool res = _selectMode.MouseDown(
-                    (int)(e.X / _zoom) + _viewablePixels.X,
-                    (int)(e.Y / _zoom) + _viewablePixels.Y,
+                    virtualX,
+                    virtualY,
                     e.Button,
-                    leftAndControlPressed
+                    additiveSelection
                 );
 
                 if (res)
@@ -567,26 +797,52 @@ namespace DJMaxEditor
 
             if (leftAndControlPressed) {
 
+                if (!CanMutateDocument)
+                {
+                    return;
+                }
+
                 if (TemplateEvent == null)
                 {
                     return;
                 }
 
-                var newEvent = TemplateEvent.Clone() as EventData;
-
-                var trackIndex = (_selectMode.EvaluateBlock((int)(e.Y / _zoom) + _viewablePixels.Y, false)) / EventsRenderer.VirtualTrackheight;
-
-                var newPos = _selectMode.EvaluateBlock((int)(e.X / _zoom) + _viewablePixels.X, true);
-
-                newEvent.VirtualTick = newPos;
-                newEvent.TrackId = (uint)trackIndex;
-
-                UndoManager.ExecAction(new AddEventAction(_playerData, new List<EventData>() { newEvent }));
-
+                CreateEventAt(virtualX, virtualY);
                 return;
             }
 
             Focus();
+        }
+
+        private void CreateEventAt(int virtualX, int virtualY)
+        {
+            if (!CanMutateDocument || TemplateEvent == null)
+            {
+                return;
+            }
+
+            int trackIndex =
+                _selectMode.EvaluateBlock(virtualY, false) /
+                EventsRenderer.VirtualTrackheight;
+            int virtualTick = _selectMode.EvaluateBlock(virtualX, true);
+
+            if (_documentContext != null)
+            {
+                _documentContext.Edits.CreateEvent(
+                    TemplateEvent,
+                    (uint)Math.Max(0, trackIndex),
+                    Math.Max(0, virtualTick));
+            }
+            else
+            {
+                var created = TemplateEvent.Clone() as EventData;
+                created.VirtualTick = Math.Max(0, virtualTick);
+                created.TrackId = (uint)Math.Max(0, trackIndex);
+                UndoManager.ExecAction(new AddEventAction(
+                    _playerData,
+                    new List<EventData> { created }));
+            }
+            Redraw();
         }
 
         private void DrawingArea_SizeChanged(object sender, EventArgs e) 
@@ -622,6 +878,21 @@ namespace DJMaxEditor
                 _drag.Y = newY;
                 shouldReDraw = true;
             }
+            else if (_activeResizeUndoGroup != null &&
+                e.Button == MouseButtons.Left &&
+                _documentContext != null)
+            {
+                int snappedX = _selectMode.EvaluateBlock(xx, true);
+                int delta = snappedX - _activeResizeLastX;
+                if (delta != 0 &&
+                    _documentContext.Edits.ResizeSelection(
+                        delta,
+                        _activeResizeUndoGroup))
+                {
+                    _activeResizeLastX = snappedX;
+                }
+                shouldReDraw = true;
+            }
             else if ((e.Button == MouseButtons.Left || e.Button == MouseButtons.Right) && _selectMode != null)
             {
                 if (_selectMode != null)
@@ -632,7 +903,18 @@ namespace DJMaxEditor
             }
             else
             {
-                _selectMode?.MouseMove(xx, yy);
+                if (_documentContext != null &&
+                    _documentContext.Interaction.Tool == TimelineTool.Resize)
+                {
+                    EventData hover = _selectMode.GetEventAtPos(xx, yy);
+                    Cursor = hover != null && hover.EventType == EventType.Note
+                        ? Cursors.SizeWE
+                        : Cursors.Default;
+                }
+                else
+                {
+                    _selectMode?.MouseMove(xx, yy);
+                }
             }
 
             if (shouldReDraw && !IsPlayerPlaying)
@@ -646,6 +928,12 @@ namespace DJMaxEditor
             _drag.Stop();
 
             _selectMode?.MouseUp();
+            _activeMoveUndoGroup = null;
+            _activeResizeUndoGroup = null;
+            if (_documentContext != null)
+            {
+                _documentContext.Interaction.Complete();
+            }
 
             if (!IsPlayerPlaying)
             {
@@ -655,12 +943,75 @@ namespace DJMaxEditor
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData) 
         {
-            if (keyData != Keys.Delete)
+            if (_documentContext == null)
             {
-                return base.ProcessCmdKey(ref msg, keyData);
+                if (keyData != Keys.Delete)
+                {
+                    return base.ProcessCmdKey(ref msg, keyData);
+                }
+                if (CanMutateDocument)
+                {
+                    _selectMode.DeleteSelection();
+                }
+                return true;
             }
-            _selectMode.DeleteSelection();
-            return true;
+
+            if (keyData == Keys.Escape)
+            {
+                _documentContext.Interaction.Cancel();
+                _documentContext.Selection.Clear();
+                Redraw();
+                return true;
+            }
+            if (keyData == Keys.Delete || keyData == Keys.Back)
+            {
+                _documentContext.Edits.DeleteSelection();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.A))
+            {
+                SelectAll();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.C))
+            {
+                _documentContext.Clipboard.CopySelection();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.X))
+            {
+                _documentContext.Clipboard.CutSelection();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.V))
+            {
+                _documentContext.Clipboard.PasteAt(_documentContext.Model.VirtualCurrentTick);
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.D))
+            {
+                _documentContext.Clipboard.DuplicateSelection(QuantizeVirtualStep);
+                return true;
+            }
+
+            int multiplier = (keyData & Keys.Shift) == Keys.Shift ? 4 : 1;
+            Keys keyCode = keyData & Keys.KeyCode;
+            if (keyCode == Keys.Left || keyCode == Keys.Right)
+            {
+                int direction = keyCode == Keys.Left ? -1 : 1;
+                _documentContext.Edits.MoveSelection(
+                    0,
+                    direction * QuantizeVirtualStep * multiplier);
+                return true;
+            }
+            if (keyCode == Keys.Up || keyCode == Keys.Down)
+            {
+                int direction = keyCode == Keys.Up ? -1 : 1;
+                _documentContext.Edits.MoveSelection(direction * multiplier, 0);
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         #endregion // private defs

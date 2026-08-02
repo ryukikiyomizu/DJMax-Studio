@@ -1,5 +1,7 @@
 /DJMaxEditor/bin
 /DJMaxEditor/obj
+**/bin/
+**/obj/
 /install
 tools
 /ideas.txt

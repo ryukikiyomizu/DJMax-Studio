@@ -6,6 +6,9 @@ using System.Resources;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
+// Allow the test harness to reach internal loaders/readers for characterization & regression tests.
+[assembly: InternalsVisibleTo("DJMaxEditor.Tests")]
+
 [assembly: AssemblyTitle("DJMaxEditor")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]

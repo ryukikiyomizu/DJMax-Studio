@@ -15,9 +15,14 @@ namespace DJMaxEditor.Controls.Editor.Renderers
             m_trackRectangle = new Rectangle();
             m_oddTrackBrush = new SolidBrush(ColorScheme.oddTrackColor);
             m_evenTrackBrush = new SolidBrush(ColorScheme.evenTrackColor);
-            m_gridColor = new Pen(Color.FromArgb(200, 107, 117, 130));
-            m_gridColorBeat = new Pen(Color.FromArgb(200, 254, 222, 42));
-            m_infoFont = new Font("Tahoma", 16);
+            m_gridColor = new Pen(Color.FromArgb(
+                112,
+                UI.StudioDesignSystem.Border));
+            m_gridColorBeat = new Pen(Color.FromArgb(
+                176,
+                UI.StudioDesignSystem.PulseCyan));
+            m_infoFont = UI.StudioDesignSystem.DisplayFont(16f);
+            m_infoBrush = new SolidBrush(UI.StudioDesignSystem.Frost);
         }
 
         public void RenderTracskList(GraphicsWrapper g, TracksList tracksList, Rectangle bounds, int beatSize, int blockSize, int virtualMaxTick, Rectangle drawableZone)
@@ -107,7 +112,12 @@ namespace DJMaxEditor.Controls.Editor.Renderers
                     trackNamePosY = boundsY;
                 }
 
-                g.DrawString(track.DisplayedTrackName, m_infoFont, Brushes.White, (float)trackNamePosX + 10, (float)trackNamePosY + 3);
+                g.DrawString(
+                    track.DisplayedTrackName,
+                    m_infoFont,
+                    m_infoBrush,
+                    (float)trackNamePosX + 10,
+                    (float)trackNamePosY + 3);
 
                 m_zonesRenderer.DrawZones(g, trackIndex, trackX, trackY, trackWidth, trackHeight, viewableTrackRectangle);
             }
@@ -126,6 +136,8 @@ namespace DJMaxEditor.Controls.Editor.Renderers
         private readonly Pen m_gridColorBeat;
 
         private readonly Font m_infoFont;
+
+        private readonly Brush m_infoBrush;
 
         private Rectangle m_trackRectangle;
 

@@ -10,17 +10,22 @@ namespace DJMaxEditor
 {
     internal class PTOpenFile : PTFile, IOpenFile
     {
-        private enum OpenFileMode
-        {
-            Normal,
-            OnlineDecrypt
-        }
-
         private bool m_encrypted;
 
         public string WorkingDir { get; private set; }
 
         public string Filename { get; private set; }
+
+        /// <summary>
+        /// When set, the chart is parsed from these in-memory bytes instead of reading <c>filename</c>
+        /// from disk. Used to feed the parser an offline-decrypted buffer (from <see cref="PtCodec"/>)
+        /// while still resolving keysounds relative to the original file path. Consumed and cleared by
+        /// a single <see cref="Open"/> call.
+        /// </summary>
+        public byte[] SourceOverride { get; set; }
+
+        /// <summary>True when <see cref="SourceOverride"/> came from decrypting an encrypted on-disk chart.</summary>
+        public bool FromEncryptedSource { get; set; }
 
         public PTOpenFile(bool encrypted = true)
         {
@@ -29,25 +34,21 @@ namespace DJMaxEditor
 
         public bool Open(string filename, out PlayerData playerData)
         {
-
-            bool res = _OpenFile2(filename, out playerData, OpenFileMode.Normal);
-
-            if (res == false && m_encrypted)
+            // Decrypted PTFF only. A generic parse failure here NEVER triggers decryption or a network
+            // call: encrypted files are identified up front by ChartFormatDetector, decrypted offline via
+            // PtCodec, and only the decrypted bytes reach this parser (through SourceOverride).
+            try
             {
-                return _OpenFile2(filename, out playerData, OpenFileMode.OnlineDecrypt);
+                return _OpenFile2(filename, out playerData);
             }
-
-            return res;
+            finally
+            {
+                SourceOverride = null;
+                FromEncryptedSource = false;
+            }
         }
 
-        private byte[] DecryptDataOnline(byte[] data)
-        {
-            byte[] res = null;
-            TryDoStuffDataOnline(data, "decrypt", out res);
-            return res;
-        }
-
-        private bool _OpenFile2(string filename, out PlayerData playerData, OpenFileMode mode)
+        private bool _OpenFile2(string filename, out PlayerData playerData)
         {
 
             UInt32 calcMinTick = ~0u;
@@ -69,11 +70,7 @@ namespace DJMaxEditor
                 return false;
             }
 
-            buff = File.ReadAllBytes(filename);
-            if (mode == OpenFileMode.OnlineDecrypt)
-            {
-                buff = DecryptDataOnline(buff);
-            }
+            buff = SourceOverride ?? File.ReadAllBytes(filename);
 
             if (buff == null) { return false; }
 
@@ -458,7 +455,8 @@ namespace DJMaxEditor
 
             }
 
-            playerData.Encrypted = mode == OpenFileMode.OnlineDecrypt;
+            // Track whether the on-disk source was encrypted (decrypted in memory before parsing).
+            playerData.Encrypted = FromEncryptedSource;
 
             return true;
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using UnpackMe.SDK.Core;
@@ -10,19 +10,47 @@ namespace DJMaxEditor.Files.pt
     {
         protected const uint EZTR = 0x52545A45;
 
+        /// <summary>
+        /// The dead "UnpackMe" online decrypt/encrypt service. It is OFF by default: the editor never
+        /// contacts it during normal open/save. It exists only as an explicit, user-opt-in code path
+        /// for anyone who stands up a compatible service. See <see cref="OnlineUrl"/>.
+        /// </summary>
+        public static bool OnlineEnabled = false;
+
+        /// <summary>Counts online attempts actually made — used by tests to prove no silent network I/O.</summary>
+        public static int OnlineAttemptCount = 0;
+
+        /// <summary>Hard ceiling on how long we will wait for the online task before giving up.</summary>
+        private static readonly TimeSpan OnlineTimeout = TimeSpan.FromSeconds(30);
+
+        public static string OnlineUrl => m_unpackMeUrl;
+
         protected bool TryDoStuffDataOnline(byte[] data, string mode, out byte[] result)
         {
             result = null;
+
+            if (!OnlineEnabled)
+            {
+                // Explicitly disabled: make NO network request. This is the default.
+                DJMaxEditor.Diagnostics.DiagnosticLog.Write("net.blocked",
+                    $"Online {mode} requested but the online service is disabled; no request was made.");
+                return false;
+            }
+
             try
             {
+                OnlineAttemptCount++;
+                DJMaxEditor.Diagnostics.DiagnosticLog.Write("net.optin",
+                    $"Online {mode} explicitly enabled; contacting {m_unpackMeUrl}.");
                 result = DoStuffDataOnline(data, mode);
             }
             catch (Exception e)
             {
+                DJMaxEditor.Diagnostics.DiagnosticLog.Write("net.error", $"Online {mode} failed: {e.Message}");
                 return false;
             }
 
-            return true;
+            return result != null;
         }
 
         protected byte[] DoStuffDataOnline(byte[] data, string mode)
@@ -42,8 +70,15 @@ namespace DJMaxEditor.Files.pt
 
                     TaskModel task;
                     string taskStatus;
+                    var deadline = DateTime.UtcNow + OnlineTimeout;
                     do
                     {
+                        if (DateTime.UtcNow > deadline)
+                        {
+                            throw new TimeoutException(
+                                $"Online {mode} did not complete within {OnlineTimeout.TotalSeconds:F0}s.");
+                        }
+
                         task = unpackMeClient.GetTaskById(taskId);
                         taskStatus = task.TaskStatus;
 

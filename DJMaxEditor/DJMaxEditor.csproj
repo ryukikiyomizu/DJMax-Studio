@@ -75,14 +75,6 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Owin, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Owin.4.0.0\lib\net451\Microsoft.Owin.dll</HintPath>
-    </Reference>
-    <Reference Include="Owin, Version=1.0.0.0, Culture=neutral, PublicKeyToken=f0ebd12fd5e55cc5, processorArchitecture=MSIL">
-      <HintPath>..\packages\Owin.1.0\lib\net40\Owin.dll</HintPath>
-    </Reference>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -93,7 +85,6 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AboutForm.cs">
@@ -103,6 +94,62 @@
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
     <Compile Include="AudioPlayer\AudioPlayerFmodEx.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineCoordinateSystem.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineEventIndex.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineFrame.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineItem.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineInputBindings.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineRow.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineRowRange.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineRulerCalculator.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineTimeRange.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineViewport.cs" />
+    <Compile Include="Controls\TimelineV2\TimelinePerformanceMonitor.cs" />
+    <Compile Include="Controls\TimelineV2\PlaybackFrameScheduler.cs" />
+    <Compile Include="Controls\TimelineV2\TechnikaNoteClassifier.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineV2Control.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Controls\TimelineV2\Projection\ITimelineProjection.cs" />
+    <Compile Include="Controls\TimelineV2\Projection\RawTrackProjection.cs" />
+    <Compile Include="Controls\TimelineV2\Projection\TimelineProjectionResult.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\FallbackArtRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\GridRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\ItemRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\MinimapRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\PlayheadRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\RulerRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\TechnikaNoteArt.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\TimelineRenderer.cs" />
+    <Compile Include="Controls\TimelineV2\Renderers\TimelineRenderTheme.cs" />
+    <Compile Include="Editor\Commands\StudioCommand.cs" />
+    <Compile Include="Editor\Commands\StudioCommandRegistry.cs" />
+    <Compile Include="Editor\EditorSurfaceSelection.cs" />
+    <Compile Include="Editor\IEditorSurface.cs" />
+    <Compile Include="Editor\LegacyEditorSurfaceAdapter.cs" />
+    <Compile Include="FeatureFlags.cs" />
+    <Compile Include="Preview\GameplayPreviewControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Preview\GameplayPreviewForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Preview\GameplayPreviewProjector.cs" />
+    <Compile Include="UI\StudioDesignSystem.cs" />
+    <Compile Include="UI\StudioCommandPaletteForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\StudioDocumentRail.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="UI\StudioStatusRail.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="UI\StudioWorkspacePreset.cs" />
+    <Compile Include="UI\EmptyWorkspaceControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="UI\StudioTheme.cs" />
     <Compile Include="Controls\Editor\EditorRenderControl.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -135,14 +182,11 @@
     <Compile Include="Controls\Editor\Renderers\Zones\Trilogy\Trilogy8kZoneRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\ZoneRenderer.cs" />
     <Compile Include="Controls\Editor\RenderTimer.cs" />
-    <Compile Include="DJMax\EventAttribute.cs" />
-    <Compile Include="DJMax\EventData.cs" />
-    <Compile Include="DJMax\EventType.cs" />
-    <Compile Include="DJMax\InstrumentData.cs" />
-    <Compile Include="DJMax\PlayerDataEvents.cs" />
-    <Compile Include="DJMax\TrackData.cs" />
-    <Compile Include="DJMax\TracksList.cs" />
     <Compile Include="Files\bms\BMESaveFile.cs" />
+    <Compile Include="Files\bms\BmsChartSerializer.cs" />
+    <Compile Include="Files\bms\BmsonChartSerializer.cs" />
+    <Compile Include="Files\bms\BmsonSaveFile.cs" />
+    <Compile Include="Files\bms\BmsOpenFile.cs" />
     <Compile Include="ColorScheme.cs" />
     <Compile Include="Files\bms\SaveSettingsDialog.cs">
       <SubType>Form</SubType>
@@ -159,12 +203,17 @@
     <Compile Include="Files\bytes\TQSaveFile.cs" />
     <Compile Include="Files\Cyclon\CyclonXmlOpenFile.cs" />
     <Compile Include="Files\Cyclon\XmlStructure.cs" />
+    <Compile Include="Diagnostics\DiagnosticLog.cs" />
+    <Compile Include="Files\ChartLoadException.cs" />
+    <Compile Include="Files\FormatDetection\FormatDetectionResult.cs" />
+    <Compile Include="Files\FormatDetection\ChartFormatDetector.cs" />
     <Compile Include="Files\File.cs" />
     <Compile Include="Files\FilesHandler.cs" />
     <Compile Include="Files\IOpenFile.cs" />
     <Compile Include="Files\ISaveFile.cs" />
     <Compile Include="Files\Loadhandler.cs" />
     <Compile Include="Files\pt\PTFile.cs" />
+    <Compile Include="Files\pt\PtCodec.cs" />
     <Compile Include="Files\pt\PTSaveFile.cs" />
     <Compile Include="Files\pt\SaveSettingsDialog.cs">
       <SubType>Form</SubType>
@@ -174,13 +223,13 @@
     </Compile>
     <Compile Include="Files\SaveHandler.cs" />
     <Compile Include="Files\bytes\TQOpenFile.cs" />
+    <Compile Include="Files\bytes\TrailerChartReader.cs" />
     <Compile Include="libs\fmod\fmod\fmod.cs" />
     <Compile Include="libs\fmod\fmod\fmod_dsp.cs" />
     <Compile Include="libs\fmod\fmod\fmod_errors.cs" />
     <Compile Include="libs\FormUpload.cs" />
     <Compile Include="libs\GDI.cs" />
     <Compile Include="libs\Serializer.cs" />
-    <Compile Include="libs\Singleton.cs" />
     <Compile Include="libs\WinFormsUI\Docking\AutoHideStripBase.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -350,6 +399,7 @@
     <Compile Include="MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="MainFormInputBindings.cs" />
     <Compile Include="libs\fmod\fmodex\fmod.cs" />
     <Compile Include="libs\fmod\fmodex\fmod_dsp.cs" />
     <Compile Include="libs\fmod\fmodex\fmod_errors.cs" />
@@ -374,7 +424,6 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Compile Include="DJMax\Player.cs" />
-    <Compile Include="DJMax\PlayerData.cs" />
     <Compile Include="libs\CustomTimer.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -385,16 +434,6 @@
     <Compile Include="Panels\ToolWindow.designer.cs">
       <DependentUpon>ToolWindow.cs</DependentUpon>
     </Compile>
-    <Compile Include="Undo\Action\AddEventAction.cs" />
-    <Compile Include="Undo\Action\AddInstrumentEventAction.cs" />
-    <Compile Include="Undo\Action\MoveEventAction.cs" />
-    <Compile Include="Undo\Action\RemoveEventAction.cs" />
-    <Compile Include="Undo\Action\RemoveInstrumentEventAction.cs" />
-    <Compile Include="Undo\Action\RenameInstrumentEventAction.cs" />
-    <Compile Include="Undo\Action\RenameTrackAction.cs" />
-    <Compile Include="Undo\Action\SetSoundAction.cs" />
-    <Compile Include="Undo\Action\UndoRedoAction.cs" />
-    <Compile Include="Undo\UndoManager.cs" />
     <EmbeddedResource Include="AboutForm.resx">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -447,6 +486,24 @@
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
       <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\Basic.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.Basic.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\ChainHead.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.ChainHead.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\ChainNode.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.ChainNode.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\HoldHead.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.HoldHead.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\Repeat.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.Repeat.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TechmaniaNotes\RepeatHead.png">
+      <LogicalName>DJMaxEditor.TechmaniaNotes.RepeatHead.png</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="Panels\PropertiesForm.resx">
       <DependentUpon>PropertiesForm.cs</DependentUpon>
@@ -609,6 +666,10 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\DJMaxEditor.Core\DJMaxEditor.Core.csproj">
+      <Project>{1A89A68E-68E2-422B-A7D1-BE419CF2464A}</Project>
+      <Name>DJMaxEditor.Core</Name>
+    </ProjectReference>
     <ProjectReference Include="libs\UnpackMe.SDK.Standard\UnpackMe.SDK.Standard.csproj">
       <Project>{4a0f82ae-f6ef-4063-a2ed-f3d8cee4c83a}</Project>
       <Name>UnpackMe.SDK.Standard</Name>

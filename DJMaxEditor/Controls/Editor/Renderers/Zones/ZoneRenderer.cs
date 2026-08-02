@@ -2,7 +2,7 @@
 
 namespace DJMaxEditor.Controls.Editor.Renderers.Zones
 {
-    internal interface IZoneRenderer
+    public interface IZoneRenderer
     {
         void DrawZones(GraphicsWrapper g, int trackIndex, int trackX, int trackY, int width, int height, Rectangle bounds);
 

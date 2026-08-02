@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Headless console test harness for the DJMax Editor format/detection/parse work.
+    It references the already-built main assembly (DJMaxEditor.exe) so it exercises the real,
+    registered code paths. It targets net461/x86 to match the editor's runtime exactly.
+    Run: build the main project first, then build+run this. Exit code == number of failed tests.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net461</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <AssemblyName>DJMaxEditor.Tests</AssemblyName>
+    <RootNamespace>DJMaxEditor.Tests</RootNamespace>
+    <EditorAssemblyPath Condition="'$(EditorAssemblyPath)' == ''">..\DJMaxEditor\bin\Release\DJMaxEditor.exe</EditorAssemblyPath>
+    <LangVersion>7.3</LangVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>DJMaxEditor.Tests</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DJMaxEditor.Core\DJMaxEditor.Core.csproj" />
+    <Reference Include="DJMaxEditor">
+      <HintPath>$(EditorAssemblyPath)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\DJMaxEditor\libs\fmod\fmod.dll"
+          Link="libs\fmod\fmod.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\DJMaxEditor\libs\fmod\fmodex.dll"
+          Link="libs\fmod\fmodex.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
