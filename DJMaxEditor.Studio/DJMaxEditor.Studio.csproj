@@ -1,0 +1,206 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DJMaxEditor.Studio - the modern shell.
+
+    Why WPF on net8.0-windows: VOCALOID 6 Editor (the design reference the user asked us to
+    follow) is itself WPF on net8.0 - its runtimeconfig.json declares "tfm": "net8.0" with
+    Microsoft.WindowsDesktop.App 8.0.0, and its compiled resource paths
+    (/VOCALOID6;component/musicaleditor/views/pianorollview/...) show a XAML/MVVM shell.
+    Staying on WPF/C# also means DJMaxEditor.Core (netstandard2.0) is referenced as-is with
+    zero porting, and we get GPU composition, retained-mode vector drawing, real DPI
+    awareness and swappable theme dictionaries - the four things the GDI+ WinForms surfaces
+    could not give us no matter how much the paint path was tuned.
+
+    UseWindowsForms is on for interop only: the legacy chart loaders we share below expose a
+    `System.Windows.Forms.Form GetSettingsForm()` on IFile. Nothing in this app's UI is
+    WinForms; the flag just keeps the shared loader sources compiling unmodified so the
+    legacy editor and the studio shell keep reading charts through one implementation.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <LangVersion>12</LangVersion>
+    <AssemblyName>DJMaxEditor.Studio</AssemblyName>
+    <RootNamespace>DJMaxEditor.Studio</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Platforms>AnyCPU</Platforms>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);CS0169;CS0649;CA1416</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DJMaxEditor.Core\DJMaxEditor.Core.csproj" />
+    <ProjectReference Include="..\DJMaxEditor\libs\UnpackMe.SDK.Standard\UnpackMe.SDK.Standard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The shell's own types are internal and stay internal: this is an application, not a library,
+      and nothing outside it has any business constructing a playfield renderer. The test project is
+      the one exception, and it is a narrower one than making the types public would be - the
+      measured arcade metrics and the letterbox fit are exactly what a test has to be able to assert
+      against, and TechnikaPlayfieldMetrics says so in its own summary ("one table a test can assert
+      against, so a later refactor cannot quietly drift the layout away from the arcade").
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>DJMaxEditor.Studio.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Managed audio backend. Replaces the 32-bit native FMOD Ex P/Invoke surface, which
+         forced the whole process to x86 and could not be unit tested without a device. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="NAudio.Vorbis" Version="1.5.0" />
+    <!-- Version pinned: net8.0 support was dropped and later restored in this package line, so an unbounded reference can resolve to a build with no net8.0 asset. -->
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <!--
+    Shared sources, not copies. These files are compiled into both DJMaxEditor.exe (legacy)
+    and DJMaxEditor.Studio.exe so there is exactly one implementation of chart parsing, tick
+    geometry, track layout and the playback sequencer. Only files that are free of
+    System.Drawing and System.Windows.Forms are linked; every GDI+ renderer and every
+    WinForms control is replaced by a WPF equivalent in this project.
+  -->
+  <ItemGroup Label="Shared: plumbing the loaders and sequencer expect">
+    <!-- Small, dependency-free helpers the linked files reference by name. Each was checked for
+         WinForms/System.Drawing coupling before linking; all three are pure BCL.
+         Logs.Write is a no-op outside DEBUG and routes through a settable delegate, so the new
+         shell can point it at its own sink instead of the legacy log window. -->
+    <Compile Include="..\DJMaxEditor\Logs.cs" Link="Shared\Plumbing\Logs.cs" />
+    <Compile Include="..\DJMaxEditor\libs\ByteArrayStream.cs" Link="Shared\Plumbing\ByteArrayStream.cs" />
+    <Compile Include="..\DJMaxEditor\Diagnostics\DiagnosticLog.cs" Link="Shared\Plumbing\DiagnosticLog.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Shared: playback + audio contract">
+    <Compile Include="..\DJMaxEditor\DJMax\Player.cs" Link="Shared\DJMax\Player.cs" />
+    <!-- Player.cs times its sequencer against this. It is 43 lines of DateTime.Now arithmetic
+         with no dependency beyond System, so it links as-is. -->
+    <Compile Include="..\DJMaxEditor\libs\CustomTimer.cs" Link="Shared\DJMax\CustomTimer.cs" />
+    <Compile Include="..\DJMaxEditor\AudioPlayer\AudioPlayer.cs" Link="Shared\AudioPlayer\AudioPlayer.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Shared: timeline model + geometry">
+    <Compile Include="..\DJMaxEditor\Controls\ScrollBand.cs" Link="Shared\Timeline\ScrollBand.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\PlaybackFrameScheduler.cs" Link="Shared\Timeline\PlaybackFrameScheduler.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TechnikaNoteClassifier.cs" Link="Shared\Timeline\TechnikaNoteClassifier.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineCoordinateSystem.cs" Link="Shared\Timeline\TimelineCoordinateSystem.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineEventIndex.cs" Link="Shared\Timeline\TimelineEventIndex.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineItem.cs" Link="Shared\Timeline\TimelineItem.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelinePerformanceMonitor.cs" Link="Shared\Timeline\TimelinePerformanceMonitor.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineRow.cs" Link="Shared\Timeline\TimelineRow.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineRowRange.cs" Link="Shared\Timeline\TimelineRowRange.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineRulerCalculator.cs" Link="Shared\Timeline\TimelineRulerCalculator.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineTimeRange.cs" Link="Shared\Timeline\TimelineTimeRange.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\TimelineViewport.cs" Link="Shared\Timeline\TimelineViewport.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\Projection\ITimelineProjection.cs" Link="Shared\Timeline\ITimelineProjection.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\Projection\RawTrackProjection.cs" Link="Shared\Timeline\RawTrackProjection.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\TimelineV2\Projection\TimelineProjectionResult.cs" Link="Shared\Timeline\TimelineProjectionResult.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Shared: vertical (ptSequencer-geometry) model">
+    <Compile Include="..\DJMaxEditor\Controls\Vertical\VerticalCoordinateSystem.cs" Link="Shared\Vertical\VerticalCoordinateSystem.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\Vertical\VerticalTrackLayout.cs" Link="Shared\Vertical\VerticalTrackLayout.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\Vertical\VerticalTimelineFrame.cs" Link="Shared\Vertical\VerticalTimelineFrame.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\Vertical\VerticalTimelineProjection.cs" Link="Shared\Vertical\VerticalTimelineProjection.cs" />
+    <Compile Include="..\DJMaxEditor\Controls\Vertical\VerticalTimelineViewModel.cs" Link="Shared\Vertical\VerticalTimelineViewModel.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Shared: chart formats">
+    <Compile Include="..\DJMaxEditor\Files\ChartLoadException.cs" Link="Shared\Files\ChartLoadException.cs" />
+    <Compile Include="..\DJMaxEditor\Files\File.cs" Link="Shared\Files\File.cs" />
+    <Compile Include="..\DJMaxEditor\Files\IOpenFile.cs" Link="Shared\Files\IOpenFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\ISaveFile.cs" Link="Shared\Files\ISaveFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\FormatDetection\ChartFormatDetector.cs" Link="Shared\Files\ChartFormatDetector.cs" />
+    <Compile Include="..\DJMaxEditor\Files\FormatDetection\FormatDetectionResult.cs" Link="Shared\Files\FormatDetectionResult.cs" />
+    <Compile Include="..\DJMaxEditor\Files\pt\PtCodec.cs" Link="Shared\Files\PtCodec.cs" />
+    <Compile Include="..\DJMaxEditor\Files\pt\PTFile.cs" Link="Shared\Files\PTFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\pt\PTOpenFile.cs" Link="Shared\Files\PTOpenFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\pt\PTSaveFile.cs" Link="Shared\Files\PTSaveFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bms\BmsChartSerializer.cs" Link="Shared\Files\BmsChartSerializer.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bms\BmsonChartSerializer.cs" Link="Shared\Files\BmsonChartSerializer.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bytes\TrailerChartReader.cs" Link="Shared\Files\TrailerChartReader.cs" />
+    <!-- The open/save wrappers and the handler registry. These only touch WinForms through
+         IFile's `Form GetSettingsForm()` return type, which compiles because UseWindowsForms is
+         on; none of them shows a window except PTSaveFile, and the shell never calls that.
+         Linking them is what lets the studio open every format the legacy editor can, through
+         the same code, rather than growing a second half-finished loader set. -->
+    <Compile Include="..\DJMaxEditor\Files\FilesHandler.cs" Link="Shared\Files\FilesHandler.cs" />
+    <Compile Include="..\DJMaxEditor\Files\Loadhandler.cs" Link="Shared\Files\LoadHandler.cs" />
+    <Compile Include="..\DJMaxEditor\Files\SaveHandler.cs" Link="Shared\Files\SaveHandler.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bms\BmsOpenFile.cs" Link="Shared\Files\BmsOpenFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bms\BMESaveFile.cs" Link="Shared\Files\BmeSaveFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bms\BmsonSaveFile.cs" Link="Shared\Files\BmsonSaveFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bytes\TQOpenFile.cs" Link="Shared\Files\TQOpenFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bytes\TQSaveFile.cs" Link="Shared\Files\TQSaveFile.cs" />
+    <!-- Same story as the .pt save dialog below: TQOpenFile holds one of these, so it comes
+         along. The studio never shows it - the shell drives TrailerChartReader's options
+         itself - but the field has to resolve for the shared source to compile. -->
+    <Compile Include="..\DJMaxEditor\Files\bytes\OpenSettingsDialog.cs" Link="Shared\Files\TqOpenSettingsDialog.cs" />
+    <Compile Include="..\DJMaxEditor\Files\bytes\OpenSettingsDialog.Designer.cs" Link="Shared\Files\TqOpenSettingsDialog.Designer.cs" />
+    <EmbeddedResource Include="..\DJMaxEditor\Files\bytes\OpenSettingsDialog.resx" LogicalName="DJMaxEditor.Files.bytes.OpenSettingsDialog.resources" />
+    <Compile Include="..\DJMaxEditor\Files\Cyclon\CyclonXmlOpenFile.cs" Link="Shared\Files\CyclonXmlOpenFile.cs" />
+    <Compile Include="..\DJMaxEditor\Files\Cyclon\XmlStructure.cs" Link="Shared\Files\CyclonXmlStructure.cs" />
+    <!-- PTSaveFile holds a SaveSettingsDialog field, so the dialog comes along. It is the
+         only WinForms window this project links, it is never shown by the studio shell
+         (the shell has its own save options UI), and its .resx carries no binary payload -
+         the Color1/Bitmap1/Icon1 entries in it are the boilerplate schema comment that
+         every designer-generated resx repeats. -->
+    <Compile Include="..\DJMaxEditor\Files\pt\SaveSettingsDialog.cs" Link="Shared\Files\PtSaveSettingsDialog.cs" />
+    <Compile Include="..\DJMaxEditor\Files\pt\SaveSettingsDialog.Designer.cs" Link="Shared\Files\PtSaveSettingsDialog.Designer.cs" />
+    <EmbeddedResource Include="..\DJMaxEditor\Files\pt\SaveSettingsDialog.resx" LogicalName="DJMaxEditor.Files.pt.SaveSettingsDialog.resources" />
+  </ItemGroup>
+  <ItemGroup Label="Shared: gameplay preview projection">
+    <!--
+      The two-half TECHNIKA playfield model already exists here and is already covered by the
+      legacy test suite: odd scans on the top half travelling left to right, even scans on the
+      bottom travelling right to left, note kinds derived from EventData.Attribute, chain and
+      repeat fixups, end-of-scan markers off tracks 4-7. Re-deriving it in the WPF shell would
+      have produced a second answer to the same question, so the projection is linked and only
+      the renderer is new.
+
+      RespectGameplayLayout comes along because the generic branch measures RESPECT notes with
+      it. Its only System.Drawing types are RectangleF and friends, which live in
+      System.Drawing.Primitives and are part of the base framework - no GDI+ is pulled in.
+    -->
+    <Compile Include="..\DJMaxEditor\Preview\GameplayPreviewProjector.cs" Link="Shared\Preview\GameplayPreviewProjector.cs" />
+    <Compile Include="..\DJMaxEditor\Preview\RespectGameplayLayout.cs" Link="Shared\Preview\RespectGameplayLayout.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Technika note glyphs">
+    <!--
+      The same six PNGs the legacy preview embeds, referenced in place rather than copied, so
+      both shells draw the identical glyph and the repository grows no new artwork. They are
+      WPF Resources here because a WPF ImageSource is what the new renderer draws with; the
+      legacy project keeps them as EmbeddedResource for its GDI+ path.
+    -->
+    <Resource Include="..\DJMaxEditor\Resources\TechmaniaNotes\*.png" Link="Preview\Notes\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup Label="Technika arcade sprites (local, not redistributed)">
+    <!--
+      The owner's own extracted arcade note set, copied to the output folder so the renderer
+      finds it next to the assembly. Gitignored and absent from a fresh clone, exactly like
+      LocalAssets\RespectVertical in the legacy project: nothing here is committed, and with
+      the folder missing the renderer falls back to the packaged glyphs above.
+
+      A wildcard rather than a file list, and no error when it matches nothing, because the
+      contents are the owner's - a different note set, or a subfolder of the arcade's numbered
+      sets copied across wholesale, both work without touching this file.
+    -->
+    <Content Include="LocalAssets\Technika2\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

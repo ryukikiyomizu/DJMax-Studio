@@ -80,6 +80,13 @@ namespace DJMaxEditor
 
             if (sign != "PTFF")
             {
+                // Every bail-out in this parser used to return a bare false, which reaches the user as
+                // "The chart could not be parsed." with no way to tell the three causes apart. A corpus
+                // scan of 445 charts found exactly one failure and could not say which branch took it,
+                // so each one now records where it stopped. Metadata only - offsets and counts, never
+                // chart contents, per DiagnosticLog's own contract.
+                Diagnostics.DiagnosticLog.Write("open.pt",
+                    Filename + ": not a PTFF (signature at 0x0 was not \"PTFF\")");
                 return false;
             }
 
@@ -138,9 +145,12 @@ namespace DJMaxEditor
                     unknown1 = stream.ReadByte();
                 }
 
-                if (insNo > 1000) 
+                if (insNo > 1000)
                 {
                     Logs.Write("sound count over 1000");
+                    Diagnostics.DiagnosticLog.Write("open.pt", string.Format(
+                        "{0}: instrument {1} of {2} claims slot {3} (>1000) at 0x{4:X}",
+                        Filename, i, insCnt, insNo, stream.Position - (version == 1 ? 4 : 2)));
                     return false;
                 }
 
@@ -169,8 +179,10 @@ namespace DJMaxEditor
                 if (eztr != EZTR)
                 {
                     Logs.Write("invalid Magic");
+                    Diagnostics.DiagnosticLog.Write("open.pt", string.Format(
+                        "{0}: expected EZTR at 0x{1:X} opening track {2} of {3}, read 0x{4:X8}",
+                        Filename, stream.Position - 4, trackIndex, tracksCount, eztr));
                     return false;
-                    break;
                 };
 
                 stream.Skip(0x02);
@@ -241,8 +253,16 @@ namespace DJMaxEditor
                                     ));*/
 
 
+                                    // First, not Single, and null-tolerant - the same lookup the
+                                    // version 2 branch below already uses. SingleOrDefault throws on
+                                    // a duplicate InsNum, and the instrument table is whatever the
+                                    // file says it is, so one chart with two entries claiming the
+                                    // same slot took the whole open down with an
+                                    // InvalidOperationException instead of loading with the first of
+                                    // them. A hole in the table did the same through a
+                                    // NullReferenceException.
                                     InstrumentData inst =
-                                        playerData.Instruments.SingleOrDefault(ins => ins.InsNum == insNo);
+                                        playerData.Instruments.FirstOrDefault(ins => ins != null && ins.InsNum == insNo);
 
                                     EventData newEvent = new EventData()
                                     {
@@ -376,7 +396,11 @@ namespace DJMaxEditor
 
                                     EventData newEvent = new EventData()
                                     {
-                                        //TrackId = trackIndex,
+                                        // No TrackId here on purpose, and none needed anywhere else
+                                        // either: TrackData.AddEvent stamps it from the track's own
+                                        // index a few lines down, so the sibling branches' copies are
+                                        // decoration. This one used to be a commented-out line that
+                                        // read like a missing assignment.
                                         Tick = tick,
                                         EventType = EventType.Volume,
                                         Volume = volume

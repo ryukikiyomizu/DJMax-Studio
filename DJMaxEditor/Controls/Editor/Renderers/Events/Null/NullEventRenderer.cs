@@ -11,6 +11,7 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
         {
             _stringFormat.Alignment = StringAlignment.Center;
             _stringFormat.LineAlignment = StringAlignment.Center;
+            _fontHeight = m_textFont.GetHeight();
         }
 
         public override void DrawZones(GraphicsWrapper g, int trackIndex, int trackX, int trackY, int width, int height, Rectangle bounds)
@@ -106,38 +107,37 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             g.FillRectangle(CustomBrushes.NoteBackground, rectangleX, rectangleY, rectangleWidth, rectangleHeight);
             g.DrawRectangle(Pens.Black, rectangleX, rectangleY, rectangleWidth, rectangleHeight);
 
-            string text = String.Empty;
-            switch (EventDisplayMode)
-            {
-                case EventDisplayMode.Attribute:
-                    byte attribute = eventData.Attribute;
-                    text = String.Format("Attr {0,3:000}", attribute);
-                    break;
-                case EventDisplayMode.Instrument:
-                    var instrument = eventData.Instrument;
-                    int insNo = instrument != null ? instrument.InsNum : 0;
-                    text = String.Format("Ins {0,3:000}", insNo);
-                    break;
-                case EventDisplayMode.Duration:
-                    ushort duration = eventData.Duration;
-                    text = String.Format("Dur {0,3:000}", duration);
-                    break;
-                case EventDisplayMode.Pan:
-                    byte pan = eventData.Pan;
-                    text = String.Format("Pan {0,3:000}", pan);
-                    break;
-                case EventDisplayMode.Velocity:
-                    byte vel = eventData.Vel;
-                    text = String.Format("Vel {0,3:000}", vel);
-                    break;
-            }
+            // Labels come from a precomputed table now. This used to string.Format once per
+            // visible note per frame, which is what made Attr mode the slowest V1 view.
+            // An unrecognised display mode yields no label, and drawing nothing must cost
+            // nothing rather than two GDI+ text calls on an empty string.
+            string text = EventLabelCache.For(EventDisplayMode, eventData);
+            if (text.Length == 0) return;
 
+            // Both horizontal surfaces draw notes through a scale transform, and the V2
+            // timeline's theme art runs at 0.2x where this 20pt font lands under 6px tall.
+            // Nobody can read that, and it is the single most expensive call in the frame.
+            if (!TextImageCache.IsLegible(_fontHeight, g.LabelScale)) return;
+
+            // Rasterised once per distinct label, then blitted: GDI+ flattens glyphs to
+            // filled paths under a world transform, so the text calls below cost roughly a
+            // hundred times what the blit does.
+            TextImage label = TextImageCache.Get(
+                m_textFont, text, Color.White, Color.Black, SHADOW_DISTANCE);
+            if (label != null)
+            {
+                g.DrawLabel(label.Image, label.CenteredOn(centerX, centerY));
+                return;
+            }
 
             g.DrawString(text, this.m_textFont, Brushes.Black, centerX + SHADOW_DISTANCE, centerY + SHADOW_DISTANCE, _stringFormat);
             g.DrawString(text, this.m_textFont, Brushes.White, centerX, centerY, _stringFormat);
         }
 
         private Font m_textFont = new Font("Tahoma", 20, FontStyle.Bold);
+
+        /// <summary>Cached because <see cref="Font.GetHeight()"/> is a native call.</summary>
+        private readonly float _fontHeight;
 
         private StringFormat _stringFormat = new StringFormat();
 

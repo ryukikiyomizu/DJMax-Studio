@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
 	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- AnyCPU regardless of $(Platform), for the same reason as DJMaxEditor.Core: this library is
+         copied into the AnyCPU/64-bit DJMaxEditor.Studio output as well as into the x86 editor. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>

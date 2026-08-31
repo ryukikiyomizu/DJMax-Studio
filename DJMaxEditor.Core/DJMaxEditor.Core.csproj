@@ -5,5 +5,16 @@
     <AssemblyName>DJMaxEditor.Core</AssemblyName>
     <RootNamespace>DJMaxEditor</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!--
+      AnyCPU regardless of the solution's $(Platform). The legacy editor and its harness build
+      at Platform=x86, and without this the SDK stamps 32BITREQUIRED into this library's PE
+      header. That is invisible to the net461/x86 editor, but DJMaxEditor.Studio and
+      DJMaxEditor.Studio.Tests are AnyCPU (see their own PlatformTarget) and run 64-bit, so the
+      x86 output tree copies them a Core they cannot load: the runtime rejects the image and
+      reports it as FileNotFoundException("Could not load ... DJMaxEditor.Core"), which reads
+      like a missing file rather than the wrong bitness. Every test that touches a Core type
+      fails while the rest of the harness passes.
+    -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 </Project>

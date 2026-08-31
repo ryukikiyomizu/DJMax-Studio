@@ -101,6 +101,7 @@
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.zoneRendererToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
             this.eventDisplayModeToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
+            this.verticalDirectionToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
             this.PlayerTimer = new System.Windows.Forms.Timer(this.components);
             this.dockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
             this.menuStrip1.SuspendLayout();
@@ -550,7 +551,8 @@
             this.ThemeDropDownButton,
             this.toolStripSeparator4,
             this.zoneRendererToolStripDropDownButton,
-            this.eventDisplayModeToolStripDropDownButton});
+            this.eventDisplayModeToolStripDropDownButton,
+            this.verticalDirectionToolStripDropDownButton});
             this.toolStrip1.Location = new System.Drawing.Point(0, 30);
             this.toolStrip1.Name = "toolStrip1";
             this.toolStrip1.Size = new System.Drawing.Size(1416, 31);
@@ -577,6 +579,16 @@
             this.eventDisplayModeToolStripDropDownButton.Size = new System.Drawing.Size(82, 28);
             this.eventDisplayModeToolStripDropDownButton.Text = "Attribute";
             this.eventDisplayModeToolStripDropDownButton.DropDownItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.eventDisplayModeToolStripDropDownButton_DropDownItemClicked);
+            //
+            // verticalDirectionToolStripDropDownButton
+            //
+            this.verticalDirectionToolStripDropDownButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.verticalDirectionToolStripDropDownButton.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.verticalDirectionToolStripDropDownButton.Name = "verticalDirectionToolStripDropDownButton";
+            this.verticalDirectionToolStripDropDownButton.Size = new System.Drawing.Size(96, 28);
+            this.verticalDirectionToolStripDropDownButton.Text = "Time up";
+            this.verticalDirectionToolStripDropDownButton.ToolTipText = "Which way time runs in the vertical timeline";
+            this.verticalDirectionToolStripDropDownButton.DropDownItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.verticalDirectionToolStripDropDownButton_DropDownItemClicked);
             // 
             // PlayerTimer
             // 
@@ -724,6 +736,7 @@
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator4;
         private System.Windows.Forms.ToolStrip toolStrip1;
         private System.Windows.Forms.ToolStripDropDownButton eventDisplayModeToolStripDropDownButton;
+        private System.Windows.Forms.ToolStripDropDownButton verticalDirectionToolStripDropDownButton;
         private System.Windows.Forms.ToolStripMenuItem selectToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem allToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem deselectToolStripMenuItem;

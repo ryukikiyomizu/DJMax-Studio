@@ -1,0 +1,80 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!--
+        Design tokens. Keep every literal colour in this file: the rest of the theme references
+        tokens only, so a second theme is a second copy of this dictionary and nothing else.
+        The values and their provenance are documented in Design\StudioPalette.cs - the two must
+        stay in step, and StudioPaletteTests asserts that they do.
+    -->
+
+    <!-- ==== surfaces ==================================================================== -->
+    <Color x:Key="Color.Abyss">#FF101113</Color>
+    <Color x:Key="Color.Surface">#FF17181A</Color>
+    <Color x:Key="Color.Raised">#FF1F2124</Color>
+    <Color x:Key="Color.Hover">#FF2A2D31</Color>
+    <Color x:Key="Color.Inset">#FF121315</Color>
+    <Color x:Key="Color.Edge">#FF34373C</Color>
+    <Color x:Key="Color.EdgeStrong">#FF4A4E55</Color>
+
+    <SolidColorBrush x:Key="Brush.Abyss" Color="{StaticResource Color.Abyss}" />
+    <SolidColorBrush x:Key="Brush.Surface" Color="{StaticResource Color.Surface}" />
+    <SolidColorBrush x:Key="Brush.Raised" Color="{StaticResource Color.Raised}" />
+    <SolidColorBrush x:Key="Brush.Hover" Color="{StaticResource Color.Hover}" />
+    <SolidColorBrush x:Key="Brush.Inset" Color="{StaticResource Color.Inset}" />
+    <SolidColorBrush x:Key="Brush.Edge" Color="{StaticResource Color.Edge}" />
+    <SolidColorBrush x:Key="Brush.EdgeStrong" Color="{StaticResource Color.EdgeStrong}" />
+
+    <!-- ==== text ======================================================================== -->
+    <Color x:Key="Color.TextPrimary">#FFEDEEF0</Color>
+    <Color x:Key="Color.TextSecondary">#FFB6B9BF</Color>
+    <Color x:Key="Color.TextMuted">#FF83878E</Color>
+    <Color x:Key="Color.TextDisabled">#FF5A5E65</Color>
+
+    <SolidColorBrush x:Key="Brush.TextPrimary" Color="{StaticResource Color.TextPrimary}" />
+    <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}" />
+    <SolidColorBrush x:Key="Brush.TextMuted" Color="{StaticResource Color.TextMuted}" />
+    <SolidColorBrush x:Key="Brush.TextDisabled" Color="{StaticResource Color.TextDisabled}" />
+
+    <!-- ==== accent ===================================================================== -->
+    <Color x:Key="Color.Accent">#FF2FBFA6</Color>
+    <Color x:Key="Color.AccentDim">#FF1E7A6B</Color>
+    <Color x:Key="Color.AccentText">#FF0C1412</Color>
+    <Color x:Key="Color.Danger">#FFE05252</Color>
+    <Color x:Key="Color.Warn">#FFE0A23A</Color>
+
+    <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}" />
+    <SolidColorBrush x:Key="Brush.AccentDim" Color="{StaticResource Color.AccentDim}" />
+    <SolidColorBrush x:Key="Brush.AccentText" Color="{StaticResource Color.AccentText}" />
+    <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource Color.Danger}" />
+    <SolidColorBrush x:Key="Brush.Warn" Color="{StaticResource Color.Warn}" />
+    <SolidColorBrush x:Key="Brush.AccentGhost" Color="{StaticResource Color.Accent}" Opacity="0.18" />
+
+    <!-- ==== typography ================================================================== -->
+    <!--
+        Segoe UI Variable is the Windows 11 system face and is what a modern tool should use for
+        chrome. The numeric readouts (bar:beat:tick, sample numbers, the status bar) use Cascadia
+        Mono so digits do not jitter as they count - ptSequencer's fixed-width readout was right
+        about that even at 8 px.
+    -->
+    <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Segoe UI Variable, sans-serif</FontFamily>
+    <FontFamily x:Key="Font.UiDisplay">Segoe UI Variable Display, Segoe UI Semibold, Segoe UI, sans-serif</FontFamily>
+    <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas, Courier New, monospace</FontFamily>
+
+    <sys:Double x:Key="Font.Size.Small">11</sys:Double>
+    <sys:Double x:Key="Font.Size.Body">12</sys:Double>
+    <sys:Double x:Key="Font.Size.Title">13</sys:Double>
+    <sys:Double x:Key="Font.Size.Readout">12</sys:Double>
+
+    <!-- ==== metrics (mirrors Design\StudioMetrics.cs) =================================== -->
+    <sys:Double x:Key="Metric.TitleBarHeight">32</sys:Double>
+    <sys:Double x:Key="Metric.ToolbarHeight">38</sys:Double>
+    <sys:Double x:Key="Metric.ToolButtonSize">28</sys:Double>
+    <sys:Double x:Key="Metric.IconSize">16</sys:Double>
+    <sys:Double x:Key="Metric.StatusBarHeight">24</sys:Double>
+    <sys:Double x:Key="Metric.PanelHeaderHeight">26</sys:Double>
+    <sys:Double x:Key="Metric.SplitterSize">4</sys:Double>
+    <CornerRadius x:Key="Metric.CornerRadius">3</CornerRadius>
+
+</ResourceDictionary>

@@ -21,9 +21,41 @@ namespace DJMaxEditor.DJMax
         public float Volume { get; set; }
 
         /// <summary>
-        /// List of event Events
+        /// Events on this track, ordered by tick.
+        /// <para>
+        /// This used to hand back a deferred <c>OrderBy</c>, which meant every single
+        /// enumeration re-sorted the whole track. The editor's paint loop enumerates this
+        /// once per track per frame, so a dense chart re-sorted tens of thousands of
+        /// events on every frame — the measured cause of the legacy timeline's lag. The
+        /// ordering is now materialised once and cached until the track is mutated.
+        /// </para>
+        /// <para>
+        /// Materialisation is lazy rather than eager because <see cref="AddEvent"/> is
+        /// called in tight per-event parse loops; sorting on each add would turn chart
+        /// loading into O(n² log n).
+        /// </para>
         /// </summary>
-        public IEnumerable<EventData> Events { get; private set; }
+        public IEnumerable<EventData> Events
+        {
+            get { return OrderedEvents; }
+        }
+
+        /// <summary>
+        /// Same events as <see cref="Events"/>, indexable so a caller that only needs a
+        /// tick window can binary-search instead of walking the whole track.
+        /// </summary>
+        public IReadOnlyList<EventData> OrderedEvents
+        {
+            get
+            {
+                if (m_orderedDirty)
+                {
+                    m_ordered = m_events.OrderBy(x => x.Tick).ToList();
+                    m_orderedDirty = false;
+                }
+                return m_ordered;
+            }
+        }
 
         /// <summary>
         /// Track index
@@ -34,6 +66,11 @@ namespace DJMaxEditor.DJMax
         {
             get
             {
+                if (m_maxTickDirty)
+                {
+                    _maxTick = m_events.Count == 0 ? 0 : m_events.Max(x => x.Tick);
+                    m_maxTickDirty = false;
+                }
                 return _maxTick;
             }
         }
@@ -45,15 +82,39 @@ namespace DJMaxEditor.DJMax
         public TrackData(uint idx)
         {
             // actually fixed limit for all tracks
-            //Events = new List<EventData>();
             m_events = new List<EventData>();
-            Events = new List<EventData>();
+            m_ordered = new List<EventData>();
 
             Idx = idx;
 
             Volume = 1;
 
             DisplayedTrackName = "Track " + idx;
+        }
+
+        /// <summary>
+        /// Index of the first ordered event at or after <paramref name="tick"/>, or the
+        /// event count when every event is earlier. Lets the renderers scan only the events
+        /// a viewport can actually contain.
+        /// </summary>
+        public int FirstIndexAtOrAfterTick(int tick)
+        {
+            IReadOnlyList<EventData> ordered = OrderedEvents;
+            int low = 0;
+            int high = ordered.Count;
+            while (low < high)
+            {
+                int middle = low + ((high - low) / 2);
+                if (ordered[middle].Tick < tick)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+            return low;
         }
 
         /// <summary>
@@ -93,8 +154,7 @@ namespace DJMaxEditor.DJMax
         {
             eventData.TrackId = Idx;
             m_events.Add(eventData);
-            UpdateOrderedList();
-            UpdateMaxTick();
+            InvalidateDerivedState();
             TriggerEventAdded(eventData);
         }
 
@@ -106,8 +166,7 @@ namespace DJMaxEditor.DJMax
             if (additions.Count == 0) return;
             foreach (var item in additions) item.TrackId = Idx;
             m_events.AddRange(additions);
-            UpdateOrderedList();
-            UpdateMaxTick();
+            InvalidateDerivedState();
             TriggerEventAdded(null);
         }
 
@@ -118,14 +177,19 @@ namespace DJMaxEditor.DJMax
         public void RemoveEvent(EventData eventData)
         {
             m_events.Remove(eventData);
-            UpdateOrderedList();
-            UpdateMaxTick();
+            InvalidateDerivedState();
             TriggerEventRemoved(eventData);
         }
 
         private string m_trackName = null;
 
         private List<EventData> m_events;
+
+        private List<EventData> m_ordered;
+
+        private bool m_orderedDirty = false;
+
+        private bool m_maxTickDirty = false;
 
         private int _maxTick = 1;
 
@@ -139,22 +203,15 @@ namespace DJMaxEditor.DJMax
             EventRemoved?.Invoke(this, null);
         }
 
-        private void UpdateOrderedList()
+        /// <summary>
+        /// Marks the ordered view and the max tick stale. Both are recomputed on the next
+        /// read, so a parse loop that adds thousands of events pays for one sort, not one
+        /// sort per event.
+        /// </summary>
+        private void InvalidateDerivedState()
         {
-            Events = m_events.OrderBy(x => x.Tick);
-        }
-
-        private void UpdateMaxTick()
-        {
-            var eventsCount = m_events.Count;
-            if (eventsCount == 0)
-            {
-                _maxTick = 0;
-            }
-            else
-            {
-                _maxTick = m_events.Max(x => x.Tick);
-            }
+            m_orderedDirty = true;
+            m_maxTickDirty = true;
         }
     }
 }

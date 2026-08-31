@@ -8,22 +8,34 @@ namespace DJMaxEditor.UI
     /// Centralized production UI tokens.  Controls consume semantic tokens from
     /// here so the shell, docked panels, and both timelines share one language.
     /// </summary>
+    /// <remarks>
+    /// The surface ramp (<see cref="Void"/> through <see cref="Border"/>) is deliberately
+    /// <em>neutral</em> grey. It used to be navy-tinted, which made the alternating row fills on
+    /// both timelines read as a blue wash behind the notes and gave the whole shell the
+    /// backlit-dashboard look. Colour is now reserved for signals — timing, selection,
+    /// automation, warning, fault — so a coloured pixel always means something.
+    /// </remarks>
     public static class StudioDesignSystem
     {
-        public static readonly Color Void = Color.FromArgb(0x0B, 0x0F, 0x17);
-        public static readonly Color Deck = Color.FromArgb(0x12, 0x1A, 0x27);
-        public static readonly Color Lift = Color.FromArgb(0x1C, 0x29, 0x3A);
-        public static readonly Color Hover = Color.FromArgb(0x26, 0x37, 0x4D);
-        public static readonly Color Border = Color.FromArgb(0x31, 0x45, 0x5E);
+        public static readonly Color Void = Color.FromArgb(0x0F, 0x0F, 0x10);
+        public static readonly Color Deck = Color.FromArgb(0x15, 0x15, 0x17);
+        public static readonly Color Lift = Color.FromArgb(0x1E, 0x1E, 0x21);
+        public static readonly Color Hover = Color.FromArgb(0x2A, 0x2A, 0x2E);
+        public static readonly Color Border = Color.FromArgb(0x3A, 0x3A, 0x3F);
         public static readonly Color PulseCyan = Color.FromArgb(0x36, 0xD5, 0xFF);
         public static readonly Color BeatViolet = Color.FromArgb(0xA7, 0x7B, 0xFF);
         public static readonly Color AutomationGreen = Color.FromArgb(0x53, 0xD7, 0xA0);
         public static readonly Color SignalAmber = Color.FromArgb(0xFF, 0xCB, 0x5C);
         public static readonly Color FaultRed = Color.FromArgb(0xFF, 0x5F, 0x73);
-        public static readonly Color Frost = Color.FromArgb(0xEA, 0xF2, 0xFF);
-        public static readonly Color Muted = Color.FromArgb(0x91, 0xA2, 0xBA);
-        public static readonly Color Selected = Color.FromArgb(0x25, 0x50, 0x73);
-        public static readonly Color Disabled = Color.FromArgb(0x5E, 0x6B, 0x7D);
+        public static readonly Color Frost = Color.FromArgb(0xE9, 0xEA, 0xEC);
+        public static readonly Color Muted = Color.FromArgb(0x99, 0x9A, 0x9F);
+
+        /// <summary>
+        /// Selection stays tinted on purpose: it is a signal, not chrome, so it has to read as
+        /// distinct from every neutral surface behind it. Derived from <see cref="PulseCyan"/>.
+        /// </summary>
+        public static readonly Color Selected = Color.FromArgb(0x1C, 0x3C, 0x49);
+        public static readonly Color Disabled = Color.FromArgb(0x6A, 0x6A, 0x70);
 
         public const int BaseDpi = 96;
 

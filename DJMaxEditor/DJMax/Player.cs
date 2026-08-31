@@ -49,9 +49,13 @@ namespace DJMaxEditor.DJMax
             m_curMsTime = 0;
             m_period = 1.0;
             m_curTempo = m_playerData?.Tempo ?? 120.0f;
-            if (m_playerData?.SourceFormat == Files.FormatDetection.ChartFormat.BmsClassic &&
-                m_curTempo > 0.0f)
+            if (m_curTempo > 0.0f)
             {
+                // Every format, not just BMS. The period stays at its meaningless 1.0 ms/tick until
+                // some Tempo event sets it, and a .pt's tick-0 Tempo event is dispatched in the same
+                // pass as the notes at tick 0 - so whatever asks for the tempo before that (a seek
+                // working out where in the song it landed, or a note asking how long its body lasts)
+                // gets 1.0. The chart's own header tempo is the right starting value.
                 SetTempo(m_curTempo);
             }
             IsStopped = true;
@@ -73,7 +77,7 @@ namespace DJMaxEditor.DJMax
             {
                 m_curTick = tick;
                 UpdateTimer();
-                UpdateAutoPlayEvents();
+                SeekEventsTo(tick);
             }
             else
             {
@@ -157,6 +161,13 @@ namespace DJMaxEditor.DJMax
         {
             return m_curMsTime;
         }
+
+        /// <summary>
+        /// Milliseconds one native tick lasts at the tempo in force right now. The unit callers need
+        /// to turn a note's <c>Duration</c> into a length in time; kept as a property rather than
+        /// recomputed from <c>Tempo</c> by every caller so that Tempo events are honoured.
+        /// </summary>
+        public double MillisecondsPerTick => m_period;
 
         #endregion // public definitions
 
@@ -248,6 +259,78 @@ namespace DJMaxEditor.DJMax
                 HandlePlayEvent(scoreEvent.TrackId, scoreEvent, m_curTick - scoreEvent.Tick);
                 m_curEventIdx++;
             }
+        }
+
+        /// <summary>
+        /// Positions the event cursor at <paramref name="tick"/> without playing what is behind it,
+        /// and sets the ms clock to where that tick actually falls in the song.
+        /// <para>
+        /// This is what a seek needs and what <see cref="UpdateAutoPlayEvents"/> cannot do. Playing
+        /// from the middle of a chart used to run the same catch-up loop as normal playback, which
+        /// fires every event from tick 0 to the target: with one mixer channel per track and no
+        /// overlapping retrigger, each track's channel is stolen again and again until what you hear
+        /// at the seek point is the last note before it on every track, all struck at once, with the
+        /// background track restarting from 0:00 underneath. The chart looked like it had jumped and
+        /// sounded like it had not.
+        /// </para>
+        /// <para>
+        /// Tempo events are still applied - they are state, and skipping them would leave the
+        /// sequencer running at the wrong speed - and Volume events are still dispatched for the same
+        /// reason. Only Notes are suppressed, because a note is an event in time, not a state to
+        /// catch up on. What should still be <i>sounding</i> at the seek point is the shell's
+        /// business: it is the only side that knows which voices exist.
+        /// </para>
+        /// </summary>
+        private void SeekEventsTo(int tick)
+        {
+            if (m_playerData == null)
+            {
+                Logs.Write("PlayerData is null");
+                return;
+            }
+
+            var events = m_playerData.Tracks.Events;
+            if (events == null)
+            {
+                return;
+            }
+
+            // Integrated rather than one multiply, so a chart with tempo changes lands on the right
+            // wall-clock time: each segment is measured at the period that was in force for it.
+            double elapsedMs = 0.0;
+            int lastTick = 0;
+
+            while (m_curEventIdx < events.Length)
+            {
+                var scoreEvent = events[(int)m_curEventIdx];
+
+                if (scoreEvent == null)
+                {
+                    throw new Exception($"ERROR: bad event idx = {m_curEventIdx}");
+                }
+
+                if (scoreEvent.Tick > tick)
+                {
+                    break;
+                }
+
+                switch (scoreEvent.EventType)
+                {
+                    case EventType.Tempo:
+                        elapsedMs += (scoreEvent.Tick - lastTick) * m_period;
+                        lastTick = scoreEvent.Tick;
+                        SetTempo(scoreEvent.Tempo);
+                        break;
+                    case EventType.Volume:
+                        OnEvent?.Invoke(scoreEvent, scoreEvent.TrackId, EventType.Volume);
+                        break;
+                }
+
+                m_curEventIdx++;
+            }
+
+            elapsedMs += (tick - lastTick) * m_period;
+            m_curMsTime = (long)elapsedMs;
         }
 
         private void HandlePlayEvent(uint trackIndex, EventData eventData, int elapsedTick)

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Undo.Action;
 
@@ -10,6 +10,13 @@ namespace DJMaxEditor.Editor
     /// </summary>
     public sealed class ChartEditController
     {
+        /// <summary>
+        /// Loudest a note can be. 127, not 255: the .pt field is a MIDI-style velocity and the
+        /// audio player treats 127 as unity gain, so anything above it would clip rather than get
+        /// louder.
+        /// </summary>
+        public const byte MaxNoteVolume = 127;
+
         private readonly EditorDocumentContext _document;
         private readonly UndoManager _undo;
 
@@ -150,6 +157,78 @@ namespace DJMaxEditor.Editor
                 return false;
             }
             _undo.ExecAction(new SetEventAttributesAction(changes));
+            return true;
+        }
+
+        /// <summary>
+        /// Sets per-note volume on the selection. 0-127, matching the .pt field and MIDI velocity,
+        /// which is also how the audio player scales the sample.
+        /// </summary>
+        public bool SetSelectionVolume(byte volume)
+        {
+            return SetSelectionVolume(volume, null);
+        }
+
+        public bool SetSelectionVolume(byte volume, object undoGroupKey)
+        {
+            if (!CanMutateSelection())
+            {
+                return false;
+            }
+
+            byte clamped = volume > MaxNoteVolume ? MaxNoteVolume : volume;
+            var changes = new List<SetEventVolumeAction.EventVolumeChange>();
+            foreach (EventData item in _document.Selection.Items)
+            {
+                if (item.Vel == clamped)
+                {
+                    continue;
+                }
+                changes.Add(new SetEventVolumeAction.EventVolumeChange(
+                    item,
+                    item.Vel,
+                    clamped));
+            }
+            if (changes.Count == 0)
+            {
+                return false;
+            }
+            _undo.ExecAction(new SetEventVolumeAction(changes, undoGroupKey));
+            return true;
+        }
+
+        /// <summary>
+        /// Nudges the selection's volume by a signed delta, clamping each note to 0-127
+        /// independently so a loud note and a quiet one keep their relative balance instead of
+        /// collapsing onto the same value at the ends of the range.
+        /// </summary>
+        public bool AdjustSelectionVolume(int delta, object undoGroupKey)
+        {
+            if (delta == 0 || !CanMutateSelection())
+            {
+                return false;
+            }
+
+            var changes = new List<SetEventVolumeAction.EventVolumeChange>();
+            foreach (EventData item in _document.Selection.Items)
+            {
+                int target = item.Vel + delta;
+                if (target < 0) target = 0;
+                if (target > MaxNoteVolume) target = MaxNoteVolume;
+                if (target == item.Vel)
+                {
+                    continue;
+                }
+                changes.Add(new SetEventVolumeAction.EventVolumeChange(
+                    item,
+                    item.Vel,
+                    (byte)target));
+            }
+            if (changes.Count == 0)
+            {
+                return false;
+            }
+            _undo.ExecAction(new SetEventVolumeAction(changes, undoGroupKey));
             return true;
         }
 

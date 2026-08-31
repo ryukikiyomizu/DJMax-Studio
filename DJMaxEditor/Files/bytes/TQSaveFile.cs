@@ -88,6 +88,12 @@ namespace DJMaxEditor.Files.bytes
                     track.Write(BitConverter.GetBytes(eventsCount), 0, 4);
 
 
+                    // The (short) casts on the byte-wide fields below are load-bearing:
+                    // net8 added System.Half, and byte converts implicitly to both Half and
+                    // short, so an uncast GetBytes(evnt.Vel) is ambiguous when this shared
+                    // source is compiled into the studio shell. short is the overload .NET
+                    // Framework already resolved to, and only the low byte is written, so the
+                    // file bytes are unchanged.
                     foreach (EventData evnt in td.Events)
                     {
                         track.Write(BitConverter.GetBytes(evnt.Tick), 0, 4);
@@ -97,7 +103,7 @@ namespace DJMaxEditor.Files.bytes
                             case EventType.Volume:
                                 {
                                     track.Write(new byte[] { 2 }, 0, 1);
-                                    track.Write(BitConverter.GetBytes(evnt.Volume), 0, 1);
+                                    track.Write(BitConverter.GetBytes((short)evnt.Volume), 0, 1);
                                     track.Write(BitConverter.GetBytes(0), 0, 1);
                                     track.Write(BitConverter.GetBytes(0), 0, 1);
                                     track.Write(BitConverter.GetBytes(0), 0, 1);
@@ -116,9 +122,9 @@ namespace DJMaxEditor.Files.bytes
                                     }
 
                                     track.Write(BitConverter.GetBytes(insno), 0, 2);
-                                    track.Write(BitConverter.GetBytes(evnt.Vel), 0, 1);
-                                    track.Write(BitConverter.GetBytes(evnt.Pan), 0, 1);
-                                    track.Write(BitConverter.GetBytes(evnt.Attribute), 0, 1);
+                                    track.Write(BitConverter.GetBytes((short)evnt.Vel), 0, 1);
+                                    track.Write(BitConverter.GetBytes((short)evnt.Pan), 0, 1);
+                                    track.Write(BitConverter.GetBytes((short)evnt.Attribute), 0, 1);
                                     track.Write(BitConverter.GetBytes(evnt.Duration), 0, 2); // Is Duration 2 bytes? or 1 bytes
                                     track.Write(BitConverter.GetBytes(0), 0, 1);
 

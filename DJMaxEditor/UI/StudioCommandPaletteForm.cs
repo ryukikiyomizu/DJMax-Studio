@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -271,10 +271,10 @@ namespace DJMaxEditor.UI
             {
                 AutoSize = false,
                 Dock = DockStyle.Top,
-                Font = StudioDesignSystem.UtilityFont(7.5f),
-                ForeColor = StudioDesignSystem.PulseCyan,
+                Font = StudioDesignSystem.BodyFont(8f),
+                ForeColor = StudioDesignSystem.Muted,
                 Height = 18,
-                Text = "DJMAX  //  WORKFLOW CONTROL"
+                Text = "Workflow control"
             };
             var title = new Label
             {
@@ -282,7 +282,7 @@ namespace DJMaxEditor.UI
                 Dock = DockStyle.Fill,
                 Font = StudioDesignSystem.DisplayFont(17f),
                 ForeColor = StudioDesignSystem.Frost,
-                Text = "COMMAND PALETTE  /  SHORTCUT CENTER"
+                Text = "Commands and shortcuts"
             };
             header.Controls.Add(title);
             header.Controls.Add(eyebrow);
@@ -364,25 +364,25 @@ namespace DJMaxEditor.UI
             list.Columns.Add(new DataGridViewTextBoxColumn
             {
                 FillWeight = 43,
-                HeaderText = "COMMAND",
+                HeaderText = "Command",
                 Name = "Command"
             });
             list.Columns.Add(new DataGridViewTextBoxColumn
             {
                 FillWeight = 19,
-                HeaderText = "CATEGORY",
+                HeaderText = "Category",
                 Name = "Category"
             });
             list.Columns.Add(new DataGridViewTextBoxColumn
             {
                 FillWeight = 20,
-                HeaderText = "SHORTCUT",
+                HeaderText = "Shortcut",
                 Name = "Shortcut"
             });
             list.Columns.Add(new DataGridViewTextBoxColumn
             {
                 FillWeight = 18,
-                HeaderText = "STATUS",
+                HeaderText = "Status",
                 Name = "Status"
             });
             return list;
@@ -440,9 +440,9 @@ namespace DJMaxEditor.UI
                 WrapContents = false
             };
             run = CreateActionButton("RUN  Enter", 112, StudioDesignSystem.PulseCyan);
-            reassign = CreateActionButton("REASSIGN", 108, StudioDesignSystem.BeatViolet);
-            reset = CreateActionButton("RESET SELECTED", 128, StudioDesignSystem.Muted);
-            resetAll = CreateActionButton("RESET ALL", 96, StudioDesignSystem.Muted);
+            reassign = CreateActionButton("Reassign", 108, StudioDesignSystem.BeatViolet);
+            reset = CreateActionButton("Reset selected", 128, StudioDesignSystem.Muted);
+            resetAll = CreateActionButton("Reset all", 96, StudioDesignSystem.Muted);
             buttons.Controls.Add(run);
             buttons.Controls.Add(reassign);
             buttons.Controls.Add(reset);
@@ -499,8 +499,8 @@ namespace DJMaxEditor.UI
                     entry.Category.ToUpperInvariant(),
                     FormatShortcut(entry.Shortcut),
                     entry.HasShortcutConflict
-                        ? "CONFLICT"
-                        : (entry.IsAvailable ? "READY" : "UNAVAILABLE"));
+                        ? "Conflict"
+                        : (entry.IsAvailable ? "Ready" : "Unavailable"));
                 DataGridViewRow row = _commandList.Rows[index];
                 row.Tag = entry;
                 row.Cells[2].Style.Font = StudioDesignSystem.UtilityFont(8.5f);
@@ -576,7 +576,7 @@ namespace DJMaxEditor.UI
 
             if (!hasSelection)
             {
-                _summary.Text = "NO MATCHING COMMANDS";
+                _summary.Text = "No matching commands";
                 _detail.Text = "Try a command name, stable ID, or category.";
                 return;
             }
@@ -611,7 +611,7 @@ namespace DJMaxEditor.UI
             }
             _capturingShortcut = true;
             _captureHint.Text =
-                "PRESS A SHORTCUT  //  Backspace clears  //  Escape cancels";
+                "Press a shortcut. Backspace clears it, Escape cancels.";
             _captureHint.ForeColor = StudioDesignSystem.PulseCyan;
         }
 
@@ -661,7 +661,7 @@ namespace DJMaxEditor.UI
         {
             if (shortcut == Keys.None)
             {
-                return "UNASSIGNED";
+                return "Not assigned";
             }
 
             var parts = new List<string>();

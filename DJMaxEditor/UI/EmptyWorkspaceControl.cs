@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -28,13 +28,13 @@ namespace DJMaxEditor.UI
             };
 
             var eyebrow = CreateLabel(
-                "DJMAX  //  AUTHORING WORKSPACE",
+                "Authoring workspace",
                 new Point(38, 32),
                 new Size(480, 24),
-                StudioDesignSystem.PulseCyan,
-                StudioDesignSystem.UtilityFont(8f));
+                StudioDesignSystem.Muted,
+                StudioDesignSystem.BodyFont(9f));
             var title = CreateLabel(
-                "Turn a chart into a session.",
+                "Open a chart to start editing.",
                 new Point(38, 64),
                 new Size(480, 42),
                 StudioDesignSystem.Frost,
@@ -46,24 +46,28 @@ namespace DJMaxEditor.UI
                 StudioDesignSystem.Muted,
                 StudioDesignSystem.BodyFont(9f));
 
-            Button open = StudioDesignSystem.CreateDeckButton("OPEN CHART   Ctrl+O");
+            Button open = StudioDesignSystem.CreateDeckButton("Open chart   Ctrl+O");
             open.Location = new Point(38, 178);
             open.Size = new Size(210, 38);
             open.FlatAppearance.BorderColor = StudioDesignSystem.PulseCyan;
             open.ForeColor = StudioDesignSystem.PulseCyan;
             open.Click += delegate { if (OpenRequested != null) OpenRequested(this, EventArgs.Empty); };
 
-            Button import = StudioDesignSystem.CreateDeckButton("IMPORT BMS");
+            Button import = StudioDesignSystem.CreateDeckButton("Import BMS");
             import.Location = new Point(258, 178);
             import.Size = new Size(130, 38);
             import.Click += delegate { if (OpenRequested != null) OpenRequested(this, EventArgs.Empty); };
 
+            // A sentence about what the editor will and will not do to your files, not an amber
+            // "OFFLINE • CAPABILITY-AWARE • NON-DESTRUCTIVE" badge strip. Amber is the lock cue
+            // everywhere else in the shell, so spending it on a slogan on the start screen taught
+            // the wrong colour association before the user had even opened anything.
             var safety = CreateLabel(
-                "OFFLINE • CAPABILITY-AWARE • NON-DESTRUCTIVE",
+                "Works offline. Charts open read-only unless the format supports saving.",
                 new Point(38, 226),
                 new Size(474, 20),
-                StudioDesignSystem.SignalAmber,
-                StudioDesignSystem.UtilityFont(7.5f));
+                StudioDesignSystem.Muted,
+                StudioDesignSystem.BodyFont(8.5f));
 
             card.Controls.Add(eyebrow);
             card.Controls.Add(title);

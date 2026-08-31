@@ -99,6 +99,7 @@ namespace DJMaxEditor.Controls.Editor.Renderers
             Themes.Add(new TechnikaThemeRenderer());
             Themes.Add(new TrilogyThemeRenderer());
             Themes.Add(new CyclonThemeRenderer());
+            Themes.Add(new RespectThemeRenderer());
             Theme = nullTheme;
         }
 
@@ -126,8 +127,15 @@ namespace DJMaxEditor.Controls.Editor.Renderers
 
         public Rectangle GetEventRectangle(EventData eventData, int? trackY = null)
         {
-            Point eventPosition = GetEventPosition(eventData, trackY);
+            return GetEventRectangle(eventData, GetEventPosition(eventData, trackY));
+        }
 
+        /// <summary>
+        /// The note rectangle for an already-resolved centre point, so a caller that needs
+        /// both does not resolve the position twice.
+        /// </summary>
+        private Rectangle GetEventRectangle(EventData eventData, Point eventPosition)
+        {
             int x = eventPosition.X;
             int y = eventPosition.Y;
 
@@ -156,14 +164,18 @@ namespace DJMaxEditor.Controls.Editor.Renderers
                 return;
             }
 
-            Rectangle eventRectangle = GetEventRectangle(eventData, trackY);
+            // One position for both the rectangle and the centre. This used to compute the
+            // position twice, the second time *without* trackY - so the art was centred on
+            // the row TrackId names while the rectangle that decided visibility sat on the row
+            // actually being painted. They agree for a well-formed chart, and silently
+            // disagreed for anything where the two had drifted.
+            Point eventPosition = GetEventPosition(eventData, trackY);
+            Rectangle eventRectangle = GetEventRectangle(eventData, eventPosition);
 
             if (!eventRectangle.IntersectsWith(bounds))
             {
                 return;
             }
-
-            Point eventPosition = GetEventPosition(eventData);
 
             this.RenderEventDataAtInRect(g, eventData, eventRectangle, eventPosition.X, eventPosition.Y);
         }

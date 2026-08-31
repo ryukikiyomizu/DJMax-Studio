@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -20,8 +20,10 @@ namespace DJMaxEditor
         private readonly NumericUpDown _duration;
         private readonly NumericUpDown _attribute;
         private readonly NumericUpDown _track;
+        private readonly NumericUpDown _volume;
         private EditorDocumentContext _document;
         private bool _suppressCommits;
+        private object _volumeGesture;
 
         public PropertiesForm()
         {
@@ -45,16 +47,20 @@ namespace DJMaxEditor
             {
                 BackColor = StudioDesignSystem.Deck,
                 Dock = DockStyle.Top,
-                Height = 82,
-                Padding = new Padding(12, 10, 12, 8)
+                Height = 76,
+                Padding = new Padding(12, 9, 12, 8)
             };
+            // A plain panel title, not a shouted "INSPECTOR // SHARED SELECTION" chip. The band
+            // above every panel used to be an all-caps monospace slogan with a slash separator,
+            // which read as decoration rather than information - the panel already has a tab that
+            // says "Inspector", so the header's job is only to name what is selected.
             var eyebrow = new Label
             {
                 Dock = DockStyle.Top,
-                Font = StudioDesignSystem.UtilityFont(7.5f),
-                ForeColor = StudioDesignSystem.PulseCyan,
-                Height = 20,
-                Text = "INSPECTOR  //  SHARED SELECTION"
+                Font = StudioDesignSystem.BodyFont(8f),
+                ForeColor = StudioDesignSystem.Muted,
+                Height = 18,
+                Text = "Selection"
             };
             _summary = new Label
             {
@@ -62,7 +68,7 @@ namespace DJMaxEditor
                 Font = StudioDesignSystem.DisplayFont(12f),
                 ForeColor = StudioDesignSystem.Frost,
                 Height = 28,
-                Text = "NO SELECTION"
+                Text = "Nothing selected"
             };
             _capability = new Label
             {
@@ -83,7 +89,7 @@ namespace DJMaxEditor
                 ColumnCount = 2,
                 Dock = DockStyle.Fill,
                 Padding = new Padding(10, 8, 10, 10),
-                RowCount = 11
+                RowCount = 12
             };
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92f));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
@@ -93,35 +99,45 @@ namespace DJMaxEditor
             _duration = CreateNumber(0, ushort.MaxValue);
             _attribute = CreateNumber(0, byte.MaxValue);
             _track = CreateNumber(0, 4095);
+            _volume = CreateNumber(0, ChartEditController.MaxNoteVolume);
             _sound = CreateReadOnlyText();
             _source = CreateReadOnlyText();
 
-            AddSection(fields, "EVENT", 0);
+            AddSection(fields, "Event", 0);
             AddField(fields, "Type", _eventType, 1);
-            AddSection(fields, "TIMING", 2);
+            AddSection(fields, "Timing", 2);
             AddField(fields, "Virtual tick", _timing, 3);
             AddField(fields, "Duration", _duration, 4);
-            AddSection(fields, "SEMANTICS", 5);
+            AddSection(fields, "Semantics", 5);
             AddField(fields, "Attribute", _attribute, 6);
             AddField(fields, "Track", _track, 7);
             AddField(fields, "Sound", _sound, 8);
-            AddSection(fields, "DOCUMENT", 9);
-            AddField(fields, "Source", _source, 10);
+            AddField(fields, "Volume", _volume, 9);
+            AddSection(fields, "Document", 10);
+            AddField(fields, "Source", _source, 11);
 
             _timing.Validated += delegate { CommitTiming(); };
             _duration.Validated += delegate { CommitDuration(); };
             _attribute.Validated += delegate { CommitAttribute(); };
             _track.Validated += delegate { CommitTrack(); };
+            // Volume is the one field that commits to the whole selection: setting 300 notes to
+            // the same loudness is the normal way to use it, and it is one undo step.
+            _volume.Validated += delegate { CommitVolume(); };
+            _volume.ValueChanged += delegate { CommitVolume(); };
+            // One focus session is one undo entry, so spinning the arrows ten times does not cost
+            // ten Ctrl+Z presses. Leaving the field ends the group.
+            _volume.Enter += delegate { _volumeGesture = new object(); };
+            _volume.Leave += delegate { _volumeGesture = null; };
 
             var advancedHeader = new Label
             {
                 BackColor = StudioDesignSystem.Deck,
                 Dock = DockStyle.Bottom,
-                Font = StudioDesignSystem.UtilityFont(7.5f),
-                ForeColor = StudioDesignSystem.BeatViolet,
-                Height = 26,
-                Padding = new Padding(10, 7, 0, 0),
-                Text = "ADVANCED  //  FORMAT-SPECIFIC PROPERTIES"
+                Font = StudioDesignSystem.BodyFont(8f),
+                ForeColor = StudioDesignSystem.Muted,
+                Height = 24,
+                Padding = new Padding(10, 6, 0, 0),
+                Text = "Advanced"
             };
 
             Controls.Add(fields);
@@ -180,24 +196,24 @@ namespace DJMaxEditor
                 bool single = count == 1;
 
                 _summary.Text = count == 0
-                    ? "NO SELECTION"
-                    : (count == 1 ? "1 EVENT SELECTED" : count + " EVENTS  •  MIXED VALUES");
+                    ? "Nothing selected"
+                    : (count == 1 ? "1 event" : count + " events, mixed values");
                 _capability.Text = _document == null
                     ? "Open a chart to inspect its editing capabilities."
                     : (_document.Capabilities.StatusLabel +
-                        (editable ? string.Empty : "  •  " + _document.Capabilities.EditBlockReason));
+                        (editable ? string.Empty : " - " + _document.Capabilities.EditBlockReason));
                 _capability.ForeColor = editable
                     ? StudioDesignSystem.PulseCyan
                     : StudioDesignSystem.SignalAmber;
                 _source.Text = _document == null
-                    ? "NO DOCUMENT"
+                    ? "No document"
                     : Path.GetFileName(_document.SourcePath);
 
                 EventData item = single ? _document.Selection.Items[0] : null;
-                _eventType.Text = item == null ? (count > 1 ? "MIXED" : "—") : item.EventType.ToString();
+                _eventType.Text = item == null ? (count > 1 ? "Mixed" : "-") : item.EventType.ToString();
                 _sound.Text = item == null
-                    ? (count > 1 ? "MIXED" : "—")
-                    : (item.Instrument == null ? "NONE" : item.Instrument.Name);
+                    ? (count > 1 ? "Mixed" : "-")
+                    : (item.Instrument == null ? "None" : item.Instrument.Name);
 
                 if (item != null)
                 {
@@ -211,6 +227,17 @@ namespace DJMaxEditor
                 _duration.Enabled = single && editable && item.EventType == EventType.Note;
                 _attribute.Enabled = single && editable;
                 _track.Enabled = single && editable;
+
+                // Volume reads and writes the whole selection, so it stays live for a marquee of
+                // notes. A mixed selection shows the loudest note rather than a lie about being
+                // uniform; typing a value flattens them all to it, which is what the field says.
+                byte volume;
+                bool anyNotes = TryGetSelectionVolume(out volume);
+                if (anyNotes)
+                {
+                    _volume.Value = Clamp(volume, _volume.Minimum, _volume.Maximum);
+                }
+                _volume.Enabled = editable && anyNotes;
             }
             finally
             {
@@ -263,6 +290,57 @@ namespace DJMaxEditor
             }
         }
 
+        /// <summary>
+        /// Flattens every selected note to the field's value. Unlike the other commits this one
+        /// deliberately accepts a multi-note selection - per-note volume is most useful applied to
+        /// a phrase - and groups the whole focus session into one undo entry.
+        /// </summary>
+        private void CommitVolume()
+        {
+            if (_suppressCommits ||
+                _document == null ||
+                !_document.Capabilities.CanEdit ||
+                _document.Selection.Count == 0)
+            {
+                return;
+            }
+            if (_document.Edits.SetSelectionVolume(
+                (byte)Decimal.ToInt32(_volume.Value),
+                _volumeGesture))
+            {
+                ShowSelection();
+            }
+        }
+
+        /// <summary>
+        /// The volume to show for the current selection: the loudest selected note, so a mixed
+        /// phrase reports a value that exists in it. False when nothing selected is a note, which
+        /// is also what greys the field out.
+        /// </summary>
+        private bool TryGetSelectionVolume(out byte volume)
+        {
+            volume = 0;
+            if (_document == null)
+            {
+                return false;
+            }
+
+            bool found = false;
+            foreach (EventData item in _document.Selection.Items)
+            {
+                if (item == null || item.EventType != EventType.Note)
+                {
+                    continue;
+                }
+                if (!found || item.Vel > volume)
+                {
+                    volume = item.Vel;
+                }
+                found = true;
+            }
+            return found;
+        }
+
         private bool TryGetSingle(out EventData item)
         {
             item = null;
@@ -305,13 +383,18 @@ namespace DJMaxEditor
             };
         }
 
+        /// <summary>
+        /// A field-group divider. Grey rather than accent-coloured on purpose: three accent hues
+        /// competing for attention in one panel is what made the shell read as a dashboard mock-up.
+        /// Colour is reserved for things that change - selection, timing, faults.
+        /// </summary>
         private static void AddSection(TableLayoutPanel table, string text, int row)
         {
             var label = new Label
             {
                 Dock = DockStyle.Fill,
-                Font = StudioDesignSystem.UtilityFont(7.5f),
-                ForeColor = StudioDesignSystem.BeatViolet,
+                Font = StudioDesignSystem.BodyFont(8.5f, FontStyle.Bold),
+                ForeColor = StudioDesignSystem.Muted,
                 Padding = new Padding(0, 8, 0, 0),
                 Text = text
             };

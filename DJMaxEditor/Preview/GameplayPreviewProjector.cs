@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using DJMaxEditor.DJMax;
+using DJMaxEditor.Files.bms;
 using DJMaxEditor.Files.FormatDetection;
 
 namespace DJMaxEditor.Preview
@@ -32,6 +33,53 @@ namespace DJMaxEditor.Preview
         Prepare,
         Active,
         Resolved
+    }
+
+    /// <summary>
+    /// Facts about <see cref="GameplayPreviewNoteKind"/> that every preview surface has to agree
+    /// on. Lives beside the enum rather than inside a renderer so the WPF playfield and the
+    /// WinForms preview cannot drift, and so the predicate is reachable from the test harness.
+    /// </summary>
+    public static class GameplayPreviewNoteKinds
+    {
+        /// <summary>
+        /// Whether a kind is a hold gesture, and so draws a trail behind its head.
+        ///
+        /// <para>
+        /// A TECHNIKA note's stored duration is the length of its <em>keysound</em>, not the length
+        /// of a hold - <em>every</em> note in a chart carries one, so a chart of 131 notes reports
+        /// 131 non-zero durations. Gating a trail on duration alone therefore puts a stub behind
+        /// all of them. Whether a note is held is a property of its kind, which is what the
+        /// projector already classifies from the note attribute.
+        /// </para>
+        /// </summary>
+        public static bool HasHoldTrail(GameplayPreviewNoteKind kind)
+        {
+            return kind == GameplayPreviewNoteKind.Hold ||
+                kind == GameplayPreviewNoteKind.RepeatHold ||
+                kind == GameplayPreviewNoteKind.RepeatHeadHold;
+        }
+    }
+
+    public enum GameplayPreviewLaneRole
+    {
+        Regular,
+        SideTrackLeft,
+        SideTrackRight,
+        ExtraButtonLeft,
+        ExtraButtonRight
+    }
+
+    public enum RespectGameplayNoteType
+    {
+        None,
+        White,
+        Blue,
+        Analog,
+        L1,
+        L2,
+        R1,
+        R2
     }
 
     public sealed class GameplayPreviewProfileSuggestion
@@ -70,7 +118,7 @@ namespace DJMaxEditor.Preview
             return new GameplayPreviewProfileSuggestion(
                 GameplayPreviewProfile.Generic,
                 false,
-                "This format uses the generic lane preview.");
+                "This format uses the vertical lane preview.");
         }
     }
 
@@ -84,6 +132,16 @@ namespace DJMaxEditor.Preview
         public EventData Source { get; internal set; }
 
         public int Lane { get; internal set; }
+
+        public GameplayPreviewLaneRole LaneRole { get; internal set; }
+
+        public RespectGameplayNoteType RespectType { get; internal set; }
+
+        public double NativeX { get; internal set; }
+
+        public double NativeY { get; internal set; }
+
+        public double NativeHeight { get; internal set; }
 
         public int Pulse { get; internal set; }
 
@@ -110,6 +168,22 @@ namespace DJMaxEditor.Preview
         public bool ApproachVisible { get; internal set; }
 
         public double ApproachProgress { get; internal set; }
+
+        /// <summary>
+        /// How far the sweep is from this note, in scans: negative before it, zero on it, positive
+        /// past it.
+        ///
+        /// <para>
+        /// <see cref="ApproachProgress"/> answers the same question normalised into a window the
+        /// projector chose, which is the right shape for fading something in but loses the scale a
+        /// renderer needs to place a sprite. The arcade's approach glow is a fixed piece of light the
+        /// sweep drags across the note, so how long it is on screen is a property of how wide the art
+        /// is against how far a scan travels - a renderer can work that out from this and its own
+        /// geometry, and could not from a normalised progress without hard-coding the projector's
+        /// window a second time.
+        /// </para>
+        /// </summary>
+        public double ApproachScanDistance { get; internal set; }
 
         internal ProjectedGameplayNote Copy()
         {
@@ -177,7 +251,12 @@ namespace DJMaxEditor.Preview
 
         public GameplayPreviewFrame CreateFrame(int currentTick)
         {
-            return CreateFrame(currentTick, false);
+            return CreateFrame(currentTick, RespectGameplayLayout.DefaultNoteSpeed);
+        }
+
+        public GameplayPreviewFrame CreateFrame(int currentTick, float noteSpeed)
+        {
+            return CreateFrame(currentTick, false, noteSpeed);
         }
 
         /// <summary>
@@ -186,11 +265,23 @@ namespace DJMaxEditor.Preview
         /// </summary>
         public GameplayPreviewFrame CreateRenderableFrame(int currentTick)
         {
-            return CreateFrame(currentTick, true);
+            return CreateRenderableFrame(
+                currentTick, RespectGameplayLayout.DefaultNoteSpeed);
         }
 
-        private GameplayPreviewFrame CreateFrame(int currentTick, bool renderableOnly)
+        public GameplayPreviewFrame CreateRenderableFrame(
+            int currentTick,
+            float noteSpeed)
         {
+            return CreateFrame(currentTick, true, noteSpeed);
+        }
+
+        private GameplayPreviewFrame CreateFrame(
+            int currentTick,
+            bool renderableOnly,
+            float noteSpeed)
+        {
+            if (noteSpeed <= 0f) throw new ArgumentOutOfRangeException("noteSpeed");
             int ticks = Math.Max(1, (int)_ticksPerMeasure);
             double currentScan = Profile == GameplayPreviewProfile.Technika
                 ? (4.0 * currentTick) / (ticks * Math.Max(1, _beatsPerScan))
@@ -198,6 +289,11 @@ namespace DJMaxEditor.Preview
             int currentIntScan = (int)Math.Floor(currentScan);
             double currentPhase = currentScan - currentIntScan;
             var notes = new List<ProjectedGameplayNote>(Notes.Count);
+            RespectGameplayLayout respectLayout =
+                Profile == GameplayPreviewProfile.Generic &&
+                RespectGameplayLayout.NormalizeLaneMode(LaneCount) != 0
+                    ? RespectGameplayLayout.ForMode(LaneCount)
+                    : null;
 
             foreach (ProjectedGameplayNote topology in Notes)
             {
@@ -210,13 +306,26 @@ namespace DJMaxEditor.Preview
                 ProjectedGameplayNote note = topology.Copy();
                 if (Profile == GameplayPreviewProfile.Technika)
                 {
+                    double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
+                    double noteFloatScan = note.Pulse / pulsesPerScan;
+                    double endFloatScan = (note.Pulse + note.DurationPulse) / pulsesPerScan;
+                    double distance = currentScan - noteFloatScan;
+
                     if (note.ScanIndex < currentIntScan)
                     {
                         note.State = GameplayPreviewNoteState.Resolved;
                     }
                     else if (note.ScanIndex == currentIntScan)
                     {
-                        note.State = GameplayPreviewNoteState.Active;
+                        // Resolved the moment the sweep is past it, not at the end of the scan it
+                        // sits in. A scan is several seconds wide, so the end-of-scan test left every
+                        // note the line had already crossed sitting on the field at full brightness
+                        // until the handover - a bar's worth of notes stacked up behind the line, in a
+                        // game whose whole read is "the line is where now is". Held notes answer for
+                        // their tail rather than their head: the body is still being played.
+                        note.State = currentScan > endFloatScan
+                            ? GameplayPreviewNoteState.Resolved
+                            : GameplayPreviewNoteState.Active;
                     }
                     else if (note.ScanIndex == currentIntScan + 1)
                     {
@@ -229,13 +338,11 @@ namespace DJMaxEditor.Preview
                         note.State = GameplayPreviewNoteState.Inactive;
                     }
 
-                    double noteFloatScan =
-                        note.Pulse / (240.0 * Math.Max(1, _beatsPerScan));
-                    double distance = currentScan - noteFloatScan;
                     note.ApproachVisible = distance >= -0.5 && distance <= 0;
                     note.ApproachProgress = note.ApproachVisible
                         ? Math.Max(0, Math.Min(1, (distance + 0.5) / 0.5))
                         : 0;
+                    note.ApproachScanDistance = distance;
                 }
                 else
                 {
@@ -247,6 +354,17 @@ namespace DJMaxEditor.Preview
                             : GameplayPreviewNoteState.Prepare;
                     note.X = Math.Max(0.05, Math.Min(0.95,
                         0.5 + (distance / (double)(ticks * 2))));
+
+                    if (respectLayout != null &&
+                        note.RespectType != RespectGameplayNoteType.None)
+                    {
+                        note.NativeY = respectLayout.GetNoteY(
+                            note.Source.Tick, currentTick, noteSpeed);
+                        note.NativeHeight = respectLayout.GetLongNoteHeight(
+                            note.Source.Duration,
+                            noteSpeed,
+                            respectLayout.GetDefaultNoteHeight(note.RespectType));
+                    }
                 }
                 notes.Add(note);
             }
@@ -268,9 +386,14 @@ namespace DJMaxEditor.Preview
                 return scanDistance >= 0 && scanDistance <= 1;
             }
 
-            // Generic rendering maps two measures around the playhead into the
-            // viewport, so notes outside that range cannot contribute pixels.
-            return Math.Abs(note.Source.Tick - currentTick) <= ticks * 2;
+            // Keep a long note while any part of its tick span intersects the
+            // playback window. Testing only its head makes an active tail pop
+            // out as soon as the start tick moves two measures behind playback.
+            long windowStart = (long)currentTick - (ticks * 2L);
+            long windowEnd = (long)currentTick + (ticks * 2L);
+            long noteStart = note.Source.Tick;
+            long noteEnd = noteStart + note.Source.Duration;
+            return noteEnd >= windowStart && noteStart <= windowEnd;
         }
     }
 
@@ -279,6 +402,93 @@ namespace DJMaxEditor.Preview
         private const int PulsesPerMeasure = 960;
         private const int PulsesPerBeat = 240;
         private const int DefaultBeatsPerScan = 4;
+
+        /// <summary>
+        /// Left edge of the TECHNIKA note field, as a fraction of the arcade's 1280 px width.
+        ///
+        /// <para>
+        /// Measured from the client's own draw calls, not chosen. In the D3D9 capture the scanline
+        /// sprite (<c>panel/line_star.png</c>, 250x355 quad) is drawn on both halves during a
+        /// handover, and the lower half's quad carries mirrored UVs - u=1 at its left edge, u=0 at
+        /// its right - so the two bright edges sit at <c>upperLeft + o</c> and
+        /// <c>lowerLeft + (250 - o)</c> for whatever leading-edge offset <c>o</c> the sprite has.
+        /// Their sum therefore drops <c>o</c> entirely, and across every frame that draws both
+        /// halves the client holds <c>upperLeft + lowerLeft + 250</c> at exactly 313.0 or exactly
+        /// 2233.0 with no spread at all. The sweep is continuous in x through a handover, so the
+        /// two edges must coincide there: at x = 156.5 and x = 1116.5, both independent of the
+        /// sprite measurement. Those two crossings are the field's edges.
+        /// </para>
+        /// <para>
+        /// The consequence is that both halves share <em>one</em> screen rectangle rather than
+        /// being mirror images of each other: the field's left margin is 156.5 px and its right
+        /// margin 1280 - 1116.5 = 163.5 px, so it sits 7 px left of centre. Mirroring the upper
+        /// half's window - <c>1 - x</c> - moves the lower half 7 px off the arcade's.
+        /// </para>
+        /// </summary>
+        public const double ScanFieldLeft = 156.5 / 1280.0;
+
+        /// <summary>
+        /// Right edge of the TECHNIKA note field. See <see cref="ScanFieldLeft"/> for how both
+        /// edges were measured. The span is exactly 960 px - 0.75 of the width - which the capture
+        /// confirms twice over: the two invariant regimes above differ by exactly 1920.0, giving
+        /// each half's line a 1920 px spatial period and one scan an advance of half that.
+        /// </summary>
+        public const double ScanFieldRight = 1116.5 / 1280.0;
+
+        /// <summary>
+        /// Highest source track the playfield draws as a lane.
+        ///
+        /// <para>
+        /// This number used to be a bare <c>Idx &gt; 3</c> with nothing behind it, which made "the
+        /// other tracks of technika pt doesn't showed up" impossible to answer: both timelines draw
+        /// those events and only the playfield does not, so whether that is a defect depends on what
+        /// the corpus puts up there and not on anything readable in this file. So it was counted.
+        /// <c>--track-census</c> over all 445 TECHNIKA 2 charts (444 open; the 445th is the known
+        /// bad <c>lovemode_star_1.pt</c>) gives notes per source track per chart:
+        /// </para>
+        ///
+        /// <para>
+        /// <code>
+        /// track        solo (416 charts)   duo (28)     what is there
+        ///  0-3         68 / 98 / 93 / 72   20/37/22/0   the lanes. DUO player 1 is 3-line.
+        ///  4-7         1.2 .. 1.7          0.1          end-of-scan flags, consumed as a flag on
+        ///                                               a lane note by ApplyEndOfScanMarkers
+        ///  8-10        0                   18/37/23     a DUO chart's second player
+        /// 11-15,18-19  under 0.05          under 0.05   nothing - stray authoring, single digits
+        /// 16-17        1.9 / 1.1           1.9 / 1.0    every chart has both; track 17 carries the
+        ///                                               one attribute-100 event per chart
+        /// 20-31        48 .. 150 each      44 .. 159    keysound accompaniment, ~1200 per chart
+        /// 32-37        ~0                  ~0           nothing
+        /// </code>
+        /// </para>
+        ///
+        /// <para>
+        /// So the filter is right about the two bands it was really being accused of dropping. The
+        /// 20-31 bank is 1202 events per chart against 336 on the lanes; drawn as gameplay it would
+        /// be twelve notes a second sustained across four lanes, which is not a TECHNIKA chart. And
+        /// it cannot be told from gameplay by attribute - attribute 0 is both a tap and the default
+        /// a keysound-only event carries, so <see cref="Classify"/> happily returns
+        /// <c>Basic</c> for 523,772 of them. The track index is this format's only discriminator,
+        /// which is exactly why the census had to be per index.
+        /// </para>
+        ///
+        /// <para>
+        /// The one real gap is DUO. Zero notes sit on tracks 8-10 in any of the 416 solo charts,
+        /// while all 28 <c>*_duo_1.pt</c> files put 18/37/23 notes per chart there - their own
+        /// lanes 0-2 hold 20/37/22 - and leave track 3 and track 11 empty, i.e. three lanes each
+        /// for two players. That is gameplay, and this projection draws one player's field, so it
+        /// is reported as a projection warning rather than dropped in silence. How a second player
+        /// should be presented is a design decision and not this method's to make.
+        /// </para>
+        /// </summary>
+        private const int LastLaneTrack = 3;
+
+        /// <summary>
+        /// First and last source track of a DUO chart's second player. See
+        /// <see cref="LastLaneTrack"/> for the census these came from.
+        /// </summary>
+        private const int SecondPlayerFirstTrack = 8;
+        private const int SecondPlayerLastTrack = 10;
 
         public static GameplayPreviewProjection Project(
             PlayerData model,
@@ -295,10 +505,19 @@ namespace DJMaxEditor.Preview
             int ticksPerMeasure = Math.Max(1, (int)model.TickPerMinute);
             var diagnostics = new List<string>();
             var notes = new List<ProjectedGameplayNote>();
+            int secondPlayerNotes = 0;
 
             foreach (TrackData track in model.Tracks)
             {
-                if (track.Idx > 3) continue;
+                if (track.Idx > LastLaneTrack)
+                {
+                    if (track.Idx >= SecondPlayerFirstTrack &&
+                        track.Idx <= SecondPlayerLastTrack)
+                    {
+                        secondPlayerNotes += CountNotes(track);
+                    }
+                    continue;
+                }
                 foreach (EventData source in track.Events)
                 {
                     GameplayPreviewNoteKind? kind = Classify(source);
@@ -328,6 +547,14 @@ namespace DJMaxEditor.Preview
                 .ThenBy(note => note.Lane)
                 .ToList();
 
+            if (secondPlayerNotes > 0)
+            {
+                diagnostics.Add(
+                    "DUO chart: " + secondPlayerNotes + " note(s) belong to a second player on " +
+                    "tracks " + SecondPlayerFirstTrack + "-" + SecondPlayerLastTrack +
+                    ", which this one-player field does not draw.");
+            }
+
             ApplyChainFixups(notes, diagnostics);
             ApplyRepeatFixups(notes, diagnostics);
             ApplyEndOfScanMarkers(model, notes, ticksPerMeasure);
@@ -352,19 +579,30 @@ namespace DJMaxEditor.Preview
         {
             var diagnostics = new List<string>();
             var notes = new List<ProjectedGameplayNote>();
-            List<TrackData> noteTracks = model.Tracks
-                .Where(track => track.Events.Any(source => source.EventType == EventType.Note))
-                .ToList();
+            List<TrackData> noteTracks = SelectGenericNoteTracks(model);
             int laneCount = Math.Max(1, noteTracks.Count);
+            RespectGameplayLayout respectLayout =
+                model.SourceFormat == ChartFormat.TrailerRespectV &&
+                RespectGameplayLayout.NormalizeLaneMode(laneCount) != 0
+                    ? RespectGameplayLayout.ForMode(laneCount)
+                    : null;
 
-            for (int lane = 0; lane < noteTracks.Count; lane++)
+            int regularLane = 0;
+            for (int trackIndex = 0; trackIndex < noteTracks.Count; trackIndex++)
             {
-                foreach (EventData source in noteTracks[lane].Events)
+                TrackData track = noteTracks[trackIndex];
+                GameplayPreviewLaneRole role = GenericLaneRole(
+                    model, track, laneCount);
+                int lane = role == GameplayPreviewLaneRole.Regular
+                    ? regularLane++
+                    : role == GameplayPreviewLaneRole.ExtraButtonLeft ? 0 : 1;
+                foreach (EventData source in track.Events)
                 {
                     if (source.EventType != EventType.Note) continue;
                     notes.Add(new ProjectedGameplayNote(source)
                     {
                         Lane = lane,
+                        LaneRole = role,
                         Kind = GameplayPreviewNoteKind.Generic,
                         Pulse = source.Tick,
                         DurationPulse = source.Duration,
@@ -374,12 +612,43 @@ namespace DJMaxEditor.Preview
                         Y = (lane + 0.5) / laneCount,
                         IsTopHalf = false
                     });
+                    ProjectedGameplayNote projected = notes[notes.Count - 1];
+                    if (respectLayout != null)
+                    {
+                        projected.RespectType = RespectTypeForTrack(track.Idx, laneCount);
+                        projected.NativeX = respectLayout.GetTrackX((int)track.Idx);
+                    }
+                }
+            }
+
+            if (model.SourceFormat == ChartFormat.TrailerRespectV)
+            {
+                AddRespectSideTrack(
+                    model, notes, respectLayout, 2,
+                    GameplayPreviewLaneRole.SideTrackLeft,
+                    RespectGameplayNoteType.Analog);
+                AddRespectSideTrack(
+                    model, notes, respectLayout, 9,
+                    GameplayPreviewLaneRole.SideTrackRight,
+                    RespectGameplayNoteType.Analog);
+                if (laneCount == 8)
+                {
+                    AddRespectSideTrack(
+                        model, notes, respectLayout, 12,
+                        GameplayPreviewLaneRole.ExtraButtonLeft,
+                        RespectGameplayNoteType.L2);
+                    AddRespectSideTrack(
+                        model, notes, respectLayout, 13,
+                        GameplayPreviewLaneRole.ExtraButtonRight,
+                        RespectGameplayNoteType.R2);
                 }
             }
 
             return new GameplayPreviewProjection(
                 GameplayPreviewProfile.Generic,
-                "GENERIC LANE PREVIEW  |  APPROXIMATION",
+                model.SourceFormat == ChartFormat.TrailerRespectV
+                    ? "RESPECT V  |  PACKAGE-DERIVED GAMEPLAY  |  4B / 5B / 6B / 8B"
+                    : "VERTICAL LANE PREVIEW  |  BMS PLAYABLE CHANNELS",
                 laneCount,
                 model.TickPerMinute,
                 DefaultBeatsPerScan,
@@ -387,7 +656,141 @@ namespace DJMaxEditor.Preview
                 diagnostics);
         }
 
-        private static GameplayPreviewNoteKind? Classify(EventData source)
+        private static GameplayPreviewLaneRole GenericLaneRole(
+            PlayerData model,
+            TrackData track,
+            int laneCount)
+        {
+            if (laneCount != 8)
+            {
+                return GameplayPreviewLaneRole.Regular;
+            }
+
+            if (model.SourceFormat == ChartFormat.TrailerRespectV)
+            {
+                if (track.Idx == 10) return GameplayPreviewLaneRole.ExtraButtonLeft;
+                if (track.Idx == 11) return GameplayPreviewLaneRole.ExtraButtonRight;
+                return GameplayPreviewLaneRole.Regular;
+            }
+
+            string channel;
+            if (model.BmsMetadata != null &&
+                model.BmsMetadata.TrackChannels.TryGetValue(track.Idx, out channel))
+            {
+                if (channel == "18" || channel == "28")
+                    return GameplayPreviewLaneRole.ExtraButtonLeft;
+                if (channel == "19" || channel == "29")
+                    return GameplayPreviewLaneRole.ExtraButtonRight;
+            }
+            return GameplayPreviewLaneRole.Regular;
+        }
+
+        private static void AddRespectSideTrack(
+            PlayerData model,
+            IList<ProjectedGameplayNote> notes,
+            RespectGameplayLayout layout,
+            uint trackIndex,
+            GameplayPreviewLaneRole role,
+            RespectGameplayNoteType type)
+        {
+            TrackData track = model.Tracks.FirstOrDefault(item => item.Idx == trackIndex);
+            if (track == null) return;
+
+            foreach (EventData source in track.Events)
+            {
+                if (source.EventType != EventType.Note) continue;
+                notes.Add(new ProjectedGameplayNote(source)
+                {
+                    Lane = role == GameplayPreviewLaneRole.SideTrackLeft ? 0 : 1,
+                    LaneRole = role,
+                    RespectType = type,
+                    NativeX = layout == null ? 0 : layout.GetTrackX((int)trackIndex),
+                    Kind = GameplayPreviewNoteKind.Generic,
+                    Pulse = source.Tick,
+                    DurationPulse = source.Duration,
+                    ScanIndex = 0,
+                    RelativeScan = 0.5,
+                    X = 0.5,
+                    Y = 0.5,
+                    IsTopHalf = false
+                });
+            }
+        }
+
+        private static RespectGameplayNoteType RespectTypeForTrack(
+            uint trackIndex,
+            int laneCount)
+        {
+            switch (trackIndex)
+            {
+                case 2: return RespectGameplayNoteType.Analog;
+                case 9: return RespectGameplayNoteType.Analog;
+                case 10: return RespectGameplayNoteType.L1;
+                case 11: return RespectGameplayNoteType.R1;
+                case 12: return RespectGameplayNoteType.L2;
+                case 13: return RespectGameplayNoteType.R2;
+            }
+
+            uint rightBlue = laneCount == 4 ? 5u : laneCount == 5 ? 6u : 7u;
+            return trackIndex == 4 || trackIndex == rightBlue
+                ? RespectGameplayNoteType.Blue
+                : RespectGameplayNoteType.White;
+        }
+
+        private static List<TrackData> SelectGenericNoteTracks(PlayerData model)
+        {
+            Dictionary<uint, string> respectChannels =
+                BmsChartSerializer.InferRespectTrackChannels(model);
+            if (respectChannels != null && respectChannels.Count > 0)
+            {
+                return respectChannels
+                    .OrderBy(pair => pair.Value, StringComparer.Ordinal)
+                    .Select(pair => model.Tracks.FirstOrDefault(
+                        track => track.Idx == pair.Key))
+                    .Where(track => track != null)
+                    .ToList();
+            }
+
+            if (model.BmsMetadata != null &&
+                model.BmsMetadata.TrackChannels.Count > 0)
+            {
+                return model.BmsMetadata.TrackChannels
+                    .Where(pair => IsBmsPlayableChannel(pair.Value))
+                    .OrderBy(pair => pair.Value, StringComparer.Ordinal)
+                    .Select(pair => model.Tracks.FirstOrDefault(
+                        track => track.Idx == pair.Key))
+                    .Where(track => track != null)
+                    .ToList();
+            }
+
+            return model.Tracks
+                .Where(track => track.Events.Any(
+                    source => source.EventType == EventType.Note))
+                .ToList();
+        }
+
+        private static bool IsBmsPlayableChannel(string channel)
+        {
+            if (string.IsNullOrEmpty(channel) || channel.Length != 2)
+            {
+                return false;
+            }
+            char family = channel[0];
+            return family == '1' || family == '2' ||
+                family == '5' || family == '6';
+        }
+
+        /// <summary>
+        /// Which drawable kind an event is, or null when the playfield draws nothing for it.
+        ///
+        /// <para>
+        /// Attribute 100 is the one that matters for "the other tracks do not show up": it is a
+        /// keysound-only event, so a track full of them carries audio and no gameplay. Kept
+        /// <c>internal</c> rather than private so <c>TrackCensusProbe</c> can count what the
+        /// playfield would draw using this rule and not a second copy of it.
+        /// </para>
+        /// </summary>
+        internal static GameplayPreviewNoteKind? Classify(EventData source)
         {
             if (source == null || source.EventType != EventType.Note ||
                 source.Attribute == 100)
@@ -542,6 +945,20 @@ namespace DJMaxEditor.Preview
             }
         }
 
+        /// <summary>
+        /// Note events on a source track, ignoring tempo and keysound rows. Used to size the DUO
+        /// warning; see <see cref="LastLaneTrack"/>.
+        /// </summary>
+        private static int CountNotes(TrackData track)
+        {
+            int count = 0;
+            foreach (EventData source in track.Events)
+            {
+                if (source.EventType == EventType.Note) count++;
+            }
+            return count;
+        }
+
         private static int DeriveLaneCount(IEnumerable<ProjectedGameplayNote> notes)
         {
             bool lane2 = notes.Any(note => note.Lane == 2);
@@ -564,14 +981,19 @@ namespace DJMaxEditor.Preview
 
             double relative = floatScan - intScan;
             bool top = (intScan & 1) == 1;
-            double baseX = 0.15 + ((1.0 - 0.10) - 0.15) * relative;
+            double travel = (ScanFieldRight - ScanFieldLeft) * relative;
             double laneHeight = (1.0 - 0.05 - 0.05) / laneCount;
             double localY = 0.05 + laneHeight * (note.Lane + 0.5);
 
             note.ScanIndex = intScan;
             note.RelativeScan = relative;
             note.IsTopHalf = top;
-            note.X = top ? baseX : 1.0 - baseX;
+
+            // Both halves sweep the same rectangle - the upper one left to right, the lower one
+            // right to left - so the lower half is the same window run backwards, not the upper
+            // half's window reflected. See ScanFieldLeft: the field is 7 px left of centre, so
+            // reflecting it (1 - x) would put every lower-half note 7 px off the arcade's.
+            note.X = top ? ScanFieldLeft + travel : ScanFieldRight - travel;
             note.Y = top ? localY / 2.0 : 0.5 + localY / 2.0;
         }
     }

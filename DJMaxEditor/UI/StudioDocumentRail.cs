@@ -4,17 +4,29 @@ using System.Windows.Forms;
 
 namespace DJMaxEditor.UI
 {
+    /// <summary>
+    /// The top document rail: what is open, what it is, and the handful of controls that change
+    /// the whole workspace.
+    /// <para>
+    /// It used to end in five chips and buttons crammed against the right edge — a 112px
+    /// capability chip plus two 38px segments whose "V1"/"V2" labels clipped to a bare "V". The
+    /// playtest read that as three broken boxes. Now there is one surface button that names the
+    /// surface it will switch to, capability lives in the bottom status rail (which already
+    /// printed it), and the reclaimed room carries the vertical-strip toggle.
+    /// </para>
+    /// </summary>
     public sealed class StudioDocumentRail : UserControl
     {
         private readonly Label _documentLabel;
         private readonly Label _formatChip;
-        private readonly Label _capabilityChip;
-        private readonly Button _timelineV1;
-        private readonly Button _timelineV2;
+        private readonly Button _surfaceToggle;
+        private readonly Button _verticalToggle;
         private readonly Button _preview;
         private readonly Button _workspace;
         private readonly Button _palette;
         private readonly ContextMenuStrip _workspaceMenu;
+        private bool _timelineV2Active;
+        private bool _verticalEnabled = true;
 
         public StudioDocumentRail()
         {
@@ -22,28 +34,33 @@ namespace DJMaxEditor.UI
             BackColor = StudioDesignSystem.Deck;
             Dock = DockStyle.Top;
             Height = 44;
-            MinimumSize = new Size(760, 44);
+            MinimumSize = new Size(640, 44);
             Padding = new Padding(12, 5, 10, 5);
 
-            var brand = CreateLabel("DJMAX  //  CHART STUDIO", 188, StudioDesignSystem.PulseCyan);
+            // A product name, not a slogan. "DJMAX // CHART STUDIO" in accent cyan was the
+            // loudest thing in the window and said nothing the title bar did not.
+            var brand = CreateLabel("DJMax Chart Studio", 150, StudioDesignSystem.Frost);
             brand.Font = StudioDesignSystem.DisplayFont(10f);
 
-            _documentLabel = CreateLabel("NO DOCUMENT", 230, StudioDesignSystem.Frost);
+            _documentLabel = CreateLabel("No document", 230, StudioDesignSystem.Frost);
             _documentLabel.AutoEllipsis = true;
             _documentLabel.Font = StudioDesignSystem.BodyFont(9f, FontStyle.Bold);
+            // Fill, not a fixed 230px: the chart name is the one thing here whose length is not
+            // known in advance, so it gets whatever the brand and the button cluster leave and
+            // ellipsizes instead of being overlapped by them.
+            _documentLabel.Dock = DockStyle.Fill;
 
-            _formatChip = CreateChip("NO SOURCE", StudioDesignSystem.Muted);
-            _capabilityChip = CreateChip("OPEN A CHART", StudioDesignSystem.SignalAmber);
+            _formatChip = CreateChip("No source", StudioDesignSystem.Muted);
 
-            _timelineV1 = CreateRailButton("V1");
-            _timelineV2 = CreateRailButton("V2");
-            _preview = CreateRailButton("PREVIEW", 76);
-            _workspace = CreateRailButton("WORKSPACE  ▾", 104);
-            _palette = CreateRailButton("COMMANDS  Ctrl+K", 132);
+            _surfaceToggle = CreateRailButton("TIMELINE V1", 106);
+            _verticalToggle = CreateRailButton("Vertical", 80);
+            _preview = CreateRailButton("Preview", 76);
+            _workspace = CreateRailButton("Workspace  ▾", 104);
+            _palette = CreateRailButton("Commands  Ctrl+K", 130);
             _workspaceMenu = BuildWorkspaceMenu();
 
-            _timelineV1.Click += delegate { if (TimelineV1Requested != null) TimelineV1Requested(this, EventArgs.Empty); };
-            _timelineV2.Click += delegate { if (TimelineV2Requested != null) TimelineV2Requested(this, EventArgs.Empty); };
+            _surfaceToggle.Click += delegate { ToggleSurface(); };
+            _verticalToggle.Click += delegate { ToggleVerticalTimeline(); };
             _preview.Click += delegate { if (PreviewRequested != null) PreviewRequested(this, EventArgs.Empty); };
             _workspace.Click += delegate
             {
@@ -51,22 +68,24 @@ namespace DJMaxEditor.UI
             };
             _palette.Click += delegate { if (CommandPaletteRequested != null) CommandPaletteRequested(this, EventArgs.Empty); };
 
+            // Auto-sized rather than a hard 640px. The fixed width was wider than the buttons in
+            // it, and it docked Right over the top of the document name on any window narrower
+            // than about 1060px - which is how the rail ended up looking crammed.
             var right = new FlowLayoutPanel
             {
-                AutoSize = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 BackColor = StudioDesignSystem.Deck,
                 Dock = DockStyle.Right,
                 FlowDirection = FlowDirection.LeftToRight,
                 Height = 34,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
-                Width = 690,
                 WrapContents = false
             };
             right.Controls.Add(_formatChip);
-            right.Controls.Add(_capabilityChip);
-            right.Controls.Add(_timelineV1);
-            right.Controls.Add(_timelineV2);
+            right.Controls.Add(_surfaceToggle);
+            right.Controls.Add(_verticalToggle);
             right.Controls.Add(_preview);
             right.Controls.Add(_workspace);
             right.Controls.Add(_palette);
@@ -79,6 +98,7 @@ namespace DJMaxEditor.UI
 
             ShowEmpty();
             SetActiveSurface(false);
+            SetVerticalTimelineEnabled(true);
         }
 
         public event EventHandler TimelineV1Requested;
@@ -86,6 +106,13 @@ namespace DJMaxEditor.UI
         public event EventHandler PreviewRequested;
         public event EventHandler<StudioWorkspaceRequestedEventArgs> WorkspaceRequested;
         public event EventHandler CommandPaletteRequested;
+
+        /// <summary>
+        /// Raised when the rail's VERTICAL button is pressed. The argument is the state the user
+        /// is asking for, so the shell can refuse (no layout for the chart) without the rail
+        /// having to know why.
+        /// </summary>
+        public event EventHandler<StudioToggleRequestedEventArgs> VerticalTimelineRequested;
 
         public StudioWorkspacePreset[] WorkspacePresets
         {
@@ -106,9 +133,21 @@ namespace DJMaxEditor.UI
         public string CapabilityText { get; private set; }
         public bool IsLocked { get; private set; }
 
+        /// <summary>True while the rail is showing the vertical strip as switched on.</summary>
+        public bool IsVerticalTimelineEnabled
+        {
+            get { return _verticalEnabled; }
+        }
+
+        /// <summary>The label the surface button currently shows.</summary>
+        public string SurfaceButtonText
+        {
+            get { return _surfaceToggle.Text; }
+        }
+
         public void ShowEmpty()
         {
-            ShowDocument("NO DOCUMENT", "TIMELINE V1", "NO SOURCE", "OPEN A CHART", true);
+            ShowDocument("No document", "TIMELINE V1", "No source", "Open a chart", true);
         }
 
         public void ShowDocument(
@@ -118,25 +157,64 @@ namespace DJMaxEditor.UI
             string capabilityText,
             bool isLocked)
         {
-            DocumentName = string.IsNullOrWhiteSpace(documentName) ? "UNTITLED" : documentName;
+            DocumentName = string.IsNullOrWhiteSpace(documentName) ? "Untitled" : documentName;
             SurfaceName = string.IsNullOrWhiteSpace(surfaceName) ? "TIMELINE V1" : surfaceName;
-            CapabilityText = string.IsNullOrWhiteSpace(capabilityText) ? "UNKNOWN" : capabilityText;
+            CapabilityText = string.IsNullOrWhiteSpace(capabilityText) ? "Unknown" : capabilityText;
             IsLocked = isLocked;
 
             _documentLabel.Text = DocumentName;
-            _formatChip.Text = formatText ?? "UNKNOWN";
-            _capabilityChip.Text = CapabilityText;
-            _capabilityChip.ForeColor = isLocked
+            _formatChip.Text = formatText ?? "Unknown";
+            // The format chip carries the lock cue now that the capability chip is gone: amber
+            // means "you are looking, not editing".
+            _formatChip.ForeColor = isLocked
                 ? StudioDesignSystem.SignalAmber
-                : StudioDesignSystem.PulseCyan;
+                : StudioDesignSystem.Muted;
             SetActiveSurface(SurfaceName.IndexOf("V2", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         public void SetActiveSurface(bool timelineV2)
         {
+            _timelineV2Active = timelineV2;
             SurfaceName = timelineV2 ? "TIMELINE V2" : "TIMELINE V1";
-            StyleSegment(_timelineV1, !timelineV2);
-            StyleSegment(_timelineV2, timelineV2);
+            _surfaceToggle.Text = SurfaceName;
+            // The button always names the surface you are on, and pressing it moves you to the
+            // other one; the tooltip is what says where you are going.
+            _surfaceToggle.AccessibleName = SurfaceName;
+            _surfaceToggle.AccessibleDescription =
+                "Switch to " + (timelineV2 ? "Timeline V1" : "Timeline V2");
+            StyleSegment(_surfaceToggle, true);
+        }
+
+        /// <summary>Reflects the shell's vertical-strip state on the button.</summary>
+        public void SetVerticalTimelineEnabled(bool enabled)
+        {
+            _verticalEnabled = enabled;
+            _verticalToggle.AccessibleName = "Vertical timeline";
+            _verticalToggle.AccessibleDescription = enabled
+                ? "Hide the vertical timeline"
+                : "Show the vertical timeline";
+            StyleSegment(_verticalToggle, enabled);
+        }
+
+        private void ToggleSurface()
+        {
+            if (_timelineV2Active)
+            {
+                if (TimelineV1Requested != null) TimelineV1Requested(this, EventArgs.Empty);
+            }
+            else if (TimelineV2Requested != null)
+            {
+                TimelineV2Requested(this, EventArgs.Empty);
+            }
+        }
+
+        private void ToggleVerticalTimeline()
+        {
+            EventHandler<StudioToggleRequestedEventArgs> handler = VerticalTimelineRequested;
+            if (handler != null)
+            {
+                handler(this, new StudioToggleRequestedEventArgs(!_verticalEnabled));
+            }
         }
 
         public void RequestWorkspace(StudioWorkspacePreset preset)
@@ -157,10 +235,10 @@ namespace DJMaxEditor.UI
                 ForeColor = StudioDesignSystem.Frost,
                 ShowImageMargin = false
             };
-            AddWorkspaceItem(menu, "EDITING", StudioWorkspacePreset.Editing);
-            AddWorkspaceItem(menu, "PREVIEW", StudioWorkspacePreset.Preview);
-            AddWorkspaceItem(menu, "AUDIO", StudioWorkspacePreset.Audio);
-            AddWorkspaceItem(menu, "COMPACT", StudioWorkspacePreset.Compact);
+            AddWorkspaceItem(menu, "Editing", StudioWorkspacePreset.Editing);
+            AddWorkspaceItem(menu, "Preview", StudioWorkspacePreset.Preview);
+            AddWorkspaceItem(menu, "Audio", StudioWorkspacePreset.Audio);
+            AddWorkspaceItem(menu, "Compact", StudioWorkspacePreset.Compact);
             return menu;
         }
 
@@ -211,7 +289,12 @@ namespace DJMaxEditor.UI
             };
         }
 
-        private static Button CreateRailButton(string text, int width = 38)
+        /// <summary>
+        /// A rail button. The default is wide enough for a two-word label: the old 38px default
+        /// clipped "V1" down to "V", which is how the playtest ended up looking at two unlabelled
+        /// boxes.
+        /// </summary>
+        private static Button CreateRailButton(string text, int width = 96)
         {
             Button button = StudioDesignSystem.CreateDeckButton(text);
             button.Height = 28;

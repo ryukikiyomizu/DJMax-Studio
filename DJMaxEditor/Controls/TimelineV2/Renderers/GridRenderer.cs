@@ -4,8 +4,25 @@ using System.Drawing;
 
 namespace DJMaxEditor.Controls.TimelineV2.Renderers
 {
-    public sealed class GridRenderer
+    /// <summary>
+    /// Row banding, quantize lines and measure/beat grid.
+    /// <para>
+    /// Every pen and brush is created once and owned for the life of the renderer. It used
+    /// to allocate a <see cref="SolidBrush"/> and a <see cref="Pen"/> per visible row and
+    /// another <see cref="Pen"/> per ruler mark, which on a dense viewport is hundreds of
+    /// native GDI+ handles per frame — the bulk of the measured V2 stutter.
+    /// </para>
+    /// </summary>
+    public sealed class GridRenderer : IDisposable
     {
+        private readonly SolidBrush _rowBrush = new SolidBrush(TimelineRenderTheme.Canvas);
+        private readonly SolidBrush _rowAlternateBrush =
+            new SolidBrush(TimelineRenderTheme.CanvasAlternate);
+        private readonly Pen _minorPen = new Pen(TimelineRenderTheme.GridMinor);
+        private readonly Pen _majorPen = new Pen(TimelineRenderTheme.GridMajor);
+        private readonly Pen _quantizePen =
+            new Pen(Color.FromArgb(42, TimelineRenderTheme.GridMinor));
+
         public void Render(Graphics graphics, TimelineFrame frame, IReadOnlyList<TimelineRulerMark> marks)
         {
             for (int rowIndex = frame.FirstVisibleRow; rowIndex < frame.Rows.Count; rowIndex++)
@@ -13,39 +30,41 @@ namespace DJMaxEditor.Controls.TimelineV2.Renderers
                 int y = frame.Coordinates.RowToY(rowIndex, frame.FirstVisibleRow);
                 if (y >= frame.CanvasBottom) break;
 
-                using (var brush = new SolidBrush(
-                    rowIndex % 2 == 0 ? TimelineRenderTheme.Canvas : TimelineRenderTheme.CanvasAlternate))
-                {
-                    graphics.FillRectangle(
-                        brush,
-                        frame.Coordinates.HeaderWidth,
-                        y,
-                        frame.Width - frame.Coordinates.HeaderWidth,
-                        frame.Coordinates.RowHeight);
-                }
-                using (var line = new Pen(TimelineRenderTheme.GridMinor))
-                {
-                    graphics.DrawLine(line, 0, y + frame.Coordinates.RowHeight - 1,
-                        frame.Width, y + frame.Coordinates.RowHeight - 1);
-                }
+                graphics.FillRectangle(
+                    rowIndex % 2 == 0 ? _rowBrush : _rowAlternateBrush,
+                    frame.Coordinates.HeaderWidth,
+                    y,
+                    frame.Width - frame.Coordinates.HeaderWidth,
+                    frame.Coordinates.RowHeight);
+                graphics.DrawLine(_minorPen, 0, y + frame.Coordinates.RowHeight - 1,
+                    frame.Width, y + frame.Coordinates.RowHeight - 1);
             }
 
             RenderQuantizeLines(graphics, frame);
 
-            foreach (TimelineRulerMark mark in marks)
+            for (int i = 0; i < marks.Count; i++)
             {
+                TimelineRulerMark mark = marks[i];
                 int x = (int)frame.Viewport.ScreenXAtTick(mark.Tick);
-                Color color = mark.Kind == TimelineRulerMarkKind.Measure
-                    ? TimelineRenderTheme.GridMajor
-                    : TimelineRenderTheme.GridMinor;
-                using (var pen = new Pen(color))
-                {
-                    graphics.DrawLine(pen, x, frame.Coordinates.RulerHeight, x, frame.CanvasBottom);
-                }
+                graphics.DrawLine(
+                    mark.Kind == TimelineRulerMarkKind.Measure ? _majorPen : _minorPen,
+                    x,
+                    frame.Coordinates.RulerHeight,
+                    x,
+                    frame.CanvasBottom);
             }
         }
 
-        private static void RenderQuantizeLines(Graphics graphics, TimelineFrame frame)
+        public void Dispose()
+        {
+            _rowBrush.Dispose();
+            _rowAlternateBrush.Dispose();
+            _minorPen.Dispose();
+            _majorPen.Dispose();
+            _quantizePen.Dispose();
+        }
+
+        private void RenderQuantizeLines(Graphics graphics, TimelineFrame frame)
         {
             if (frame.TicksPerMeasure <= 0 || frame.QuantizeDivision <= 0)
             {
@@ -60,20 +79,17 @@ namespace DJMaxEditor.Controls.TimelineV2.Renderers
 
             double firstTick = Math.Floor(
                 frame.Viewport.VisibleTimeRange.StartTick / interval) * interval;
-            using (var pen = new Pen(Color.FromArgb(42, TimelineRenderTheme.GridMinor)))
+            for (double tick = firstTick;
+                tick <= frame.Viewport.VisibleTimeRange.EndTick;
+                tick += interval)
             {
-                for (double tick = firstTick;
-                    tick <= frame.Viewport.VisibleTimeRange.EndTick;
-                    tick += interval)
-                {
-                    int x = (int)frame.Viewport.ScreenXAtTick(tick);
-                    graphics.DrawLine(
-                        pen,
-                        x,
-                        frame.Coordinates.RulerHeight,
-                        x,
-                        frame.CanvasBottom);
-                }
+                int x = (int)frame.Viewport.ScreenXAtTick(tick);
+                graphics.DrawLine(
+                    _quantizePen,
+                    x,
+                    frame.Coordinates.RulerHeight,
+                    x,
+                    frame.CanvasBottom);
             }
         }
     }

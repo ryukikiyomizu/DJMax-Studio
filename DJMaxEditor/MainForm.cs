@@ -23,6 +23,10 @@ using DJMaxEditor.Editor.Commands;
 using DJMaxEditor.Preview;
 using DJMaxEditor.UI;
 
+// MainForm inherits Control.Controls, so the DJMaxEditor.Controls namespace cannot be
+// reached by its short name from inside this class.
+using VerticalTimeDirection = DJMaxEditor.Controls.Vertical.VerticalTimeDirection;
+
 namespace DJMaxEditor
 {
     public partial class MainForm : Form
@@ -175,7 +179,7 @@ namespace DJMaxEditor
                 return;
             }
 
-            m_editorForm.Editor.TemplateEvent = eventData;
+            m_editorForm.TemplateEvent = eventData;
 
             // if the event is a note, set it's instrument to the current selected one on the musics list
             if (eventData != null && eventData.EventType == EventType.Note)
@@ -239,6 +243,19 @@ namespace DJMaxEditor
             };
             m_timelineV2MenuItem.Click += TimelineV2MenuItem_Click;
             optionsToolStripMenuItem.DropDownItems.Insert(0, m_timelineV2MenuItem);
+
+            // Vertical strip on/off. Same command as the rail's VERTICAL button and the palette
+            // entry, so however the user reaches for it the state stays in one place.
+            m_verticalTimelineMenuItem = new ToolStripMenuItem("Show vertical timeline")
+            {
+                Checked = true,
+                CheckOnClick = false
+            };
+            m_verticalTimelineMenuItem.Click += delegate
+            {
+                SetVerticalTimelineVisible(!m_editorForm.VerticalTimelineEnabled);
+            };
+            optionsToolStripMenuItem.DropDownItems.Insert(1, m_verticalTimelineMenuItem);
 
             _saveHandler = new SaveHandler();
             _saveHandler.Register(new PTSaveFile());
@@ -304,6 +321,8 @@ namespace DJMaxEditor
                 ApplyZonesTheme(theme);
             }
 
+            BuildVerticalDirectionMenu();
+
             var eventDisplayModes = GetAll<EventDisplayMode>();
 
             var currentEventDisplayMode = editor.EventDisplayMode;
@@ -330,7 +349,35 @@ namespace DJMaxEditor
             {
                 UpdateStudioRails();
             };
+            m_editorForm.PlayheadSeekRequested += EditorForm_PlayheadSeekRequested;
             AllowDrop = true;
+        }
+
+        /// <summary>
+        /// A seek on the vertical timeline's gutter has to move the audio too, otherwise the
+        /// next player tick would snap the playhead straight back to where the audio still is.
+        /// A seek is not a transport command, so a stopped/paused player stays that way.
+        /// </summary>
+        private void EditorForm_PlayheadSeekRequested(
+            object sender,
+            Controls.Vertical.VerticalSeekEventArgs e)
+        {
+            if (!m_player.IsReady)
+            {
+                return;
+            }
+
+            bool wasPlaying = m_player.IsPlaying;
+            int target = e.VirtualTick / DJMax.EventData.VirtualTickSize;
+
+            m_audioPlayer.StopAllSounds();
+            m_player.Reset();
+            m_player.Play(target);
+            if (!wasPlaying)
+            {
+                m_player.Pause();
+            }
+            m_preview.RefreshPlayback();
         }
 
         private void ApplyStudioShell()
@@ -347,6 +394,10 @@ namespace DJMaxEditor
                 ApplyWorkspacePreset(e.Preset);
             };
             m_documentRail.CommandPaletteRequested += delegate { ShowCommandPalette(); };
+            m_documentRail.VerticalTimelineRequested += delegate(object sender, StudioToggleRequestedEventArgs e)
+            {
+                SetVerticalTimelineVisible(e.RequestedState);
+            };
 
             m_studioTopHost = new TableLayoutPanel
             {
@@ -473,6 +524,12 @@ namespace DJMaxEditor
                 StudioCommandContext.Global, () => true, () => string.Empty,
                 ShowGameplayPreview));
             m_commands.Register(new StudioCommand(
+                "panel.vertical-timeline", "Show or hide vertical timeline", "Panels",
+                Keys.Control | Keys.Shift | Keys.V, StudioCommandContext.Global,
+                () => true, () => string.Empty,
+                () => SetVerticalTimelineVisible(
+                    m_editorForm == null || !m_editorForm.VerticalTimelineEnabled)));
+            m_commands.Register(new StudioCommand(
                 "edit.undo", "Undo", "Edit", Keys.Control | Keys.Z,
                 StudioCommandContext.Document, () => _documentContext != null && m_undoManager.CanUndo,
                 () => "There is nothing to undo.", () => undoToolStripMenuItem_Click(this, EventArgs.Empty)));
@@ -485,6 +542,14 @@ namespace DJMaxEditor
             RegisterToolCommand("tool.erase", "Erase tool", Keys.E, TimelineTool.Erase);
             RegisterToolCommand("tool.resize", "Resize tool", Keys.R, TimelineTool.Resize);
             RegisterToolCommand("tool.pan", "Pan tool", Keys.H, TimelineTool.Pan);
+            // Ctrl+Shift+plus/minus rather than the bare keys, which the timelines already use for
+            // zoom, and not the arrows, which move the selection.
+            RegisterVolumeCommand(
+                "edit.note-volume-up", "Louder notes",
+                Keys.Control | Keys.Shift | Keys.Oemplus, NoteVolumeNudge);
+            RegisterVolumeCommand(
+                "edit.note-volume-down", "Quieter notes",
+                Keys.Control | Keys.Shift | Keys.OemMinus, -NoteVolumeNudge);
             RegisterWorkspaceCommand(
                 "workspace.editing", "Use Editing workspace", StudioWorkspacePreset.Editing);
             RegisterWorkspaceCommand(
@@ -517,6 +582,81 @@ namespace DJMaxEditor
                 () => ApplyWorkspacePreset(preset)));
         }
 
+        /// <summary>
+        /// How much one Ctrl+Shift+plus/minus press moves note volume, out of
+        /// <see cref="ChartEditController.MaxNoteVolume"/>. A sixteenth of full scale: coarse enough
+        /// that a couple of presses are audible, fine enough to balance a layer against a bass line.
+        /// </summary>
+        private const int NoteVolumeNudge = 8;
+
+        /// <summary>
+        /// How long consecutive volume nudges keep sharing an undo group. Key auto-repeat is well
+        /// inside this, so holding the shortcut is one Ctrl+Z; a deliberate second press later is
+        /// its own step.
+        /// </summary>
+        private static readonly TimeSpan NoteVolumeGestureWindow = TimeSpan.FromMilliseconds(600);
+
+        private object m_noteVolumeGesture;
+
+        private DateTime m_noteVolumeGestureAt;
+
+        private void RegisterVolumeCommand(string id, string name, Keys shortcut, int delta)
+        {
+            m_commands.Register(new StudioCommand(
+                id, name, "Edit", shortcut, StudioCommandContext.Selection,
+                () => _documentContext != null &&
+                    _documentContext.Capabilities.CanEdit &&
+                    _documentContext.Selection.Count > 0,
+                () => _documentContext == null
+                    ? "Open a chart before changing note volume."
+                    : "Select the notes whose volume you want to change.",
+                () => AdjustNoteVolume(delta)));
+        }
+
+        /// <summary>
+        /// Nudges per-note volume on the selection. A held key repeats, so consecutive nudges share
+        /// one undo group until the user pauses: holding the shortcut for a second is one Ctrl+Z,
+        /// not thirty.
+        /// </summary>
+        private void AdjustNoteVolume(int delta)
+        {
+            if (_documentContext == null)
+            {
+                return;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            if (m_noteVolumeGesture == null ||
+                (now - m_noteVolumeGestureAt) > NoteVolumeGestureWindow)
+            {
+                m_noteVolumeGesture = new object();
+            }
+            m_noteVolumeGestureAt = now;
+
+            if (!_documentContext.Edits.AdjustSelectionVolume(delta, m_noteVolumeGesture))
+            {
+                SetStudioStatus(delta > 0
+                    ? "Note volume is already at maximum"
+                    : "Notes are already silent");
+                return;
+            }
+
+            SetStudioStatus(string.Format(
+                "Note volume {0}{1} on {2} event{3}",
+                delta > 0 ? "+" : string.Empty,
+                delta,
+                _documentContext.Selection.Count,
+                _documentContext.Selection.Count == 1 ? string.Empty : "s"));
+            if (m_editorForm != null)
+            {
+                m_editorForm.ActiveSurface.InvalidateView();
+            }
+            if (m_preview != null && !m_preview.IsDisposed)
+            {
+                m_preview.RefreshPlaybackImmediately();
+            }
+        }
+
         private void ShowCommandPalette()
         {
             if (m_commandPalette == null || m_commandPalette.IsDisposed)
@@ -545,7 +685,7 @@ namespace DJMaxEditor
             m_preview.Show(dockPanel);
             m_preview.Activate();
             m_preview.RefreshPlaybackImmediately();
-            SetStudioStatus("GAMEPLAY PREVIEW  •  VIEW ONLY");
+            SetStudioStatus("Gameplay preview (view only)");
         }
 
         private void ApplyPreviewProfileFromEventTheme()
@@ -610,9 +750,7 @@ namespace DJMaxEditor
                 dockPanel.ResumeLayout(true, true);
             }
 
-            SetStudioStatus(
-                "WORKSPACE  " + preset.ToString().ToUpperInvariant() +
-                "  •  SESSION PRESET");
+            SetStudioStatus("Workspace: " + preset.ToString());
         }
 
         private void HideStudioToolWindows()
@@ -657,7 +795,7 @@ namespace DJMaxEditor
                 _documentContext.Interaction.Tool = tool;
             }
             SyncToolButtons(tool);
-            SetStudioStatus("TOOL  " + tool.ToString().ToUpperInvariant());
+            SetStudioStatus("Tool: " + tool.ToString());
         }
 
         private void SyncToolButtons(TimelineTool tool)
@@ -679,6 +817,32 @@ namespace DJMaxEditor
             UpdateStudioRails();
         }
 
+        /// <summary>
+        /// Shows or hides the vertical ptSequencer strip. The playtest asked for a way to get the
+        /// gameplay-orientation view out of the way (and back), so this is driven from the rail
+        /// button, the View menu and the command palette, all through one path. The rail is told
+        /// the state the editor actually settled on: a chart with no 4B/5B/6B/8B layout has
+        /// nothing to show, so asking for it on cannot light the button.
+        /// </summary>
+        private void SetVerticalTimelineVisible(bool visible)
+        {
+            if (m_editorForm == null)
+            {
+                return;
+            }
+
+            m_editorForm.VerticalTimelineEnabled = visible;
+            if (m_verticalTimelineMenuItem != null)
+            {
+                m_verticalTimelineMenuItem.Checked = m_editorForm.VerticalTimelineEnabled;
+            }
+            if (m_documentRail != null)
+            {
+                m_documentRail.SetVerticalTimelineEnabled(m_editorForm.IsVerticalTimelineVisible);
+            }
+            SetStudioStatus(visible ? "VERTICAL TIMELINE SHOWN" : "VERTICAL TIMELINE HIDDEN");
+        }
+
         private void UpdateStudioRails()
         {
             if (m_documentRail == null || m_statusRail == null)
@@ -689,6 +853,7 @@ namespace DJMaxEditor
             if (_documentContext == null)
             {
                 m_documentRail.ShowEmpty();
+                m_documentRail.SetVerticalTimelineEnabled(false);
                 m_statusRail.SetStatus("READY", "SNAP 1/8", "NO DOCUMENT");
                 return;
             }
@@ -699,7 +864,7 @@ namespace DJMaxEditor
                 ? "TIMELINE V1"
                 : "TIMELINE V2";
             string capabilityChip = capabilities.CanEdit
-                ? (capabilities.IsRespectV ? "EDITABLE  •  EXPORT" : "EDITABLE")
+                ? (capabilities.IsRespectV ? "EDITABLE + EXPORT" : "EDITABLE")
                 : "READ ONLY";
             m_documentRail.ShowDocument(
                 Path.GetFileName(_documentContext.SourcePath),
@@ -707,12 +872,19 @@ namespace DJMaxEditor
                 format,
                 capabilityChip,
                 !capabilities.CanEdit);
+            m_documentRail.SetVerticalTimelineEnabled(m_editorForm.IsVerticalTimelineVisible);
+            if (m_verticalTimelineMenuItem != null)
+            {
+                m_verticalTimelineMenuItem.Checked = m_editorForm.VerticalTimelineEnabled;
+            }
 
             int selected = _documentContext.Selection.Count;
             m_statusRail.SetStatus(
-                selected == 0 ? "READY  •  SELECT TOOL" : selected + " EVENT" + (selected == 1 ? string.Empty : "S") + " SELECTED",
-                toolStripDropDownButton1.Text.ToUpperInvariant(),
-                surface + "  •  " + capabilities.StatusLabel);
+                selected == 0
+                    ? "Ready"
+                    : selected + " event" + (selected == 1 ? string.Empty : "s") + " selected",
+                toolStripDropDownButton1.Text,
+                surface + " - " + capabilities.StatusLabel);
         }
 
         private static string GetFormatChipText(DocumentCapabilities capabilities)
@@ -746,9 +918,9 @@ namespace DJMaxEditor
                 return;
             }
             string right = _documentContext == null
-                ? "NO DOCUMENT"
+                ? "No document"
                 : _documentContext.Capabilities.StatusLabel;
-            m_statusRail.SetStatus(message, toolStripDropDownButton1.Text.ToUpperInvariant(), right);
+            m_statusRail.SetStatus(message, toolStripDropDownButton1.Text, right);
         }
 
         private static void ConfigureWorkflowControl(ToolStripDropDownButton button, int width)
@@ -784,6 +956,7 @@ namespace DJMaxEditor
         private SaveHandler _saveHandler;
         private LoadHandler _loadHandler;
         private ToolStripMenuItem m_timelineV2MenuItem;
+        private ToolStripMenuItem m_verticalTimelineMenuItem;
         private readonly StudioCommandRegistry m_commands = new StudioCommandRegistry();
         private readonly Dictionary<TimelineTool, ToolStripButton> m_toolButtons =
             new Dictionary<TimelineTool, ToolStripButton>();
@@ -975,7 +1148,13 @@ namespace DJMaxEditor
 
                     if (soundIndex > 0)
                     {
-                        m_audioPlayer.SetVolume(trackIndex, eventData.Vel);
+                        // Per-note volume, audible at last. The line that used to be here pushed
+                        // the raw 0-127 velocity byte into SetVolume's 0..1 float and was then
+                        // overwritten by PlaySound's own volume argument three lines down, so Vel
+                        // round-tripped through every file format and was never heard. Folding it
+                        // into the gain instead is a no-op for existing charts, whose notes are
+                        // written at full velocity.
+                        float gain = track.Volume * NoteVelocityGain(eventData.Vel);
 
                         var evTick = eventData.Tick;
                         var currentTick = m_player.GetCurrentTick();
@@ -984,13 +1163,13 @@ namespace DJMaxEditor
                             // TODO: seek to the current position somehow
                             //var tps = m_playerData.TickPerMinute;
                             //int offset = (currentTick - evTick) * 1000 / tps;
-                            //if (!m_audioPlayer.PlaySound(trackIndex, soundIndex, track.Volume, pan, (uint)offset))
+                            //if (!m_audioPlayer.PlaySound(trackIndex, soundIndex, gain, pan, (uint)offset))
                             //{
                             //    Logs.Write("Failed to play sound on track : {0}, soundIndex : {1}", trackIndex, soundIndex);
                             //};
                         } else
                         {
-                            if (!m_audioPlayer.PlaySound(trackIndex, soundIndex, track.Volume, pan))
+                            if (!m_audioPlayer.PlaySound(trackIndex, soundIndex, gain, pan))
                             {
                                 Logs.Write("Failed to play sound on track : {0}, soundIndex : {1}", trackIndex, soundIndex);
                             };
@@ -1009,6 +1188,20 @@ namespace DJMaxEditor
                     break;
             }
 
+        }
+
+        /// <summary>
+        /// Turns a note's 0-127 velocity into a 0..1 multiplier for the track gain. Clamped on the
+        /// velocity side only: track volume can legitimately exceed unity in a .pt, and clamping
+        /// the product would quietly make those charts play back softer than they used to.
+        /// </summary>
+        private static float NoteVelocityGain(byte velocity)
+        {
+            if (velocity >= ChartEditController.MaxNoteVolume)
+            {
+                return 1f;
+            }
+            return velocity / (float)ChartEditController.MaxNoteVolume;
         }
 
         private void OpenFileComplete(PlayerData playerData, string filename, bool success)
@@ -1075,9 +1268,7 @@ namespace DJMaxEditor
                 return;
             }
             SyncToolButtons(_documentContext.Interaction.Tool);
-            SetStudioStatus(
-                "TOOL  " +
-                _documentContext.Interaction.Tool.ToString().ToUpperInvariant());
+            SetStudioStatus("Tool: " + _documentContext.Interaction.Tool.ToString());
         }
 
         private void SaveFile(string filename, int filterIndex = 0)
@@ -1988,6 +2179,76 @@ namespace DJMaxEditor
             m_editorForm.InverseSelection();
         }
 
+        /// <summary>
+        /// Time-direction choices for the vertical strip. Upward is the default because a
+        /// falling-note game reads bottom-up; Downward stays available for authors who
+        /// think of a chart as a spreadsheet.
+        /// </summary>
+        private static readonly KeyValuePair<string, VerticalTimeDirection>[]
+            VerticalDirections =
+            {
+                new KeyValuePair<string, VerticalTimeDirection>(
+                    "Time up", VerticalTimeDirection.Upward),
+                new KeyValuePair<string, VerticalTimeDirection>(
+                    "Time down", VerticalTimeDirection.Downward),
+            };
+
+        /// <summary>
+        /// Fills the vertical-direction dropdown and checks whichever entry the strip is
+        /// already using, so the button never claims a direction the surface is not drawing.
+        /// </summary>
+        private void BuildVerticalDirectionMenu()
+        {
+            var current = m_editorForm.VerticalTimeline.TimeDirection;
+
+            verticalDirectionToolStripDropDownButton.DropDownItems.Clear();
+            foreach (var direction in VerticalDirections)
+            {
+                var item = new ToolStripMenuItem(direction.Key);
+                verticalDirectionToolStripDropDownButton.DropDownItems.Add(item);
+
+                if (direction.Value != current)
+                {
+                    continue;
+                }
+                item.Checked = true;
+                verticalDirectionToolStripDropDownButton.Text = direction.Key;
+            }
+        }
+
+        private void verticalDirectionToolStripDropDownButton_DropDownItemClicked(object sender, ToolStripItemClickedEventArgs e)
+        {
+            if (!(sender is ToolStripDropDownButton dropDown))
+            {
+                return;
+            }
+
+            if (!(e.ClickedItem is ToolStripMenuItem clicked))
+            {
+                return;
+            }
+
+            foreach (var direction in VerticalDirections)
+            {
+                if (clicked.Text != direction.Key)
+                {
+                    continue;
+                }
+
+                foreach (ToolStripMenuItem item in dropDown.DropDown.Items)
+                {
+                    item.Checked = false;
+                }
+                clicked.Checked = true;
+                dropDown.Text = direction.Key;
+
+                // The strip rebuilds its coordinate system and repaints on assignment, so
+                // there is nothing else to invalidate here.
+                m_editorForm.VerticalTimeline.TimeDirection = direction.Value;
+                break;
+            }
+        }
+
         private void zoneRendererToolStripDropDownButton_DropDownItemClicked(object sender, ToolStripItemClickedEventArgs e)
         {
             if (!(sender is ToolStripDropDownButton toolStripDropDownButton))
@@ -2019,21 +2280,47 @@ namespace DJMaxEditor
             }
         }
 
+        /// <summary>
+        /// Drives the playhead from the audio clock. Everything here is gated on the tick
+        /// actually having moved.
+        /// </summary>
+        /// <remarks>
+        /// PlayerTimer is enabled unconditionally at 16ms, so this fires ~62 times a second
+        /// from the moment a chart is loaded whether or not anything is playing. Ungated, each
+        /// of the three lines below cost a full repaint: a Label.Text assignment, a whole-chart
+        /// redraw of the active surface, and a rebuilt gameplay-preview frame. That was the
+        /// "everything lags once I open the preview" report - the preview simply added a third
+        /// idle repaint to two that were already there.
+        /// </remarks>
         private void PlayerTimer_Tick(object sender, EventArgs e)
         {
-            var tm = TimeSpan.FromMilliseconds(m_player.GetCurrentMsTime());
-            var tick = m_player.GetCurrentTick();
-            var date = new DateTime(tm.Ticks);
+            int tick = m_player.GetCurrentTick();
+            if (tick == _lastPlayerTick) { return; }
+            _lastPlayerTick = tick;
 
-            currentProgress.Text = date.ToString("HH:mm:ss") + "  |  TICK " + tick;
+            var tm = TimeSpan.FromMilliseconds(m_player.GetCurrentMsTime());
+            var date = new DateTime(tm.Ticks);
+            string progressText = date.ToString("HH:mm:ss") + "  |  TICK " + tick;
+            if (progressText != _lastProgressText)
+            {
+                _lastProgressText = progressText;
+                currentProgress.Text = progressText;
+            }
 
             if (m_player.IsReady)
             {
+                // Surface before model, deliberately: the legacy surface skips its repaint
+                // when the model's tick already equals the incoming one, so writing the model
+                // first would gate away the repaint that is the whole point of this tick.
+                m_editorForm.ActiveSurface.PlayheadVirtualTick = tick * EventData.VirtualTickSize;
                 m_playerData.CurrentTick = tick;
-                m_editorForm.ActiveSurface.PlayheadVirtualTick = m_playerData.VirtualCurrentTick;
                 m_preview.RefreshPlayback();
             }
         }
+
+        private int _lastPlayerTick = -1;
+
+        private string _lastProgressText;
 
         private void currentProgress_Click(object sender, EventArgs e)
         {

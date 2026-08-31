@@ -94,10 +94,20 @@
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
     <Compile Include="AudioPlayer\AudioPlayerFmodEx.cs" />
+    <Compile Include="Controls\ScrollBand.cs" />
+    <Compile Include="Controls\Vertical\VerticalTrackLayout.cs" />
+    <Compile Include="Controls\Vertical\VerticalCoordinateSystem.cs" />
+    <Compile Include="Controls\Vertical\VerticalTimelineProjection.cs" />
+    <Compile Include="Controls\Vertical\VerticalTimelineFrame.cs" />
+    <Compile Include="Controls\Vertical\VerticalRenderTheme.cs" />
+    <Compile Include="Controls\Vertical\VerticalTimelineRenderer.cs" />
+    <Compile Include="Controls\Vertical\VerticalTimelineViewModel.cs" />
+    <Compile Include="Controls\Vertical\VerticalTimelineControl.cs" />
     <Compile Include="Controls\TimelineV2\TimelineCoordinateSystem.cs" />
     <Compile Include="Controls\TimelineV2\TimelineEventIndex.cs" />
     <Compile Include="Controls\TimelineV2\TimelineFrame.cs" />
     <Compile Include="Controls\TimelineV2\TimelineItem.cs" />
+    <Compile Include="Controls\TimelineV2\TimelineItemGeometry.cs" />
     <Compile Include="Controls\TimelineV2\TimelineInputBindings.cs" />
     <Compile Include="Controls\TimelineV2\TimelineRow.cs" />
     <Compile Include="Controls\TimelineV2\TimelineRowRange.cs" />
@@ -109,6 +119,9 @@
     <Compile Include="Controls\TimelineV2\TechnikaNoteClassifier.cs" />
     <Compile Include="Controls\TimelineV2\TimelineV2Control.cs">
       <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Controls\TimelineV2\TimelineV2Control.Editing.cs">
+      <DependentUpon>TimelineV2Control.cs</DependentUpon>
     </Compile>
     <Compile Include="Controls\TimelineV2\Projection\ITimelineProjection.cs" />
     <Compile Include="Controls\TimelineV2\Projection\RawTrackProjection.cs" />
@@ -127,6 +140,7 @@
     <Compile Include="Editor\EditorSurfaceSelection.cs" />
     <Compile Include="Editor\IEditorSurface.cs" />
     <Compile Include="Editor\LegacyEditorSurfaceAdapter.cs" />
+    <Compile Include="Editor\SynchronizedEditorSurface.cs" />
     <Compile Include="FeatureFlags.cs" />
     <Compile Include="Preview\GameplayPreviewControl.cs">
       <SubType>UserControl</SubType>
@@ -135,6 +149,9 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Preview\GameplayPreviewProjector.cs" />
+    <Compile Include="Preview\RespectGearVideoPlayer.cs" />
+    <Compile Include="Preview\RespectGameplayLayout.cs" />
+    <Compile Include="Preview\RespectVerticalSkin.cs" />
     <Compile Include="UI\StudioDesignSystem.cs" />
     <Compile Include="UI\StudioCommandPaletteForm.cs">
       <SubType>Form</SubType>
@@ -159,8 +176,11 @@
     <Compile Include="Controls\Editor\FrameRateLimiter.cs" />
     <Compile Include="Controls\Editor\Handlers\ChangeEventDataPositionHandler.cs" />
     <Compile Include="Controls\Editor\Handlers\EventDataHandler.cs" />
+    <Compile Include="Controls\Editor\EditorTimeRuler.cs" />
     <Compile Include="Controls\Editor\GraphicsWrapper.cs" />
     <Compile Include="Controls\Editor\Handlers\EventRequestHandler.cs" />
+    <Compile Include="Controls\Editor\Renderers\EventLabelCache.cs" />
+    <Compile Include="Controls\Editor\Renderers\TextImageCache.cs" />
     <Compile Include="Controls\Editor\Renderers\EventsRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Events\Cyclon\CyclonEventRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Events\EventDisplayMode.cs" />
@@ -173,7 +193,12 @@
     <Compile Include="Controls\Editor\Renderers\ZonesRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\Cyclon\CyclonZoneRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\Null\NullZoneRenderer.cs" />
-    <Compile Include="Controls\Editor\Renderers\Zones\Respect\Respect5kZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Zones\Respect\RespectZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Zones\Respect\Respect4BZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Zones\Respect\Respect5BZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Zones\Respect\Respect6BZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Zones\Respect\Respect8BZoneRenderer.cs" />
+    <Compile Include="Controls\Editor\Renderers\Events\Respect\RespectEventRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\Technika\TechnikaZoneRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\Trilogy\Trilogy4kZoneRenderer.cs" />
     <Compile Include="Controls\Editor\Renderers\Zones\Trilogy\Trilogy5kZoneRenderer.cs" />
@@ -539,6 +564,24 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="LocalAssets\RespectVertical\Default\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="LocalAssets\RespectVertical\Default\*.mp4">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="LocalAssets\RespectVertical\Skins\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="LocalAssets\RespectVertical\Skins\**\*.mp4">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="LocalAssets\RespectVertical\Skins\**\skin-source.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="LocalAssets\RespectVertical\Default\manifest.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="arrow.ico" />
     <Content Include="libs\fmod\fmod.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

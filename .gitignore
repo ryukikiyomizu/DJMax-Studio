@@ -2,12 +2,17 @@
 /DJMaxEditor/obj
 **/bin/
 **/obj/
+/_*
+/graphify-out
 /install
 tools
 /ideas.txt
 /info.txt
+/PERFORMANCE_VERTICAL_TIMELINE_WORKLOG.md
 /video-128.png
 /DJMaxEditor/Resources/*.psd
+/DJMaxEditor/LocalAssets/RespectVertical/
+/DJMaxEditor.Studio/LocalAssets/Technika2/
 Thumbs.db
 /DJMaxEditor/libs/NVorbis
 /.vs/DJMaxEditor/v14/*.suo

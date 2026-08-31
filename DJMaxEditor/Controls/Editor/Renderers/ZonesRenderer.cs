@@ -63,7 +63,10 @@ namespace DJMaxEditor.Controls.Editor.Renderers
             m_zones.Add(new Trilogy6kZoneRenderer());
             m_zones.Add(new Trilogy7kZoneRenderer());
             m_zones.Add(new Trilogy8kZoneRenderer());
-            m_zones.Add(new Respect5kZoneRenderer());
+            m_zones.Add(new Respect4BZoneRenderer());
+            m_zones.Add(new Respect5BZoneRenderer());
+            m_zones.Add(new Respect6BZoneRenderer());
+            m_zones.Add(new Respect8BZoneRenderer());
         }
     }
 }

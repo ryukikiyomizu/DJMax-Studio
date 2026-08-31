@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 using System.Drawing.Drawing2D;
 using DJMaxEditor.Undo.Action;
+using DJMaxEditor.Controls;
 using DJMaxEditor.Controls.Editor.Renderers;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Controls.Editor.Renderers.Events;
@@ -17,6 +19,18 @@ namespace DJMaxEditor
 {
     public sealed partial class EditorControl : UserControl
     {
+        /// <summary>
+        /// Where follow-while-playing pins the playhead, as a fraction of the visible tick window.
+        /// A fifth in leaves four fifths of lead-in, which is the read the playtest asked for.
+        /// </summary>
+        private const double FollowBandAnchor = 0.20;
+
+        /// <summary>
+        /// Smallest scroll, in device pixels, worth acting on while following. Below this nothing
+        /// on screen could move, but the scroll band's blit offset would still be invalidated.
+        /// </summary>
+        private const double FollowDeadZonePixels = 0.75;
+
         #region public defs
 
         public event EventHandler OnUndoRedo;
@@ -127,11 +141,80 @@ namespace DJMaxEditor
 
             InitializeComponent();
 
+            // The ruler is a sibling above the 2x2 scroll table, not a row inside it: the table's
+            // first row is the drawing area and the vertical scrollbar, and the ruler must not be
+            // pushed right by the scrollbar column or it would be misaligned with the chart by
+            // exactly the scrollbar's width.
+            _timeRuler = new EditorTimeRuler();
+            _timeRuler.SeekRequested += TimeRuler_SeekRequested;
+            Controls.Add(_timeRuler);
+            Controls.SetChildIndex(_timeRuler, 0);
+
             DrawingArea.BackColor = UI.StudioDesignSystem.Void;
             MouseWheel += DrawingArea_MouseWheel;
             DrawingArea.MouseWheel += DrawingArea_MouseWheel;
 
             SetStyle(ControlStyles.Selectable, true);
+        }
+
+        /// <summary>
+        /// Raised when the time ruler above the chart is clicked or dragged. The shell owns the
+        /// audio player, so moving the playhead has to go back out through the same path the
+        /// vertical timeline and V2 use rather than being applied here.
+        /// </summary>
+        public event EventHandler<Controls.Vertical.VerticalSeekEventArgs> SeekRequested;
+
+        /// <summary>Whether the clickable time ruler is shown above the chart.</summary>
+        public bool ShowTimeRuler
+        {
+            get { return _timeRuler != null && _timeRuler.Visible; }
+            set
+            {
+                if (_timeRuler == null || _timeRuler.Visible == value) return;
+                _timeRuler.Visible = value;
+                UpdateScrollbars();
+                Repaint();
+            }
+        }
+
+        private void TimeRuler_SeekRequested(
+            object sender,
+            Controls.Vertical.VerticalSeekEventArgs e)
+        {
+            if (SeekRequested != null)
+            {
+                SeekRequested(this, e);
+            }
+            else
+            {
+                // Unhosted (tests, or the legacy standalone path): still move the playhead, so the
+                // ruler is not silently inert.
+                SetPlayheadVirtualTick(e.VirtualTick);
+            }
+        }
+
+        /// <summary>Pushes the current view and playhead into the ruler band.</summary>
+        private void SyncTimeRuler()
+        {
+            if (_timeRuler == null || !_timeRuler.Visible || _playerData == null) return;
+
+            // The band spans the whole control but only the part above the chart is seekable.
+            _timeRuler.RightInset = vScrollBar.Visible ? vScrollBar.Width : 0;
+
+            // PlayerData.TickPerMinute is the measure resolution (192 by default), so a measure is
+            // TickPerMinute * VirtualTickSize virtual ticks - the same "beatSize" the track
+            // renderer draws its major grid on. Four beats to the measure, matching the grid.
+            const int BeatsPerMeasure = 4;
+            int measureTicks = Math.Max(
+                BeatsPerMeasure,
+                (int)_playerData.TickPerMinute * EventData.VirtualTickSize);
+            _timeRuler.SetView(
+                _zoom,
+                _viewablePixels.X,
+                (int)_playerData.VirtualMaxTick,
+                measureTicks,
+                BeatsPerMeasure);
+            _timeRuler.SetPlayhead(_playerData.VirtualCurrentTick);
         }
 
         public void SelectAll()
@@ -375,6 +458,10 @@ namespace DJMaxEditor
             UpdateBlockSize();
 
             this.Redraw();
+
+            // Zoom is a view setting like the others: announcing it keeps the V2 timeline
+            // and the vertical ptSequencer surface at the same scale as this editor.
+            RaiseViewSettingsChanged();
         }
 
         public float GetZoom()
@@ -396,10 +483,70 @@ namespace DJMaxEditor
             }
         }
 
-        public void Repaint() 
+        public void Repaint()
         {
+            // Full repaint: the chart, the view or the theme changed, so the cached content
+            // frame is stale. Bumping the revision is what forces it to be rebuilt.
+            _contentRevision++;
+            RepaintRequestCount++;
             DrawingArea.Invalidate();
         }
+
+        /// <summary>
+        /// Repaints the playhead and the selection overlay only, reusing the cached content
+        /// frame. This is the playback path: it used to go through <see cref="Repaint"/>, so
+        /// every 16ms tick re-rendered every visible note, label and grid line.
+        /// </summary>
+        public void RepaintPlayhead()
+        {
+            RepaintRequestCount++;
+            DrawingArea.Invalidate();
+        }
+
+        /// <summary>
+        /// Moves the playhead, doing nothing at all when the tick has not changed.
+        /// </summary>
+        /// <remarks>
+        /// The change gate is the point. The shell drives this from a 16ms timer that runs
+        /// whenever a chart is loaded - playing or not - so without it the editor repainted
+        /// ~62 times a second while sitting completely idle.
+        /// </remarks>
+        /// <returns>True when the playhead actually moved.</returns>
+        public bool SetPlayheadVirtualTick(int virtualTick)
+        {
+            if (_playerData == null) return false;
+
+            int tick = virtualTick / EventData.VirtualTickSize;
+            if (tick < 0) tick = 0;
+            if (_playerData.CurrentTick == tick) return false;
+
+            _playerData.CurrentTick = tick;
+            // The ruler is its own control, so the caret can move without invalidating the chart.
+            SyncTimeRuler();
+            RepaintPlayhead();
+            return true;
+        }
+
+        /// <summary>Times the cached content frame has been re-rendered; a test seam.</summary>
+        public int ContentFrameRebuildCount { get; private set; }
+
+        /// <summary>
+        /// Leftmost virtual tick the view is scrolled to; a test seam. Virtual x is virtual tick
+        /// 1:1 in this surface, so the viewable rectangle's left edge <em>is</em> the origin tick.
+        /// </summary>
+        /// <remarks>
+        /// Exposed because a rebuild count alone cannot tell continuous follow-scroll from the
+        /// paging follow this surface shipped for one release: both keep the count low, and paging
+        /// keeps it low precisely <em>by</em> not moving the view. Reading the origin per frame is
+        /// the only way to assert the view actually flows.
+        /// </remarks>
+        internal int ViewOriginVirtualTick
+        {
+            get { return _viewablePixels.X; }
+        }
+
+        /// <summary>Times a repaint has been requested at all; a test seam for the idle gate.</summary>
+        public int RepaintRequestCount { get; private set; }
 
         public void ScrollTo(int x, int y) 
         {
@@ -420,6 +567,8 @@ namespace DJMaxEditor
         #endregion // public defs
 
         #region private defs
+
+        private readonly EditorTimeRuler _timeRuler;
 
         private Rectangle _viewablePixels = new Rectangle();
 
@@ -580,40 +729,230 @@ namespace DJMaxEditor
 
         private GraphicsWrapper m_gw = new GraphicsWrapper();
 
+        private Bitmap _contentFrame;
+
+        private string _contentKey;
+
+        private int _contentRevision;
+
+        /// <summary>
+        /// Scroll band bookkeeping. <see cref="_contentFrame"/> is wider than the drawing area by
+        /// <see cref="_bandMargin"/> device pixels on each side, and <see cref="_bandOriginVirtualX"/>
+        /// is the virtual x its left edge was rendered at. Scrolling then moves the read window
+        /// instead of re-rendering, which is what lets the playhead drag the view continuously
+        /// without a full chart render per frame.
+        /// </summary>
+        private int _bandMargin;
+
+        private int _bandOriginVirtualX;
+
         private bool IsFollowing => FollowTracksProgressWhilePlaying && IsPlayerPlaying && (_playerData.CurrentTick < _playerData.MaxTick);
 
-        private void DrawToBuffer(Graphics g) 
+        private void DrawToBuffer(Graphics g)
         {
             if (!_ready) { return; }
+            if (_playerData == null) { return; }
 
-            var gw = m_gw;
-            gw.UpdateGraphics(g);
+            FollowPlayheadIntoView();
 
-            // If checked, follow playing track progression
-            if (IsFollowing) {
-
-                const int spacing = 150;
-                var pos = _playerData.VirtualCurrentTick > spacing ? _playerData.VirtualCurrentTick - spacing : _playerData.VirtualCurrentTick;
-
-                ScrollTo((int)(pos * _zoom), -1);
-                UpdateScrollbars();
-            }
-
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.ScaleTransform(_zoom, _zoom, MatrixOrder.Prepend);
-
-            g.TranslateTransform(-_viewablePixels.X, -_viewablePixels.Y);
-
-            if (_playerData == null) {
+            // Two layers: the notes/grid/zones go into a cached bitmap keyed on everything
+            // that can change them, and only the playhead and the selection rubber band are
+            // redrawn live. During playback nothing in the first layer changes, so a playback
+            // frame is a blit plus two thin overlays instead of a full chart render. Same
+            // trick TimelineV2's static frame uses, for the same reason.
+            int blitOffset;
+            Bitmap content = EnsureContentFrame(out blitOffset);
+            if (content == null)
+            {
+                ApplyViewTransform(g, _viewablePixels);
+                RenderContent(g, _viewablePixels);
+                RenderOverlay(g);
                 return;
             }
+
+            GraphicsState blitState = g.Save();
+            try
+            {
+                g.ResetTransform();
+                g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                g.DrawImage(
+                    content,
+                    new Rectangle(0, 0, DrawingArea.Width, DrawingArea.Height),
+                    blitOffset,
+                    0,
+                    DrawingArea.Width,
+                    DrawingArea.Height,
+                    GraphicsUnit.Pixel);
+            }
+            finally
+            {
+                g.Restore(blitState);
+            }
+
+            ApplyViewTransform(g, _viewablePixels);
+            RenderOverlay(g);
+        }
+
+        /// <summary>
+        /// Scrolls so the playhead stays pinned at <see cref="FollowBandAnchor"/> while the chart
+        /// flows past it.
+        /// </summary>
+        /// <remarks>
+        /// This paged rather than scrolled for one release, because the content cache was keyed on
+        /// the scroll position: moving the view a few pixels 60 times a second meant a full chart
+        /// re-render per frame, so holding the grid still was the only affordable option. The
+        /// playtest asked for continuous scroll on both surfaces, so the cache became a wider band
+        /// that is blitted at an offset (see <see cref="EnsureContentFrame"/>) and a moving view is
+        /// no longer expensive. The dead zone is in device pixels rather than ticks: a sub-pixel
+        /// change cannot move anything on screen but would still invalidate the band's offset.
+        /// </remarks>
+        private void FollowPlayheadIntoView()
+        {
+            if (!IsFollowing) { return; }
+
+            int width = _viewablePixels.Width;
+            if (width <= 0) { return; }
+
+            // Virtual x is virtual tick 1:1 in this surface, so the visible tick window is
+            // just the viewable rectangle.
+            int target = _playerData.VirtualCurrentTick - (int)(width * FollowBandAnchor);
+            if (target < 0) { target = 0; }
+            if (Math.Abs(target - _viewablePixels.X) * _zoom < FollowDeadZonePixels) { return; }
+
+            ScrollTo((int)(target * _zoom), -1);
+            UpdateScrollbars();
+        }
+
+        private void ApplyViewTransform(Graphics g, Rectangle viewable)
+        {
+            // Every primitive in this surface is an axis-aligned rectangle or a 1px grid
+            // line, so antialiasing had nothing to smooth: it only cost a coverage pass per
+            // edge and left the grid looking soft. None is both crisper and cheaper, which
+            // is how ptSequencer's grid reads so sharp.
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.ScaleTransform(_zoom, _zoom, MatrixOrder.Prepend);
+            g.TranslateTransform(-viewable.X, -viewable.Y);
+        }
+
+        /// <summary>
+        /// Rebuilds the cached content band when its key changed; null if it cannot. Reports the
+        /// device-pixel offset into the band that the current scroll position reads from.
+        /// </summary>
+        private Bitmap EnsureContentFrame(out int blitOffset)
+        {
+            blitOffset = 0;
+            int width = DrawingArea.Width;
+            int height = DrawingArea.Height;
+            if (width <= 0 || height <= 0) { return null; }
+
+            // One definition of the band width, shared with Timeline V2, so the two surfaces
+            // cannot drift into different scrolling behaviour.
+            int margin = ScrollBand.MarginPixels(width);
+            int bandWidth = width + (margin * 2);
+            float zoom = Math.Max(0.0001f, _zoom);
+            int marginVirtual = Math.Max(1, (int)Math.Ceiling(margin / zoom));
+
+            // Re-anchor only when the view has walked out of the band. Everything else about the
+            // band is part of the key below, so a changed zoom or row offset re-renders anyway.
+            double offsetPixels = (_viewablePixels.X - _bandOriginVirtualX) * zoom;
+            bool bandCoversView = _contentFrame != null &&
+                _bandMargin == margin &&
+                _contentFrame.Width == bandWidth &&
+                _contentFrame.Height == height &&
+                offsetPixels >= 0 &&
+                offsetPixels <= margin * 2;
+            if (!bandCoversView)
+            {
+                _bandMargin = margin;
+                _bandOriginVirtualX = Math.Max(0, _viewablePixels.X - marginVirtual);
+            }
+
+            // Integer, because a blit source has to be: the residual is under half a device pixel
+            // and shifts the whole frame together, so it cannot tear or shear the grid.
+            blitOffset = (int)Math.Round((_viewablePixels.X - _bandOriginVirtualX) * (double)zoom);
+            blitOffset = Math.Max(0, Math.Min(bandWidth - width, blitOffset));
+
+            var bandViewable = new Rectangle(
+                _bandOriginVirtualX,
+                _viewablePixels.Y,
+                (int)Math.Ceiling(bandWidth / zoom),
+                _viewablePixels.Height);
+
+            string key = string.Join(
+                "|",
+                bandWidth.ToString(),
+                height.ToString(),
+                _zoom.ToString("R"),
+                _bandOriginVirtualX.ToString(),
+                _viewablePixels.Y.ToString(),
+                bandViewable.Width.ToString(),
+                _viewablePixels.Height.ToString(),
+                _noteValue.ToString(),
+                ((int)EventsRenderer.EventDisplayMode).ToString(),
+                _contentRevision.ToString());
+
+            if (_contentFrame != null && _contentKey == key &&
+                _contentFrame.Width == bandWidth && _contentFrame.Height == height)
+            {
+                return _contentFrame;
+            }
+
+            if (_contentFrame == null ||
+                _contentFrame.Width != bandWidth || _contentFrame.Height != height)
+            {
+                ReleaseContentFrame();
+                // PArgb: the blit is the hot path, and PArgb is the one format GDI+ copies
+                // without a per-pixel alpha conversion.
+                _contentFrame = new Bitmap(bandWidth, height, PixelFormat.Format32bppPArgb);
+            }
+
+            using (Graphics graphics = Graphics.FromImage(_contentFrame))
+            {
+                graphics.Clear(DrawingArea.BackColor);
+                ApplyViewTransform(graphics, bandViewable);
+                RenderContent(graphics, bandViewable);
+            }
+
+            _contentKey = key;
+            ContentFrameRebuildCount++;
+            return _contentFrame;
+        }
+
+        private void ReleaseContentFrame()
+        {
+            if (_contentFrame == null) { return; }
+            _contentFrame.Dispose();
+            _contentFrame = null;
+            _contentKey = null;
+        }
+
+        /// <summary>The cacheable layer: tracks, events, zones and the grid.</summary>
+        private void RenderContent(Graphics g, Rectangle viewable)
+        {
+            var gw = m_gw;
+
+            // Bound after the quality modes, so the wrapper knows nearest-neighbour is the
+            // mode note art wants back once a label has switched the surface to bilinear.
+            gw.UpdateGraphics(g);
+
+            // Renderers work in virtual pixels; this is what they end up scaled by, and it
+            // is what decides whether a note label would still be legible on screen.
+            gw.LabelScale = _zoom;
 
             var beatSize = EventData.VirtualTickSize * _playerData.TickPerMinute;
             var blockSize = beatSize / _noteValue;
 
-            TracksRenderer.RenderTracskList(gw, _playerData.Tracks, _viewablePixels, beatSize, blockSize, _playerData.VirtualMaxTick, _drawableZone);
-            
+            TracksRenderer.RenderTracskList(gw, _playerData.Tracks, viewable, beatSize, blockSize, _playerData.VirtualMaxTick, _drawableZone);
+        }
+
+        /// <summary>The live layer: playhead and selection rubber band, drawn every frame.</summary>
+        private void RenderOverlay(Graphics g)
+        {
+            var gw = m_gw;
+            gw.UpdateGraphics(g);
+            gw.LabelScale = _zoom;
+
             _progress.Position = _playerData.VirtualCurrentTick;
             _progress.Render(gw, _viewablePixels);
 
@@ -675,6 +1014,8 @@ namespace DJMaxEditor
             _viewablePixels.Y = (int)(vScrollBar.Value / _zoom);
             _viewablePixels.Width = (int)Math.Ceiling((float)DrawingArea.Width / _zoom);
             _viewablePixels.Height = (int)Math.Ceiling((float)DrawingArea.Height / _zoom);
+
+            SyncTimeRuler();
         }
 
         private void vScrollBar_ValueChanged(object sender, EventArgs e) 

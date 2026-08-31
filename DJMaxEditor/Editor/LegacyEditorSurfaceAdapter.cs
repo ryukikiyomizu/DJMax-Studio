@@ -34,8 +34,10 @@ namespace DJMaxEditor.Editor
             {
                 if (_document != null)
                 {
-                    _document.Model.CurrentTick = value / DJMax.EventData.VirtualTickSize;
-                    _editor.Redraw();
+                    // Change-gated inside the editor: this setter is driven by a 16ms shell
+                    // timer that runs whenever a chart is loaded, so an unconditional
+                    // Redraw() here repainted the whole chart ~62 times a second while idle.
+                    _editor.SetPlayheadVirtualTick(value);
                 }
             }
         }
