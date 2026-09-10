@@ -101,7 +101,14 @@ namespace DJMaxEditor.Studio.Timeline
         private readonly DrawingVisual _band = new DrawingVisual();
         private readonly DrawingVisual _chrome = new DrawingVisual();
         private readonly DrawingVisual _overlay = new DrawingVisual();
-        private readonly StudioTimelineTheme _theme = StudioTimelineTheme.Default;
+
+        /// <summary>
+        /// The frozen brush set this surface draws with. Not readonly: <see cref="RefreshTheme"/>
+        /// swaps it when the chart theme changes. Nothing else writes it, and no draw path resolves
+        /// a theme - the swap happens once, on the UI thread, and every draw afterwards reads a
+        /// field.
+        /// </summary>
+        private StudioTimelineTheme _theme = StudioTimelineTheme.Default;
 
         private TextCache _rulerText;
         private TextCache _laneText;
@@ -288,6 +295,47 @@ namespace DJMaxEditor.Studio.Timeline
             _chromeDirty = true;
             _textDpi = 0;
             InvalidateVisual();
+        }
+
+        /// <summary>The brush set currently in use. Never null; the shipped palette until told.</summary>
+        public StudioTimelineTheme Theme
+        {
+            get { return _theme; }
+        }
+
+        /// <summary>
+        /// Re-resolves the frozen brush set for <paramref name="theme"/> and repaints.
+        ///
+        /// <para>
+        /// Takes the definition rather than reading a global, for the same reason every other
+        /// preference is pushed into this surface by <c>MainWindow.ApplySettings</c> instead of
+        /// being pulled: one apply path, and no second place that can disagree with it about which
+        /// palette is live. The shell owns the setting; the surface owns the pixels.
+        /// </para>
+        /// <para>
+        /// Cheap by construction. The lookup is a dictionary hit in
+        /// <see cref="StudioTimelineTheme.ForTheme"/>, so the cost of a switch is the invalidate -
+        /// one band and one chrome re-record - and not a re-parse of the palette. Re-applying the
+        /// theme that is already in use is a no-op, so it is safe to call from a generic apply pass
+        /// that runs on every preference change.
+        /// </para>
+        /// <para>
+        /// <see cref="InvalidateAll"/> rather than <see cref="InvalidateBand"/>: the lane header
+        /// chips and the ruler are chrome, and both carry colours from the theme. It also zeroes
+        /// the text DPI, which is what makes the three <see cref="TextCache"/> instances rebuild
+        /// against the new brushes instead of holding the old ones.
+        /// </para>
+        /// </summary>
+        public void RefreshTheme(StudioChartTheme theme)
+        {
+            StudioTimelineTheme resolved = StudioTimelineTheme.ForTheme(theme);
+            if (ReferenceEquals(_theme, resolved))
+            {
+                return;
+            }
+
+            _theme = resolved;
+            InvalidateAll();
         }
 
         /// <summary>

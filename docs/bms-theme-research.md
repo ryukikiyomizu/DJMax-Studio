@@ -1,6 +1,7 @@
 # BMS theme research: an IIDX theme, and themes-as-plugins
 
-Date: 2026-09-10. Status: research only — no code changed.
+Date: 2026-09-10. Status: research, plus the Studio-side seam it recommended — see §6 for what
+landed and what is still open. The legacy WinForms editor is unchanged by §6.
 
 ## 1. What "theme" means in this repo today
 
@@ -359,3 +360,59 @@ Non-goals for v1: compiled theme DLLs, animated skins, porting actual LR2/
 beatoraja skin files (their element model targets a *player* HUD — gauges,
 lasers, BGA — not an *editor* timeline; the concepts transfer, the files
 don't).
+
+## 6. Status update: the Studio seam (2026-09-10)
+
+Phase 1 and Phase 2 are in, scoped to the WPF studio surfaces only. This is the seam §5 asked for,
+not a theme *system* yet: no folders, no JSON, no scripting, no compiled plugins.
+
+**What landed**
+
+- `DJMaxEditor.Studio/Design/StudioChartTheme.cs` — a theme as data: hex strings plus one
+  behavioural flag, no WPF objects, so it can be constructed, compared and listed without a
+  Dispatcher. Fallback inheritance is expressed as C# property initialisers rather than a
+  `_fallback` folder: every property defaults to the Studio value, so a theme lists only what it
+  changes. Two built-ins: `studio` (the shipped ptSequencer-derived canvas, byte-for-byte the
+  palette that was hardcoded) and `iidx`.
+- The IIDX palette is the second built-in and the proof the seam is real. It needed no new lane
+  model, because the layout already carries the roles: `VerticalTrackLayout`'s BMS plan numbers its
+  keys 1-7 and stripes them primary/alternate on exactly IIDX's parity (odd key → `RegularPrimary`,
+  even → `RegularAlternate`, scratch channel → `IsScratch`). So the theme sets
+  `NotesColouredByLane` and the canvas colours white key / blue key / turntable from what the
+  column already knows, with a red playhead standing in for the red judgement line. Provenance is
+  the same rule `TechnikaPlayfieldTheme` follows: re-derived values, no shipped artwork.
+- `StudioTimelineTheme.ForTheme(definition)` — the one place hex strings are parsed. It caches one
+  frozen brush set per theme id, which is what keeps §1's "build once, freeze, reuse" discipline
+  intact when a theme can change at runtime. `RefreshTheme(theme)` on the canvas and the volume
+  lane re-resolves through it and invalidates; both are no-ops for the theme already in use, so the
+  shell's single `ApplySettings` pass can push it unconditionally.
+- `AppearanceSettings.ChartThemeId` persists the choice in `studio-settings.json` and normalises
+  through `StudioChartTheme.Find`, so a settings file naming a theme this build does not ship comes
+  back holding the one that will actually be drawn.
+- A toolbar "Themes…" button opens `ThemePickerWindow`: one row per palette with its name, a
+  sentence on what it is for, a strip of its own colours, and a dot on the one in use. Clicking a
+  row applies immediately, so the chart behind the dialog is the preview. It keeps the legacy
+  `ThemePickerForm`'s contract — the dialog mirrors the shell's state through a delegate rather
+  than owning it, and re-reads that delegate after an apply instead of assuming the click took.
+
+**What is deliberately not themed**
+
+- The TECHNIKA gameplay playfield. Its colours are sampled from the arcade and are the point of the
+  panel; recolouring them would make the preview lie about the game. The picker says so in its
+  footer rather than leaving it to be discovered.
+- Shell chrome (`StudioPalette`'s surfaces and text). §2.2's lesson was to keep the chrome axis
+  separate from note/lane art, and with only one chrome to offer, a setting for it would be a way
+  to be wrong later.
+
+**Still open**
+
+- Phase 3: `Themes/<Name>/theme.json` folders deep-merged over the built-ins, with an options block
+  and the §4.1 asset manifest. `StudioChartTheme` is data-only and `ForTheme` is already a
+  per-id cache, so the loader's job is "parse, merge over the defaults, hand the result to
+  `ForTheme`" — plus a `ClearCache()` (already present) for reload, and validation of hex strings
+  before anything reaches `ColorConverter`.
+- Auto-selecting a default theme from the detected `ChartFormat` (§4's table). Detection already
+  exists; only the lookup is new.
+- The legacy WinForms surfaces. `TimelineRenderTheme`, `VerticalRenderTheme` and the Gen-1
+  renderer themes still carry their own palettes; a data-driven loader is the one part of §3's
+  Option A that would reach both hosts through one code path.

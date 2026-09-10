@@ -16,6 +16,7 @@ using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
 using DJMaxEditor.Preview;
 using DJMaxEditor.Studio.Audio;
+using DJMaxEditor.Studio.Design;
 using DJMaxEditor.Studio.Documents;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Preview;
@@ -91,6 +92,14 @@ namespace DJMaxEditor.Studio.Shell
         /// views of one model racing each other, and modal would stop you seeing your own change.
         /// </summary>
         private PreferencesWindow _preferences;
+
+        /// <summary>
+        /// The open theme picker, if there is one. Non-modal and single-instance for the same reason
+        /// the preferences window is: it is a live view of a shell setting, so a second copy would
+        /// be two views of one model racing each other, and modal would put a dialog between you and
+        /// the chart you are judging the palette on.
+        /// </summary>
+        private ThemePickerWindow _themePicker;
 
         /// <summary>Set by the BGA file picker; the decoder attaches to it in <see cref="AttachBgaAsync"/>.</summary>
         private string _bgaPath;
@@ -353,6 +362,7 @@ namespace DJMaxEditor.Studio.Shell
                 ApplyBgaSettings(settings.Bga);
                 ApplyFormatSettings(settings.Format);
                 ApplyWorkspaceSettings(settings.Workspace);
+                ApplyAppearanceSettings(settings.Appearance);
             }
             finally
             {
@@ -498,6 +508,90 @@ namespace DJMaxEditor.Studio.Shell
             PerfReadoutPanel.Visibility = workspace.ShowPerformanceReadout
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Resolves the chart theme and pushes it into the two surfaces that draw with it.
+        ///
+        /// <para>
+        /// Both surfaces, always together: they share one <see cref="StudioTimelineTheme"/> instance,
+        /// and a volume lane left on the previous palette would sit next to a canvas on the new one,
+        /// with the same notes in two colours. The playfield is deliberately not in this list - see
+        /// <see cref="ThemePickerWindow"/> for why it keeps the arcade's own colours.
+        /// </para>
+        /// <para>
+        /// Cheap enough to run on every preference change: <c>RefreshTheme</c> resolves through
+        /// <see cref="StudioTimelineTheme.ForTheme"/>, which caches per theme id and returns the
+        /// same frozen instance, and it is a no-op when the surface already holds that instance. So
+        /// this costs a dictionary lookup and two reference comparisons unless the theme actually
+        /// changed, and one invalidate when it did.
+        /// </para>
+        /// </summary>
+        private void ApplyAppearanceSettings(AppearanceSettings appearance)
+        {
+            // A missing section is not a reason to draw nothing: the shipped palette is the answer
+            // until the settings say otherwise, which is also the answer for an id this build does
+            // not know (StudioChartTheme.Find is total).
+            StudioChartTheme theme = StudioChartTheme.Find(
+                appearance == null ? null : appearance.ChartThemeId);
+
+            _canvas.RefreshTheme(theme);
+            _volumeLane.RefreshTheme(theme);
+
+            // The tooltip is the compact switcher's label: the toolbar is icons only, so this is the
+            // one place the shell says out loud which palette is live without opening the picker.
+            ThemesButton.ToolTip = "Chart themes... - " + theme.Name;
+        }
+
+        /// <summary>
+        /// Opens the theme picker, or brings the open one forward.
+        ///
+        /// It is handed a delegate rather than a theme, so the rows' current-theme dots are re-read
+        /// from the shell after every apply instead of being cached here - the picker mirrors the
+        /// setting, it does not own it.
+        /// </summary>
+        private void OnOpenThemes(object sender, RoutedEventArgs e)
+        {
+            if (_themePicker != null)
+            {
+                _themePicker.Activate();
+                return;
+            }
+
+            _themePicker = new ThemePickerWindow(
+                () => StudioChartTheme.Find(
+                    _settings == null || _settings.Appearance == null
+                        ? null
+                        : _settings.Appearance.ChartThemeId));
+            _themePicker.Owner = this;
+            _themePicker.ThemeApplied += OnThemeApplied;
+            _themePicker.Closed += OnThemePickerClosed;
+            _themePicker.Show();
+        }
+
+        private void OnThemeApplied(object sender, StudioChartTheme theme)
+        {
+            if (theme == null || _settings == null || _settings.Appearance == null)
+            {
+                return;
+            }
+
+            // Written into the live settings object and applied through the one apply path, exactly
+            // as a preferences edit is: no second route from a control to a surface. Persistence
+            // follows at close, where SaveSettings already writes the whole object out.
+            _settings.Appearance.ChartThemeId = theme.Id;
+            ApplySettings(_settings);
+        }
+
+        private void OnThemePickerClosed(object sender, EventArgs e)
+        {
+            ThemePickerWindow window = sender as ThemePickerWindow;
+            if (window != null)
+            {
+                window.ThemeApplied -= OnThemeApplied;
+                window.Closed -= OnThemePickerClosed;
+            }
+            _themePicker = null;
         }
 
         /// <summary>

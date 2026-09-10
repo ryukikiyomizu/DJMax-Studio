@@ -45,12 +45,13 @@ namespace DJMaxEditor.Studio.Timeline
 
         private readonly DrawingVisual _visual = new DrawingVisual();
         private readonly VisualCollection _layers;
-        private readonly StudioTimelineTheme _theme = StudioTimelineTheme.Default;
 
-        private readonly Brush _barFill;
-        private readonly Brush _barFillSelected;
-        private readonly Pen _barEdge;
-        private readonly Pen _scalePen;
+        /// <summary>
+        /// The frozen brush set this lane draws with, shared with the chart canvas so a bar here is
+        /// the colour of the note it belongs to over there. Swapped by <see cref="RefreshTheme"/>;
+        /// no draw path resolves a theme.
+        /// </summary>
+        private StudioTimelineTheme _theme = StudioTimelineTheme.Default;
 
         private VerticalTimelineViewModel _viewModel;
         private TextCache _labels;
@@ -73,10 +74,9 @@ namespace DJMaxEditor.Studio.Timeline
             // instead of a grey wash.
             RenderOptions.SetEdgeMode(_visual, EdgeMode.Aliased);
 
-            _barFill = StudioPalette.Brush(StudioPalette.NotePlayable);
-            _barFillSelected = StudioPalette.Brush(StudioPalette.NoteSelected);
-            _barEdge = FrozenPen(StudioPalette.NotePlayableEdge, 1.0);
-            _scalePen = FrozenPen(StudioPalette.GridBeat, 1.0);
+            // No brushes of its own. It used to build four here from StudioPalette directly, which
+            // is why the lane ignored the chart theme; they are the theme's now (see
+            // StudioTimelineTheme.VolumeBarFill for why it shares the note palette).
 
             ClipToBounds = true;
             SnapsToDevicePixels = true;
@@ -85,6 +85,41 @@ namespace DJMaxEditor.Studio.Timeline
 
         /// <summary>Raised after a paint gesture changed one or more note volumes.</summary>
         public event EventHandler VolumeEdited;
+
+        /// <summary>The brush set currently in use. Never null; the shipped palette until told.</summary>
+        public StudioTimelineTheme Theme
+        {
+            get { return _theme; }
+        }
+
+        /// <summary>
+        /// Re-resolves the frozen brush set for <paramref name="theme"/> and repaints.
+        ///
+        /// <para>
+        /// The shell calls this on the lane and on the chart canvas together, from the same apply
+        /// pass, because the two share one <see cref="StudioTimelineTheme"/> instance: a volume bar
+        /// that stayed blue while its note turned white would be a second palette, silently.
+        /// </para>
+        /// <para>
+        /// Zeroing <c>_textDpi</c> is what makes <see cref="EnsureLabels"/> rebuild its
+        /// <see cref="TextCache"/> against the new theme instead of keeping FormattedText runs
+        /// shaped with the old brushes - the same trick <c>InvalidateAll</c> plays on the canvas,
+        /// and for the same reason: the cache is keyed by string, so it cannot notice a colour
+        /// change by itself.
+        /// </para>
+        /// </summary>
+        public void RefreshTheme(StudioChartTheme theme)
+        {
+            StudioTimelineTheme resolved = StudioTimelineTheme.ForTheme(theme);
+            if (ReferenceEquals(_theme, resolved))
+            {
+                return;
+            }
+
+            _theme = resolved;
+            _textDpi = 0;
+            InvalidateVisual();
+        }
 
         /// <summary>Kept in step with the chart canvas by the shell; see the class remarks.</summary>
         public TimelineOrientation Orientation
@@ -271,7 +306,7 @@ namespace DJMaxEditor.Studio.Timeline
             for (int i = 1; i <= 3; i++)
             {
                 double x = SnapX(width * i / 4.0);
-                dc.DrawLine(_scalePen, new Point(x, bodyTop), new Point(x, height));
+                dc.DrawLine(_theme.VolumeScaleLine, new Point(x, bodyTop), new Point(x, height));
             }
 
             ChartSelectionService selection =
@@ -331,8 +366,8 @@ namespace DJMaxEditor.Studio.Timeline
                 bool selected = selection != null && selection.Contains(source);
 
                 dc.DrawRectangle(
-                    selected ? _barFillSelected : _barFill,
-                    barHeight >= 3 ? _barEdge : null,
+                    selected ? _theme.VolumeBarSelected : _theme.VolumeBarFill,
+                    barHeight >= 3 ? _theme.VolumeBarEdge : null,
                     new Rect(0, Math.Round(top), barWidth, Math.Round(barHeight)));
             }
         }
@@ -571,13 +606,6 @@ namespace DJMaxEditor.Studio.Timeline
         private static double SnapX(double value)
         {
             return Math.Round(value) + 0.5;
-        }
-
-        private static Pen FrozenPen(string hex, double thickness)
-        {
-            Pen pen = new Pen(StudioPalette.Brush(hex), thickness);
-            pen.Freeze();
-            return pen;
         }
     }
 }

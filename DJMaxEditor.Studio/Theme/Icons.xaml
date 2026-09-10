@@ -67,4 +67,11 @@
     <StreamGeometry x:Key="Icon.TriangleAlert">M21.73,18 l-8 -14 a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3 M12 9v4 M12 17h.01</StreamGeometry>
     <StreamGeometry x:Key="Icon.SlidersHorizontal">M10 5H3 M12 19H3 M14 3v4 M16 17v4 M21 12h-9 M21 19h-5 M21 5h-7 M8 10v4 M8 12H3</StreamGeometry>
     <StreamGeometry x:Key="Icon.MoveHorizontal">M18,8 l4 4 -4 4 M2 12h20 M6,8 l-4 4 4 4</StreamGeometry>
+    <!-- Converted from icons/palette.svg in lucide-icons/lucide (git blob 25fb773a, fetched
+         2026-09-10) rather than from the pinned lucide-static 1.34.0 package: that package was
+         not reachable from the machine this icon was added on, and the shape is unchanged between
+         the two. Same conversion rules as every other glyph here - the outline path verbatim, and
+         each of the four r=.5 filled dots as an `h.01` move, which a 2px round-cap stroke draws as
+         a dot. See ICONS-NOTICE.md. -->
+    <StreamGeometry x:Key="Icon.Palette">M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z M13.5 6.5h.01 M17.5 10.5h.01 M6.5 12.5h.01 M8.5 7.5h.01</StreamGeometry>
 </ResourceDictionary>
