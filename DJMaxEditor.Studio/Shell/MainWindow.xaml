@@ -340,38 +340,82 @@
                         <StackPanel Margin="10,8,10,10">
                             <TextBlock Text="NOTE KIND" Style="{StaticResource Text.Section}" />
                         <UniformGrid x:Name="NotePaletteGrid" Columns="2" Margin="0,4,0,0">
+                            <!-- Each button wears the same arcade frame the timeline draws for the
+                                 note, so the palette previews exactly what placement paints.
+                                 Icons are sliced in code (see LoadPaletteIcons) so the BAML never
+                                 has to parse a pack URI into a CroppedBitmap at load time. -->
                             <ToggleButton x:Name="PaletteTap"
-                                          Height="26" Margin="0,2,2,2" IsChecked="True"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2" IsChecked="True"
                                           Click="OnPalettePick" Tag="0"
-                                          ToolTip="Tap note (short press)">Tap</ToggleButton>
+                                          ToolTip="Tap note (short press)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconTap" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Tap" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteDrag"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="0|long"
-                                          ToolTip="Drag note: slide, starts long">Drag</ToggleButton>
+                                          ToolTip="Drag note: slide, starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconDrag" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Drag" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteChain"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="5"
-                                          ToolTip="Chain head (attribute 5)">Chain</ToggleButton>
+                                          ToolTip="Chain head (attribute 5)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconChain" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Chain" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteChainNode"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="6"
-                                          ToolTip="Chain node (attribute 6)">Chain node</ToggleButton>
+                                          ToolTip="Chain node (attribute 6)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconChainNode" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Chain node" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteHold"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="12|long"
-                                          ToolTip="Hold note (attribute 12), starts long">Hold</ToggleButton>
+                                          ToolTip="Hold note (attribute 12), starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconHold" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Hold" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeat"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="10|long"
-                                          ToolTip="Repeat-hold head (attribute 10), starts long">Repeat hold</ToggleButton>
+                                          ToolTip="Repeat-hold head (attribute 10), starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeatHold" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat hold" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatTap"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="10"
-                                          ToolTip="Repeat head (attribute 10)">Repeat</ToggleButton>
+                                          ToolTip="Repeat head (attribute 10)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeat" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatRoll"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="11"
-                                          ToolTip="Repeating roll note (attribute 11)">Repeat roll</ToggleButton>
+                                          ToolTip="Repeating roll note (attribute 11)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeatRoll" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat roll" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                         </UniformGrid>
                         </StackPanel>
                     </StackPanel>

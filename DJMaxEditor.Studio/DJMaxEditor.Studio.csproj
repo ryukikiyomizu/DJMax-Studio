@@ -98,6 +98,7 @@
     <Compile Include="..\Shared\Controls\ScrollBand.cs" Link="Shared\Timeline\ScrollBand.cs" />
     <Compile Include="..\Shared\Controls\TimelineV2\PlaybackFrameScheduler.cs" Link="Shared\Timeline\PlaybackFrameScheduler.cs" />
     <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" Link="Shared\Timeline\TechnikaNoteClassifier.cs" />
+    <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" Link="Shared\Timeline\TechnikaSeriesClassifier.cs" />
     <Compile Include="..\Shared\Controls\TimelineV2\TimelineCoordinateSystem.cs" Link="Shared\Timeline\TimelineCoordinateSystem.cs" />
     <Compile Include="..\Shared\Controls\TimelineV2\TimelineEventIndex.cs" Link="Shared\Timeline\TimelineEventIndex.cs" />
     <Compile Include="..\Shared\Controls\TimelineV2\TimelineItem.cs" Link="Shared\Timeline\TimelineItem.cs" />
@@ -183,23 +184,21 @@
     <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" Link="Shared\Preview\RespectGameplayLayout.cs" />
   </ItemGroup>
 
-  <ItemGroup Label="Technika note glyphs">
-    <!--
-      The same six PNGs the legacy preview embeds, referenced in place rather than copied, so
-      both shells draw the identical glyph and the repository grows no new artwork. They are
-      WPF Resources here because a WPF ImageSource is what the new renderer draws with; the
-      legacy project keeps them as EmbeddedResource for its GDI+ path.
-    -->
-    <Resource Include="..\Shared\Resources\TechmaniaNotes\*.png" Link="Preview\Notes\%(Filename)%(Extension)" />
-  </ItemGroup>
+  <!--
+    The playfield preview and the timeline draw one shared arcade note set: the glossy strips
+    in Shared\Resources, linked under Timeline\Notes in the item group below. The preview
+    resolves them through the same pack URIs (see TechnikaNoteSprites), so no second copy of
+    the art is embedded. The earlier TechmaniaNotes flat glyphs had no drag image at all - the
+    drag wore the blue hold head - and were retired once the strips covered every kind.
+  -->
 
   <ItemGroup Label="Technika timeline note art">
     <!--
       The arcade note art the legacy WinForms editor draws on its own timeline, referenced in
-      place so both shells draw the identical glyph. This is a different set from the six
-      TechmaniaNotes above: those are the *preview's* fallback glyphs, these are the pieces the
-      legacy TechnikaThemeRenderer composes a timeline note out of - a head, a run body and an
-      end cap per note family.
+      place so both shells draw the identical glyph. Both surfaces use this one set now: the
+      playfield preview reaches the same pack URIs through TechnikaNoteSprites. These are the
+      pieces the legacy TechnikaThemeRenderer composes a timeline note out of - a head, a run
+      body and an end cap per note family.
 
       A file list rather than a wildcard, unlike everything else here, because
       DJMaxEditor\Resources also holds the docking indicator bitmaps, the toolbar icons and the

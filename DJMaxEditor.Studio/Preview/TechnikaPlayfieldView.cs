@@ -1687,9 +1687,9 @@ namespace DJMaxEditor.Studio.Preview
             TechnikaNoteSprite cap = _sprites.TrailCap(note.Kind, ongoing);
             if (cap == null)
             {
-                // No art in the loaded set - the packaged glyphs have no cap - so a themed bar
-                // spans the segment at lower fidelity, which is what the trail drew for every
-                // kind before.
+                // No cap in the local extraction or the packaged sheets - only the actively-held
+                // trail variants ship nowhere - so a themed bar spans the segment at lower
+                // fidelity, which is what the trail drew for every kind before.
                 double flat = size * 0.42;
                 double x = Math.Min(from.X, to.X);
                 dc.DrawRectangle(

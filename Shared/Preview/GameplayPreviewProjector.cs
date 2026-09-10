@@ -469,10 +469,14 @@ namespace DJMaxEditor.Preview
         {
             if (Profile == GameplayPreviewProfile.Technika)
             {
-                // The Technika renderer draws only this scan and the next scan, but a hold
-                // belongs to the window while any part of its span intersects those two - its
-                // head may be scans behind while its tail is still ahead, and testing the head
-                // alone is what clipped a long hold at the scan past it. Taps answer for their
+                // The Technika renderer draws this scan plus the one already waiting on the
+                // other half - two float scans on stage. A hold belongs to the window while any
+                // part of its span intersects them: its head may be scans behind while its tail
+                // is still ahead, and testing the head alone is what clipped a long hold at the
+                // scan past it. The far edge sits at the start of the scan AFTER the waiting
+                // one (float scan current+2); an edge at current+1 admitted only notes exactly
+                // on the handover boundary, so the waiting half showed just its first note and
+                // swallowed every other one until the sweep reached it. Taps answer for their
                 // head alone (see CreateFrame for why the raw duration is not a tail).
                 double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
                 double headFloatScan = note.Pulse / pulsesPerScan;
@@ -480,7 +484,7 @@ namespace DJMaxEditor.Preview
                     ? (note.Pulse + note.DurationPulse) / pulsesPerScan
                     : headFloatScan;
                 return tailFloatScan >= currentIntScan &&
-                    headFloatScan <= currentIntScan + 1;
+                    headFloatScan < currentIntScan + 2;
             }
 
             // Keep a long note while any part of its tick span intersects the

@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.Diagnostics;
@@ -193,6 +194,8 @@ namespace DJMaxEditor.Studio.Shell
             _settings = _settingsStore.Load();
 
             InitializeComponent();
+
+            LoadPaletteIcons();
 
             _canvas.ViewModel = _viewModel;
             _volumeLane.ViewModel = _viewModel;
@@ -1693,6 +1696,45 @@ namespace DJMaxEditor.Studio.Shell
 
             float gain = (float)_settings.Audio.AuditionVolume;
             _audio.PlaySound(AuditionChannel, instrument.InsNum, gain, 64);
+        }
+
+        /// <summary>
+        /// Slices the resting still (strip frame 9 - the same frame the timeline draws with
+        /// <c>StillPhase</c>) out of each arcade strip and puts it on its palette button. Done
+        /// here rather than in XAML so a missing resource can fail one button quietly instead of
+        /// throwing a BAML parse exception that stops the whole window loading.
+        /// </summary>
+        private void LoadPaletteIcons()
+        {
+            PaletteIconTap.Source = PaletteNoteFrame("Note_Basic", 90, 9);
+            PaletteIconDrag.Source = PaletteNoteFrame("longnote", 116, 9);
+            PaletteIconChain.Source = PaletteNoteFrame("notepressstart", 116, 9);
+            PaletteIconChainNode.Source = PaletteNoteFrame("notepressnote", 76, 9);
+            PaletteIconHold.Source = PaletteNoteFrame("longnotehold", 90, 9);
+            PaletteIconRepeatHold.Source = PaletteNoteFrame("noterepeat", 90, 9);
+            PaletteIconRepeat.Source = PaletteNoteFrame("noterepeat", 90, 9);
+            PaletteIconRepeatRoll.Source = PaletteNoteFrame("repeattail", 90, 9);
+        }
+
+        private static ImageSource PaletteNoteFrame(string sheet, int frameSize, int frameIndex)
+        {
+            try
+            {
+                BitmapImage strip = new BitmapImage(new Uri(
+                    "pack://application:,,,/DJMaxEditor.Studio;component/Timeline/Notes/" +
+                    sheet + ".png",
+                    UriKind.Absolute));
+                CroppedBitmap frame = new CroppedBitmap(
+                    strip, new Int32Rect(frameIndex * frameSize, 0, frameSize, frameSize));
+                frame.Freeze();
+                return frame;
+            }
+            catch (Exception ex)
+            {
+                // One bad or unshipped strip hides just that icon; the text label remains.
+                DiagnosticLog.Exception("shell.palette", ex);
+                return null;
+            }
         }
 
         /// <summary>

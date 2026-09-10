@@ -117,6 +117,9 @@ namespace DJMaxEditor.Studio.Timeline
 
         private VerticalTimelineViewModel _viewModel;
         private VerticalTimelineFrame _frame;
+        private Dictionary<EventData, TechnikaNoteKind> _seriesKinds;
+        private PlayerData _seriesModel;
+        private long _seriesSignature;
         private TimelineOrientation _orientation = TimelineOrientation.Vertical;
         private TimelineSurfaceMap _map = TimelineSurfaceMap.VerticalIdentity;
 
@@ -472,6 +475,7 @@ namespace DJMaxEditor.Studio.Timeline
             // is tall. Everything downstream - AutoFitColumns, OriginY, LastVisibleTick - then
             // measures the axis it is actually about.
             _frame = _viewModel.BuildFrame((int)_map.SurfaceWidth, (int)_map.SurfaceHeight);
+            EnsureSeriesKinds(_viewModel.Document);
 
             if (_bandDirty)
             {
@@ -883,6 +887,62 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
+        /// Rebuilds the runs-aware note-kind map alongside the frame, unless the four playable
+        /// lanes have not changed since last time. The signature covers add, delete and move -
+        /// the edits that can change which notes a run absorbs - without a document version
+        /// counter to subscribe to.
+        /// </summary>
+        private void EnsureSeriesKinds(EditorDocumentContext document)
+        {
+            PlayerData model = document != null ? document.Model : null;
+            long signature = 0;
+            if (model != null && model.Tracks != null)
+            {
+                for (int lane = 0; lane < 4 && lane < model.Tracks.Count; lane++)
+                {
+                    TrackData track = model.Tracks.GetTrackAtIndex((uint)lane);
+                    if (track == null)
+                    {
+                        continue;
+                    }
+                    foreach (EventData evt in track.Events)
+                    {
+                        if (evt == null || evt.EventType != EventType.Note)
+                        {
+                            continue;
+                        }
+                        signature = (signature * 397) ^
+                            (evt.Tick * 31L + evt.Attribute * 7L + evt.Duration + lane);
+                    }
+                }
+            }
+
+            if (model == _seriesModel && signature == _seriesSignature && _seriesKinds != null)
+            {
+                return;
+            }
+
+            _seriesModel = model;
+            _seriesSignature = signature;
+            _seriesKinds = TechnikaSeriesClassifier.Build(model);
+        }
+
+        /// <summary>
+        /// The painted kind of one event: the runs-aware map for playable-lane notes, the
+        /// single-event classifier for anything it has no opinion about.
+        /// </summary>
+        private TechnikaNoteKind KindFor(EventData source)
+        {
+            TechnikaNoteKind kind;
+            if (source != null && _seriesKinds != null &&
+                _seriesKinds.TryGetValue(source, out kind))
+            {
+                return kind;
+            }
+            return TechnikaNoteClassifier.Classify(source);
+        }
+
+        /// <summary>
         /// Draws one note as arcade art, and reports whether it did - false is the caller's signal
         /// to fall back to the rectangle.
         ///
@@ -906,8 +966,7 @@ namespace DJMaxEditor.Studio.Timeline
                 return false;
             }
 
-            TimelineNoteArt art = sprites.For(
-                TechnikaNoteClassifier.Classify(placed.Item.SourceEvent));
+            TimelineNoteArt art = sprites.For(KindFor(placed.Item.SourceEvent));
             if (art == null)
             {
                 return false;
