@@ -19,6 +19,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             return "Technika";
         }
 
+        public override string GetDescription()
+        {
+            return "Arcade note sprites with press, repeat and hold art. Matches Technika charts.";
+        }
+
         public override IEnumerable<KeyValuePair<string, EventData>> GetTemplates()
         {
             var list = new List<KeyValuePair<string, EventData>>();

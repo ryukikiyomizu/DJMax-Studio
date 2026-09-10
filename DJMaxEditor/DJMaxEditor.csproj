@@ -156,6 +156,9 @@
     <Compile Include="UI\StudioCommandPaletteForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="UI\ThemePickerForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="UI\StudioDocumentRail.cs">
       <SubType>UserControl</SubType>
     </Compile>

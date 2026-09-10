@@ -101,6 +101,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             return "Respect";
         }
 
+        public override string GetDescription()
+        {
+            return "Flat gear-coloured notes with labels. Matches Respect V charts.";
+        }
+
         public override void DrawZones(
             GraphicsWrapper g,
             int trackIndex,

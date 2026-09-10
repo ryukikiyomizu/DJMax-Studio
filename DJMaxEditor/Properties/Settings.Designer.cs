@@ -34,5 +34,29 @@ namespace DJMaxEditor.Properties {
                 this["UseTimelineV2"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string EventsThemeName {
+            get {
+                return ((string)(this["EventsThemeName"]));
+            }
+            set {
+                this["EventsThemeName"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string ZonesThemeName {
+            get {
+                return ((string)(this["ZonesThemeName"]));
+            }
+            set {
+                this["ZonesThemeName"] = value;
+            }
+        }
     }
 }

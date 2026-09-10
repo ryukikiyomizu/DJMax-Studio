@@ -13,5 +13,10 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones.Trilogy
         {
             return "Trilogy 6 keys";
         }
+
+        public override string GetDescription()
+        {
+            return "Lane bands for 6-key Trilogy charts.";
+        }
     }
 }

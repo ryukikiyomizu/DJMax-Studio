@@ -100,6 +100,7 @@
             this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.zoneRendererToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
+            this.themePickerToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.eventDisplayModeToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
             this.verticalDirectionToolStripDropDownButton = new System.Windows.Forms.ToolStripDropDownButton();
             this.PlayerTimer = new System.Windows.Forms.Timer(this.components);
@@ -551,6 +552,7 @@
             this.ThemeDropDownButton,
             this.toolStripSeparator4,
             this.zoneRendererToolStripDropDownButton,
+            this.themePickerToolStripButton,
             this.eventDisplayModeToolStripDropDownButton,
             this.verticalDirectionToolStripDropDownButton});
             this.toolStrip1.Location = new System.Drawing.Point(0, 30);
@@ -569,6 +571,15 @@
             this.zoneRendererToolStripDropDownButton.Text = "Zones theme";
             this.zoneRendererToolStripDropDownButton.ToolTipText = "Zones theme";
             this.zoneRendererToolStripDropDownButton.DropDownItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.zoneRendererToolStripDropDownButton_DropDownItemClicked);
+            //
+            // themePickerToolStripButton
+            //
+            this.themePickerToolStripButton.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.themePickerToolStripButton.Name = "themePickerToolStripButton";
+            this.themePickerToolStripButton.Size = new System.Drawing.Size(70, 28);
+            this.themePickerToolStripButton.Text = "Themes...";
+            this.themePickerToolStripButton.ToolTipText = "Browse note and lane themes with descriptions";
+            this.themePickerToolStripButton.Click += new System.EventHandler(this.themePickerToolStripButton_Click);
             // 
             // eventDisplayModeToolStripDropDownButton
             // 
@@ -742,6 +753,7 @@
         private System.Windows.Forms.ToolStripMenuItem deselectToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem inverseToolStripMenuItem;
         private System.Windows.Forms.ToolStripDropDownButton zoneRendererToolStripDropDownButton;
+        private System.Windows.Forms.ToolStripButton themePickerToolStripButton;
         private System.Windows.Forms.Timer PlayerTimer;
     }
 }

@@ -18,5 +18,10 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones.Technika
         {
             return "Technika";
         }
+
+        public override string GetDescription()
+        {
+            return "P1 / P2 scan-field bands with special-note lanes. Matches Technika charts.";
+        }
     }
 }

@@ -14,6 +14,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             return "Trilogy";
         }
 
+        public override string GetDescription()
+        {
+            return "Classic note sprites with hold tails and tempo markers. Matches Trilogy charts.";
+        }
+
         public override IEnumerable<KeyValuePair<string, EventData>> GetTemplates()
         {
             var list = new List<KeyValuePair<string, EventData>>();

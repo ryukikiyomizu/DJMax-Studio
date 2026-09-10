@@ -17,6 +17,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             return "Cyclon";
         }
 
+        public override string GetDescription()
+        {
+            return "Classic note sprites with Left / Right lane zones. Matches Cyclon charts.";
+        }
+
         public override IEnumerable<KeyValuePair<string, EventData>> GetTemplates()
         {
             var list = new List<KeyValuePair<string, EventData>>();
