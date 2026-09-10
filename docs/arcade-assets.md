@@ -45,9 +45,11 @@ The script (`scripts/fetch-arcade-assets.ps1`, comments document every choice):
 
 The RESPECT note *atlas* (`Notes/Texture2D`, e.g. `NoteSteam_000`) is deliberately not staged:
 its slicing coordinates live in the game's config tables (`Config Tables/note_skin`), and
-until those are imported the notes are drawn as vector bars in the hues sampled from that
-atlas — silver-white primary lanes, azure alternating lanes, aqua shoulders, red/purple side
-acts.
+until those are imported the notes are drawn as vector bars — silver-white primary lanes
+and azure alternating lanes in the hues sampled from that atlas, hot-pink shoulder bars
+and teal side-track bars per `docs/respectv-playfield-research.md` (the extraction carries
+no art for either bar, and the old aqua-shoulder / red-purple-side reading of the atlas
+was wrong about both).
 
 ## Fallbacks
 

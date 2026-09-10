@@ -304,7 +304,7 @@
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" x:Name="NoteSpeedSlider"
-                                        Minimum="0.05" Maximum="4.0" Value="0.55"
+                                        Minimum="0.05" Maximum="8.0" Value="0.55"
                                         VerticalAlignment="Center"
                                         ValueChanged="OnSliderChanged" />
                                 <TextBlock Grid.Column="2" x:Name="NoteSpeedReadout"

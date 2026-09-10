@@ -122,6 +122,17 @@ namespace DJMaxEditor.Preview
             return new RespectGameplayLayout(mode);
         }
 
+        /// <summary>
+        /// Native X of a trailer track: the button lanes on the mode's pitch, the side tracks
+        /// (2/9) and the shoulder inputs (10/11 L1/R1, 12/13 L2/R2) at the centre of their half.
+        /// <para>
+        /// The half-centre is a centre, not a lane: shoulders and sides are wide bars spanning
+        /// from their half's outer lane edge to the middle (see
+        /// <c>docs/respectv-playfield-research.md</c>), so a renderer must draw them at a bar
+        /// width around this X, never at a lane width. Drawing a lane-width note here is what
+        /// used to park a cyan bar on top of the mains.
+        /// </para>
+        /// </summary>
         public float GetTrackX(int trackIndex)
         {
             switch (trackIndex)

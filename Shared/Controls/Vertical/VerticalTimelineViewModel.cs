@@ -80,6 +80,15 @@ namespace DJMaxEditor.Controls.Vertical
         /// <summary>Raised whenever state changed in a way that needs a repaint.</summary>
         public event EventHandler RepaintRequested;
 
+        /// <summary>
+        /// Raised when the time zoom actually changes, from whichever gesture changed it - the
+        /// slider, the toolbar buttons, or Alt+wheel on the canvas. The shell keeps the NoteSpeed
+        /// slider on this, so the slider always reads the zoom the timeline is really at instead
+        /// of the zoom it last asked for; without it a wheel-zoom drifts the two apart and the
+        /// next touch of the slider snaps the timeline back to a stale value.
+        /// </summary>
+        public event EventHandler TimeZoomChanged;
+
         /// <summary>Raised when the user clicked the ruler to move the playhead.</summary>
         public event EventHandler<VerticalSeekEventArgs> SeekRequested;
 
@@ -674,6 +683,10 @@ namespace DJMaxEditor.Controls.Vertical
             RebuildCoordinates();
             _originTick = ClampOriginTick(_originTick);
             RequestRepaint();
+            if (TimeZoomChanged != null)
+            {
+                TimeZoomChanged(this, EventArgs.Empty);
+            }
         }
 
         private void RebuildCoordinates()

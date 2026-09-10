@@ -310,7 +310,7 @@
                                        Style="{StaticResource Text.Readout}"
                                        Foreground="{StaticResource Brush.TextMuted}" />
                         </Grid>
-                        <Slider x:Name="NoteSpeedSlider" Minimum="0.05" Maximum="4.0" Value="0.55"
+                        <Slider x:Name="NoteSpeedSlider" Minimum="0.05" Maximum="8.0" Value="0.55"
                                 ValueChanged="OnNoteSpeedChanged"
                                 ToolTip="How fast the chart moves along the time axis" />
 

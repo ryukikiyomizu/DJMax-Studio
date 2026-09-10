@@ -336,24 +336,34 @@ namespace DJMaxEditor.Preview
                 {
                     double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
                     double noteFloatScan = note.Pulse / pulsesPerScan;
-                    double endFloatScan = (note.Pulse + note.DurationPulse) / pulsesPerScan;
+                    // Only a hold answers for its tail: every note carries a keysound-length
+                    // duration, so reading the raw tail for a tap would keep it lit behind the
+                    // sweep until its sample "ends". A tap is Resolved the instant the sweep
+                    // clears its head, which is also what the hit-effect pass assumes.
+                    double endFloatScan = GameplayPreviewNoteKinds.HasHoldTrail(note.Kind)
+                        ? (note.Pulse + note.DurationPulse) / pulsesPerScan
+                        : noteFloatScan;
                     double distance = currentScan - noteFloatScan;
 
-                    if (note.ScanIndex < currentIntScan)
-                    {
-                        note.State = GameplayPreviewNoteState.Resolved;
-                    }
-                    else if (note.ScanIndex == currentIntScan)
+                    if (currentScan > endFloatScan)
                     {
                         // Resolved the moment the sweep is past it, not at the end of the scan it
                         // sits in. A scan is several seconds wide, so the end-of-scan test left every
                         // note the line had already crossed sitting on the field at full brightness
                         // until the handover - a bar's worth of notes stacked up behind the line, in a
-                        // game whose whole read is "the line is where now is". Held notes answer for
-                        // their tail rather than their head: the body is still being played.
-                        note.State = currentScan > endFloatScan
-                            ? GameplayPreviewNoteState.Resolved
-                            : GameplayPreviewNoteState.Active;
+                        // game whose whole read is "the line is where now is".
+                        note.State = GameplayPreviewNoteState.Resolved;
+                    }
+                    else if (note.ScanIndex < currentIntScan)
+                    {
+                        // Head behind, tail still ahead: a hold spanning into this scan or the
+                        // next. It is still being played, so Active - the renderer draws the
+                        // visible scans' worth of its body and skips the head it has passed.
+                        note.State = GameplayPreviewNoteState.Active;
+                    }
+                    else if (note.ScanIndex == currentIntScan)
+                    {
+                        note.State = GameplayPreviewNoteState.Active;
                     }
                     else if (note.ScanIndex == currentIntScan + 1)
                     {
@@ -375,10 +385,18 @@ namespace DJMaxEditor.Preview
                 else
                 {
                     int distance = note.Source.Tick - currentTick;
-                    note.State = Math.Abs(distance) <= Math.Max(1, ticks / 16)
-                        ? GameplayPreviewNoteState.Active
-                        : distance < 0
-                            ? GameplayPreviewNoteState.Resolved
+                    // A held note is still being played while its tail is ahead, even though its
+                    // head is behind - answering Resolved for the head would drop the tail the
+                    // renderable window deliberately kept. A tap answers for its head alone, which
+                    // is why the tail only counts past the codebase's long gate (Duration > 6, the
+                    // same one Classify and the BMS codec use) rather than for any non-zero
+                    // keysound-length duration.
+                    bool held = note.Source.Duration > 6 && distance < 0 &&
+                        distance + note.Source.Duration >= 0;
+                    note.State = distance < 0 && !held
+                        ? GameplayPreviewNoteState.Resolved
+                        : Math.Abs(distance) <= Math.Max(1, ticks / 16) || held
+                            ? GameplayPreviewNoteState.Active
                             : GameplayPreviewNoteState.Prepare;
                     note.X = Math.Max(0.05, Math.Min(0.95,
                         0.5 + (distance / (double)(ticks * 2))));
@@ -408,10 +426,18 @@ namespace DJMaxEditor.Preview
         {
             if (Profile == GameplayPreviewProfile.Technika)
             {
-                // The Technika renderer draws only this scan and the next scan;
-                // older/further scans are Resolved or Inactive before painting.
-                int scanDistance = note.ScanIndex - currentIntScan;
-                return scanDistance >= 0 && scanDistance <= 1;
+                // The Technika renderer draws only this scan and the next scan, but a hold
+                // belongs to the window while any part of its span intersects those two - its
+                // head may be scans behind while its tail is still ahead, and testing the head
+                // alone is what clipped a long hold at the scan past it. Taps answer for their
+                // head alone (see CreateFrame for why the raw duration is not a tail).
+                double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
+                double headFloatScan = note.Pulse / pulsesPerScan;
+                double tailFloatScan = GameplayPreviewNoteKinds.HasHoldTrail(note.Kind)
+                    ? (note.Pulse + note.DurationPulse) / pulsesPerScan
+                    : headFloatScan;
+                return tailFloatScan >= currentIntScan &&
+                    headFloatScan <= currentIntScan + 1;
             }
 
             // Keep a long note while any part of its tick span intersects the
@@ -610,6 +636,20 @@ namespace DJMaxEditor.Preview
             var notes = new List<ProjectedGameplayNote>();
             List<TrackData> noteTracks = SelectGenericNoteTracks(model);
             int laneCount = Math.Max(1, noteTracks.Count);
+            bool hasShoulders = false;
+            if (model.SourceFormat == ChartFormat.TrailerRespectV && noteTracks.Count > 0)
+            {
+                // The gear mode comes from the mains alone: 8B is 6 mains with shoulders, and
+                // the 4BFX / 5BFX mission modes are 4 / 5 mains with shoulders, so counting the
+                // shoulder tracks as lanes puts a 4BFX chart on the 6-lane pitch. The shoulders
+                // are overlay bars on the mains' gear, not lanes of their own - see
+                // docs/respectv-playfield-research.md.
+                int mains = Math.Max(4, Math.Min(6, noteTracks.Count(
+                    track => track.Idx >= 3 && track.Idx <= 8)));
+                hasShoulders = noteTracks.Any(
+                    track => track.Idx == 10 || track.Idx == 11);
+                laneCount = hasShoulders && mains == 6 ? 8 : mains;
+            }
             RespectGameplayLayout respectLayout =
                 model.SourceFormat == ChartFormat.TrailerRespectV &&
                 RespectGameplayLayout.NormalizeLaneMode(laneCount) != 0
@@ -660,7 +700,9 @@ namespace DJMaxEditor.Preview
                     model, notes, respectLayout, 9,
                     GameplayPreviewLaneRole.SideTrackRight,
                     RespectGameplayNoteType.Analog);
-                if (laneCount == 8)
+                // L2/R2 exist only on XB, which is 8B with more shoulders - so they are gated
+                // on the shoulders being there, not on the lane count reading 8.
+                if (hasShoulders)
                 {
                     AddRespectSideTrack(
                         model, notes, respectLayout, 12,
@@ -691,15 +733,18 @@ namespace DJMaxEditor.Preview
             TrackData track,
             int laneCount)
         {
-            if (laneCount != 8)
-            {
-                return GameplayPreviewLaneRole.Regular;
-            }
-
+            // Trailer track ids are authoritative: 10/11 are the shoulder bars in every mode
+            // that has them, including 4BFX/5BFX, so this is not gated on the lane count. (It
+            // was, and the gate is what drew 4BFX shoulders as overlapping white lane notes.)
             if (model.SourceFormat == ChartFormat.TrailerRespectV)
             {
                 if (track.Idx == 10) return GameplayPreviewLaneRole.ExtraButtonLeft;
                 if (track.Idx == 11) return GameplayPreviewLaneRole.ExtraButtonRight;
+                return GameplayPreviewLaneRole.Regular;
+            }
+
+            if (laneCount != 8)
+            {
                 return GameplayPreviewLaneRole.Regular;
             }
 

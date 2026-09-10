@@ -683,7 +683,7 @@ namespace DJMaxEditor.Studio.Audio
         /// <paramref name="volume"/> and pan <paramref name="pan"/> (0..127, 64 = centre), optionally
         /// seeking <paramref name="offset"/> PCM frames (source rate) into the sample.
         /// <para>
-        /// Two divergences from the legacy backend, both deliberate:
+        /// Three divergences from the legacy backend, all deliberate:
         /// </para>
         /// <list type="number">
         /// <item><description>The seek is applied before the voice is ever audible. FMOD was told to
@@ -691,6 +691,14 @@ namespace DJMaxEditor.Studio.Audio
         /// <item><description>A seek past the end of the sample starts the voice silent instead of
         /// playing from the beginning as FMOD's failed seek did - firing a note the chart has already
         /// scrolled past, at full volume, is the worse of the two behaviours.</description></item>
+        /// <item><description>A start breaks a <i>settled</i> group pause. FMOD would have parked the
+        /// new channel paused with the group and left it frozen there; but every caller of this
+        /// method is an audition - a click on a note, a sample-list double-click - and a silent
+        /// audition is useless. The guard is narrow on purpose: only when the fade has already
+        /// reached zero and no pause-as-stop teardown is still owed, so a start that lands inside
+        /// the 8 ms pause ramp still joins the fade-out instead of resurrecting the voices it is
+        /// silencing. <see cref="PlayNote"/> deliberately does not do this: the sequencer only runs
+        /// un-paused, and a stale note must never un-pause a paused transport by itself.</description></item>
         /// </list>
         /// </summary>
         public bool PlaySound(uint channelIndex, uint soundIndex, float volume, byte pan, uint offset = 0)
@@ -725,6 +733,17 @@ namespace DJMaxEditor.Studio.Audio
                     // hot path for that and it must stay cheap and quiet.
                     _playFailures++;
                     return false;
+                }
+
+                // Auditions break a settled pause - see the contract note above. Only when the
+                // audition will actually sound (the sample check passed) and only when the pause
+                // has nothing left to do: fade at zero and no teardown owed. A pause whose ramp
+                // is still moving, or whose teardown the device thread has not run yet, keeps the
+                // new voice frozen with the old ones, and the teardown clears it unheard - an 8 ms
+                // window in which a click stays silent, versus resurrecting a fading mix.
+                if (_group.Paused && !_silenceWhenFadedOut && _group.FadeLevel <= 0f)
+                {
+                    _group.Paused = false;
                 }
 
                 ReleaseChannelLocked(index);

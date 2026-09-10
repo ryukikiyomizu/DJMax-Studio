@@ -655,31 +655,35 @@ namespace DJMaxEditor.Files.bms
                 .Select(track => track.Idx));
 
             // Respect's standard DJMAX layouts store gameplay on tracks 3..6 (4B), 3..7
-            // (5B), 3..8 (6B), or 3..8 + 10..11 (8B). Setup, preview, and autoplay
-            // keysounds live on other tracks and must remain channel 01 BGM.
-            bool isEightButton = noteTracks.Contains(10) || noteTracks.Contains(11);
-            int laneCount;
-            uint[] sourceTracks;
-            if (isEightButton)
-            {
-                laneCount = 8;
-                sourceTracks = new uint[] { 3, 4, 5, 6, 7, 8, 10, 11 };
-            }
-            else
-            {
-                uint highestGameplayTrack = noteTracks
-                    .Where(track => track >= 3 && track <= 8)
-                    .Concat(new uint[] { 0 })
-                    .Max();
-                if (highestGameplayTrack == 0)
-                    return new Dictionary<uint, string>();
+            // (5B), or 3..8 (6B), with the L1/R1 shoulder inputs on 10..11 wherever the mode
+            // has them: 8B is 6 mains plus shoulders, and the Clazziquai mission modes 4BFX /
+            // 5BFX are 4 / 5 mains plus shoulders. Mains and shoulders are inferred separately
+            // on purpose - reading "notes on 10/11" as 8B promoted a 4BFX chart onto the
+            // 6-lane pitch with two ghost lanes. Setup, preview, and autoplay keysounds live
+            // on other tracks and must remain channel 01 BGM. See
+            // docs/respectv-playfield-research.md for the per-mode tables.
+            bool hasShoulders = noteTracks.Contains(10) || noteTracks.Contains(11);
+            uint highestGameplayTrack = noteTracks
+                .Where(track => track >= 3 && track <= 8)
+                .Concat(new uint[] { 0 })
+                .Max();
+            if (highestGameplayTrack == 0)
+                return new Dictionary<uint, string>();
 
-                laneCount = Math.Max(4, Math.Min(6, (int)highestGameplayTrack - 2));
-                sourceTracks = Enumerable.Range(3, laneCount).Select(x => (uint)x).ToArray();
+            int mains = Math.Max(4, Math.Min(6, (int)highestGameplayTrack - 2));
+            var sourceTracks = new List<uint>(
+                Enumerable.Range(3, mains).Select(x => (uint)x));
+            if (hasShoulders)
+            {
+                // After the mains, so the channel order keeps them there too: the projector
+                // numbers its regular lanes in track order and the shoulders must not take a
+                // regular lane's number.
+                sourceTracks.Add(10);
+                sourceTracks.Add(11);
             }
 
             var result = new Dictionary<uint, string>();
-            for (int lane = 0; lane < laneCount; lane++)
+            for (int lane = 0; lane < sourceTracks.Count; lane++)
                 result[sourceTracks[lane]] = DefaultPlayableChannels[lane];
             return result;
         }
