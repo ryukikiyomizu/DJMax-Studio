@@ -24,8 +24,11 @@ namespace DJMaxEditor.Studio.Preview
     /// <para>
     /// The drawing is two-lane art rather than a reskin of the TECHNIKA view because the game is:
     /// notes are the flat bars the Steam/RESPECT note skin authors (silver-white on the primary
-    /// lanes, azure on the alternating ones, aqua shoulders, red/purple side acts), sampled from
-    /// the owner's Shino-Tokuu set so the extraction is the authority rather than a guess.
+    /// lanes, azure on the alternating ones, hot-pink shoulder bars, teal side-track bars),
+    /// sampled from the owner's Shino-Tokuu set so the extraction is the authority rather than
+    /// a guess. The per-mode geometry - which lanes exist, which are blue, and the wide bars
+    /// the shoulders and sides are - is researched in
+    /// <c>docs/respectv-playfield-research.md</c>, which is the authority this file defers to.
     /// The gear itself - the smoky playfield glass, the navy header plate, the thin metal edge
     /// rails and the steel bottom deck the judgement line rides on - is drawn from the same
     /// extraction when <c>LocalAssets\RespectV\Gear</c> is populated (see
@@ -34,10 +37,13 @@ namespace DJMaxEditor.Studio.Preview
     /// readable frame.
     /// </para>
     /// <para>
-    /// Layering mirrors the game: glass and lanes underneath, notes in the middle, the bottom
-    /// deck, edge rails and the judgement line over them - approaching notes drop behind the
-    /// deck exactly as they do on the real gear. Three retained visuals, one per invalidation
-    /// frequency, the same discipline the TECHNIKA view and the chart canvas keep.
+    /// Layering mirrors the game: glass and lanes underneath, then the wide side-track bars,
+    /// then the pink shoulder bars, then the main notes, with the bottom deck, edge rails and
+    /// the judgement line over them - approaching notes drop behind the deck exactly as they do
+    /// on the real gear. The bars sit under the mains because the game draws them there, which
+    /// it can afford because charts never put same-half lane notes under a side bar. Three
+    /// retained visuals, one per invalidation frequency, the same discipline the TECHNIKA view
+    /// and the chart canvas keep.
     /// </para>
     /// </summary>
     internal sealed class RespectPlayfieldView : FrameworkElement, IGameplayPlayfieldView
@@ -68,20 +74,21 @@ namespace DJMaxEditor.Studio.Preview
         private int _glassLaneCount = -1;
         private Size _glassSize;
 
-        /// <summary>Frozen once per use. Note hues are the sampled Shino-Tokuu values.</summary>
+        /// <summary>
+        /// Frozen once per use. The white/blue mains are the sampled Shino-Tokuu values; the
+        /// hot-pink shoulders and the teal sides are research-derived (see the research doc) -
+        /// the extraction this was sampled from carries no art for either bar.
+        /// </summary>
         private static readonly Brush NoteWhite = Frozen("#FFDEE7F2");
         private static readonly Brush NoteWhiteEdge = Frozen("#FFFFFFFF");
         private static readonly Brush NoteBlue = Frozen("#FF509DDE");
         private static readonly Brush NoteBlueEdge = Frozen("#FF9CD2FF");
-        private static readonly Brush NoteCyan = Frozen("#FF3DC6BE");
-        private static readonly Brush NoteCyanEdge = Frozen("#FF8FF2EA");
-        private static readonly Brush NoteSideL = Frozen("#CCEE1640");
-        private static readonly Brush NoteSideREdge = Frozen("#E0DC70FF");
-        private static readonly Brush NoteSideR = Frozen("#CCC625FC");
-        private static readonly Brush NoteSideLEdge = Frozen("#E0FF6E8E");
+        private static readonly Brush NotePink = Frozen("#FFF2447F");
+        private static readonly Brush NotePinkEdge = Frozen("#FFFFB3D1");
+        private static readonly Brush NoteSide = Frozen("#CC3DC6BE");
+        private static readonly Brush NoteSideEdge = Frozen("#E08FF2EA");
         private static readonly Brush FieldBrush = Frozen("#D0080D15");
         private static readonly Brush FieldAltBrush = Frozen("#D00B1420");
-        private static readonly Brush SideRailBrush = Frozen("#66142030");
         private static readonly Pen EdgePen = FrozenPen("#33223548", 1.0);
         private static readonly Brush JudgeGlow = Frozen("#6638E0FF");
         private static readonly Pen JudgeLine = FrozenPen("#FFA9F2FF", 2.0);
@@ -282,35 +289,70 @@ namespace DJMaxEditor.Studio.Preview
             }
             lanes.Sort((a, b) => a.NativeX.CompareTo(b.NativeX));
 
-            // Lane width from spacing: adjacent lanes share a pitch (120/96/80 by mode), and the
-            // edge lanes mirror it. Side rails get a fixed narrow rail instead.
+            // Regular lane width from spacing: adjacent lanes share a pitch (120/96/80 by mode),
+            // and the edge lanes mirror it. Measured over the regular lanes only, so an overlay
+            // bar sitting at a half-centre cannot donate its X to a neighbour's pitch.
             for (int i = 0; i < lanes.Count; i++)
             {
                 RespectLanePlan lane = lanes[i];
-                if (lane.Role == GameplayPreviewLaneRole.SideTrackLeft ||
-                    lane.Role == GameplayPreviewLaneRole.SideTrackRight)
+                if (lane.Role != GameplayPreviewLaneRole.Regular)
                 {
-                    lane.LaneWidth = 34;
+                    continue;
                 }
-                else if (lane.Role == GameplayPreviewLaneRole.ExtraButtonLeft ||
-                    lane.Role == GameplayPreviewLaneRole.ExtraButtonRight)
+                double pitch = 80;
+                bool measured = false;
+                for (int j = i + 1; j < lanes.Count; j++)
                 {
-                    lane.LaneWidth = 46;
-                }
-                else
-                {
-                    double pitch = 80;
-                    if (i + 1 < lanes.Count)
+                    if (lanes[j].Role == GameplayPreviewLaneRole.Regular)
                     {
-                        pitch = lanes[i + 1].NativeX - lane.NativeX;
+                        pitch = lanes[j].NativeX - lane.NativeX;
+                        measured = true;
+                        break;
                     }
-                    else if (i > 0)
-                    {
-                        pitch = lane.NativeX - lanes[i - 1].NativeX;
-                    }
-                    lane.LaneWidth = Math.Max(40, pitch - 4);
                 }
+                if (!measured)
+                {
+                    for (int j = i - 1; j >= 0; j--)
+                    {
+                        if (lanes[j].Role == GameplayPreviewLaneRole.Regular)
+                        {
+                            pitch = lane.NativeX - lanes[j].NativeX;
+                            break;
+                        }
+                    }
+                }
+                lane.LaneWidth = Math.Max(40, pitch - 4);
                 lanes[i] = lane;
+            }
+
+            // Overlay bars from the regular span: each shoulder and each side bar runs from its
+            // half's outer lane edge to the centre, stopping 2 units short so the two halves
+            // never touch. On every shipped pitch the outer edge lands at +/-238, so the bars
+            // come out 236 wide around the +/-120 half-centres the projector places them at.
+            double outer = 0;
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                if (lanes[i].Role == GameplayPreviewLaneRole.Regular)
+                {
+                    double edge = Math.Abs(lanes[i].NativeX) + (lanes[i].LaneWidth / 2.0);
+                    if (edge > outer)
+                    {
+                        outer = edge;
+                    }
+                }
+            }
+            if (outer <= 0)
+            {
+                outer = 238;
+            }
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                if (lanes[i].Role != GameplayPreviewLaneRole.Regular)
+                {
+                    RespectLanePlan bar = lanes[i];
+                    bar.LaneWidth = Math.Max(40, outer - 2);
+                    lanes[i] = bar;
+                }
             }
             return lanes.ToArray();
         }
@@ -345,7 +387,6 @@ namespace DJMaxEditor.Studio.Preview
                 }
 
                 DrawLaneFields(dc, field);
-                DrawSideRails(dc, field);
             }
 
             using (DrawingContext dc = _deck.RenderOpen())
@@ -359,19 +400,22 @@ namespace DJMaxEditor.Studio.Preview
             var separator = new StreamGeometry();
             using (StreamGeometryContext ctx = separator.Open())
             {
+                // Regular lanes only: shoulders and sides are overlay bars, not lanes, and the
+                // game draws no lane field or rule under them. The alternation counts regular
+                // lanes, not plan entries, so the overlay entries sharing their X do not flip it.
+                int regular = 0;
                 for (int i = 0; i < _lanes.Length; i++)
                 {
                     RespectLanePlan lane = _lanes[i];
-                    if (lane.Role != GameplayPreviewLaneRole.Regular &&
-                        lane.Role != GameplayPreviewLaneRole.ExtraButtonLeft &&
-                        lane.Role != GameplayPreviewLaneRole.ExtraButtonRight)
+                    if (lane.Role != GameplayPreviewLaneRole.Regular)
                     {
                         continue;
                     }
 
                     double x = NativeXToScreen(lane.NativeX, field);
                     double half = NativeWidthToScreen(lane.LaneWidth, field) / 2.0;
-                    Brush shade = (i % 2 == 0) ? FieldBrush : FieldAltBrush;
+                    Brush shade = (regular % 2 == 0) ? FieldBrush : FieldAltBrush;
+                    regular++;
                     if (_gear.Backdrop == null)
                     {
                         dc.DrawRectangle(shade, null,
@@ -385,23 +429,6 @@ namespace DJMaxEditor.Studio.Preview
             }
             separator.Freeze();
             dc.DrawGeometry(null, LaneRulePen, separator);
-        }
-
-        private void DrawSideRails(DrawingContext dc, Rect field)
-        {
-            for (int i = 0; i < _lanes.Length; i++)
-            {
-                RespectLanePlan lane = _lanes[i];
-                if (lane.Role != GameplayPreviewLaneRole.SideTrackLeft &&
-                    lane.Role != GameplayPreviewLaneRole.SideTrackRight)
-                {
-                    continue;
-                }
-                double x = NativeXToScreen(lane.NativeX, field);
-                double w = NativeWidthToScreen(lane.LaneWidth, field);
-                dc.DrawRectangle(SideRailBrush, null,
-                    new Rect(x - (w / 2.0), field.Top, w, field.Height));
-            }
         }
 
         /// <summary>
@@ -485,79 +512,118 @@ namespace DJMaxEditor.Studio.Preview
             // note never floats over the cabinet.
             dc.PushClip(new RectangleGeometry(field));
 
+            // Three passes, bottom to top, because the game layers them: the wide side-track bars
+            // first, then the pink shoulder bars, then the main notes over both. One loop with a
+            // sort would do it in a single walk, but the frame is already in pulse order and the
+            // three walks are cheaper than reordering it.
             for (int i = 0; i < _frame.Notes.Count; i++)
             {
                 ProjectedGameplayNote note = _frame.Notes[i];
-                if (note.State == GameplayPreviewNoteState.Inactive ||
-                    note.State == GameplayPreviewNoteState.Resolved)
+                if (note.LaneRole == GameplayPreviewLaneRole.SideTrackLeft ||
+                    note.LaneRole == GameplayPreviewLaneRole.SideTrackRight)
                 {
-                    continue;
+                    DrawNote(dc, note, field, layout);
                 }
-
-                RespectLanePlan lane = LaneFor(note);
-                double x = NativeXToScreen(note.NativeX, field);
-                double width = NativeWidthToScreen(lane.LaneWidth, field);
-
-                // note.NativeY is the *head's* position along the native axis; the head sits
-                // astride the judgement line at the moment it is due, and a held note's body
-                // trails upward behind it (screen-negative: further ahead in time is further up).
-                double yHead = NativeYToScreen(note.NativeY, field);
-                double headHeight = Math.Max(
-                    NativeHeightToScreen(layout.GetDefaultNoteHeight(note.RespectType), field), 4.0);
-                double bodyHeight = Math.Max(
-                    NativeHeightToScreen(note.NativeHeight, field), headHeight);
-
-                Brush fill;
-                Brush edge;
-                switch (note.RespectType)
+            }
+            for (int i = 0; i < _frame.Notes.Count; i++)
+            {
+                ProjectedGameplayNote note = _frame.Notes[i];
+                if (note.LaneRole == GameplayPreviewLaneRole.ExtraButtonLeft ||
+                    note.LaneRole == GameplayPreviewLaneRole.ExtraButtonRight)
                 {
-                    case RespectGameplayNoteType.Blue:
-                        fill = NoteBlue; edge = NoteBlueEdge; break;
-                    case RespectGameplayNoteType.Analog:
-                        fill = note.LaneRole == GameplayPreviewLaneRole.SideTrackLeft
-                            ? NoteSideL : NoteSideR;
-                        edge = note.LaneRole == GameplayPreviewLaneRole.SideTrackLeft
-                            ? NoteSideLEdge : NoteSideREdge;
-                        break;
-                    case RespectGameplayNoteType.L1:
-                    case RespectGameplayNoteType.L2:
-                    case RespectGameplayNoteType.R1:
-                    case RespectGameplayNoteType.R2:
-                        fill = NoteCyan; edge = NoteCyanEdge; break;
-                    default:
-                        fill = NoteWhite; edge = NoteWhiteEdge; break;
+                    DrawNote(dc, note, field, layout);
                 }
-
-                if (bodyHeight > headHeight + 1.0)
+            }
+            for (int i = 0; i < _frame.Notes.Count; i++)
+            {
+                ProjectedGameplayNote note = _frame.Notes[i];
+                if (note.LaneRole == GameplayPreviewLaneRole.Regular)
                 {
-                    // The held body: same hue at half light, so it reads as one note stretched
-                    // rather than two stacked. It ends one head-height past the head, whose own
-                    // cap is drawn after.
-                    Brush body = HalfLit(fill);
-                    dc.DrawRectangle(body, null,
-                        new Rect(x - (width / 2.0) + 2, yHead - bodyHeight, width - 4,
-                            bodyHeight - headHeight / 2.0));
-                }
-
-                double headTop = yHead - headHeight;
-                Rect head = new Rect(
-                    Math.Round(x - (width / 2.0)) + 0.5,
-                    Math.Round(headTop) + 0.5,
-                    Math.Max(2, Math.Round(width) - 1),
-                    Math.Max(2, Math.Round(headHeight) - 1));
-                bool analog = note.RespectType == RespectGameplayNoteType.Analog;
-                dc.DrawRectangle(fill, analog ? null : EdgePen, head);
-                if (!analog)
-                {
-                    // Bright top edge: the note art's own reading, one lighter line across the
-                    // top of the bar. Frozen once per hue, or this allocates a pen per note.
-                    Pen edgePen = EdgePenFor(edge);
-                    dc.DrawLine(edgePen,
-                        new Point(head.Left + 1, head.Top + 1), new Point(head.Right - 1, head.Top + 1));
+                    DrawNote(dc, note, field, layout);
                 }
             }
 
             dc.Pop();
+        }
+
+        private void DrawNote(
+            DrawingContext dc,
+            ProjectedGameplayNote note,
+            Rect field,
+            RespectGameplayLayout layout)
+        {
+            if (note.State == GameplayPreviewNoteState.Inactive ||
+                note.State == GameplayPreviewNoteState.Resolved)
+            {
+                return;
+            }
+
+            RespectLanePlan lane = LaneFor(note);
+            double x = NativeXToScreen(note.NativeX, field);
+            double width = NativeWidthToScreen(lane.LaneWidth, field);
+
+            // note.NativeY is the *head's* position along the native axis; the head sits
+            // astride the judgement line at the moment it is due, and a held note's body
+            // trails upward behind it (screen-negative: further ahead in time is further up).
+            double yHead = NativeYToScreen(note.NativeY, field);
+            double headHeight = Math.Max(
+                NativeHeightToScreen(layout.GetDefaultNoteHeight(note.RespectType), field), 4.0);
+            double bodyHeight = Math.Max(
+                NativeHeightToScreen(note.NativeHeight, field), headHeight);
+
+            Brush fill;
+            Brush edge;
+            switch (note.RespectType)
+            {
+                case RespectGameplayNoteType.Blue:
+                    fill = NoteBlue; edge = NoteBlueEdge; break;
+                case RespectGameplayNoteType.Analog:
+                    // Both sides the same teal: the game never coloured them apart, and the old
+                    // red-left/purple-right split was invented.
+                    fill = NoteSide; edge = NoteSideEdge; break;
+                case RespectGameplayNoteType.L1:
+                case RespectGameplayNoteType.L2:
+                case RespectGameplayNoteType.R1:
+                case RespectGameplayNoteType.R2:
+                    fill = NotePink; edge = NotePinkEdge; break;
+                default:
+                    fill = NoteWhite; edge = NoteWhiteEdge; break;
+            }
+
+            if (bodyHeight > headHeight + 1.0)
+            {
+                // The held body: same hue at half light, so it reads as one note stretched
+                // rather than two stacked. It ends one head-height past the head, whose own
+                // cap is drawn after.
+                Brush body = HalfLit(fill);
+                dc.DrawRectangle(body, null,
+                    new Rect(x - (width / 2.0) + 2, yHead - bodyHeight, width - 4,
+                        bodyHeight - headHeight / 2.0));
+
+                // The tail cap: one full-bright bar across the body's far end, so a hold reads
+                // as finished up there rather than clipped by the window. Same width as the
+                // head, so a wide bar gets a wide cap.
+                double tailHeight = Math.Max(2.0, headHeight / 2.0);
+                dc.DrawRectangle(fill, null,
+                    new Rect(x - (width / 2.0) + 2, yHead - bodyHeight, width - 4, tailHeight));
+            }
+
+            double headTop = yHead - headHeight;
+            Rect head = new Rect(
+                Math.Round(x - (width / 2.0)) + 0.5,
+                Math.Round(headTop) + 0.5,
+                Math.Max(2, Math.Round(width) - 1),
+                Math.Max(2, Math.Round(headHeight) - 1));
+            bool analog = note.RespectType == RespectGameplayNoteType.Analog;
+            dc.DrawRectangle(fill, analog ? null : EdgePen, head);
+            if (!analog)
+            {
+                // Bright top edge: the note art's own reading, one lighter line across the
+                // top of the bar. Frozen once per hue, or this allocates a pen per note.
+                Pen edgePen = EdgePenFor(edge);
+                dc.DrawLine(edgePen,
+                    new Point(head.Left + 1, head.Top + 1), new Point(head.Right - 1, head.Top + 1));
+            }
         }
 
         private RespectLanePlan LaneFor(ProjectedGameplayNote note)

@@ -173,9 +173,12 @@ namespace DJMaxEditor.Studio.Settings
                 VerticalTimelineViewModel.MinColumnScale,
                 VerticalTimelineViewModel.MaxColumnScale,
                 1.0);
-            // The same range the XAML slider declares. The floor is not zero on purpose: a zero
-            // pixels-per-tick collapses every note onto one row and there is no gesture back.
-            NoteSpeed = StudioSettings.Clamp(NoteSpeed, 0.05, 4.0, 0.55);
+            // The same range the XAML sliders declare, and the model's own ceiling: the old 4.0
+            // stopped the slider halfway to MaxPixelsPerTick, so the deepest zoom-in was only
+            // reachable by Alt+wheel and the slider disagreed with it afterwards. The floor is
+            // not zero on purpose: a zero pixels-per-tick collapses every note onto one row and
+            // there is no gesture back.
+            NoteSpeed = StudioSettings.Clamp(NoteSpeed, 0.05, 8.0, 0.55);
             NoteThickness = StudioSettings.Clamp(
                 NoteThickness,
                 VerticalTimelineViewModel.MinNoteThickness,

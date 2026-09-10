@@ -314,7 +314,7 @@ namespace DJMaxEditor.Studio.Design
         /// <para>
         /// RESPECT V's reading is colder than IIDX's: the gear is a near-black navy glass and the
         /// notes are ice - white-cyan on the primary lanes, azure on the alternating ones, with
-        /// the game's hot pink reserved for what demands attention (the analogue rails in
+        /// the game's hot pink reserved for what demands attention (the shoulder bars in
         /// gameplay, the accent notes here). Colour again tracks the lane, because that is what
         /// the gear's own lane stagger teaches, and because 4B/5B/6B/8B presets alternate
         /// primary/alternate lane roles exactly the way <see cref="NotesColouredByLane"/>

@@ -156,6 +156,14 @@ namespace DJMaxEditor.Studio.Shell
         private bool _pumpAttached;
         private int _lastPumpVirtualTick = -1;
         private bool _suppressComboEvents;
+
+        /// <summary>
+        /// True while the NoteSpeed slider is being written from the view model rather than by
+        /// the user. Setting <c>Slider.Value</c> in code raises <c>ValueChanged</c> like a drag
+        /// does, so without this the two-way zoom sync would answer its own echo.
+        /// </summary>
+        private bool _syncingNoteSpeed;
+
         private double _lastFrameMilliseconds;
 
         /// <summary>
@@ -199,6 +207,11 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.NoteClicked += OnCanvasNoteClicked;
             _canvas.GridCycleRequested += OnCanvasGridCycle;
             _volumeLane.VolumeEdited += OnCanvasInteractionCompleted;
+
+            // The other half of the zoom sync: toolbar zoom and Alt+wheel change the model's zoom
+            // without touching the slider, so the slider follows the model here. The slider's own
+            // handler is the half going the other way.
+            _viewModel.TimeZoomChanged += OnTimeZoomChanged;
 
             // Owns the bar from here on: it subscribes to the canvas's FrameBuilt itself, so the
             // shell only has to say which edge the bar sits on.
@@ -1659,8 +1672,9 @@ namespace DJMaxEditor.Studio.Shell
 
         /// <summary>
         /// "Play keysounds on click": a click landing on a note sounds that note's keysound once,
-        /// through the same isolated channel and gain a sample-list double-click uses, so it never
-        /// cuts a note that playback has sounding.
+        /// through the same audition channel and gain a sample-list double-click uses - the top
+        /// channel, which no shipped format addresses - so it never cuts a note that playback
+        /// has sounding.
         /// </summary>
         private void OnCanvasNoteClicked(object sender, EventData note)
         {
@@ -2468,7 +2482,7 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void OnNoteSpeedChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (!_ready)
+            if (!_ready || _syncingNoteSpeed)
             {
                 return;
             }
@@ -2476,6 +2490,38 @@ namespace DJMaxEditor.Studio.Shell
             _viewModel.TrySetTimeZoom((float)(e.NewValue / VerticalTimelineViewModel.BasePixelsPerTick));
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
+            RefreshStatus();
+        }
+
+        /// <summary>
+        /// The zoom the model is really at, reflected back onto the NoteSpeed slider. The slider
+        /// is pixels-per-tick wearing a friendlier name, so this is a plain assignment - clamped
+        /// by the slider itself when the model sits outside its range. The epsilon is what keeps
+        /// a drag from fighting its own echo: the slider writes the model, the model answers here,
+        /// and a value that came back unchanged must not write the slider again.
+        /// </summary>
+        private void OnTimeZoomChanged(object sender, EventArgs e)
+        {
+            if (!_ready)
+            {
+                return;
+            }
+            double zoom = _viewModel.PixelsPerTick;
+            if (Math.Abs(zoom - NoteSpeedSlider.Value) < 1e-9)
+            {
+                return;
+            }
+            _syncingNoteSpeed = true;
+            try
+            {
+                NoteSpeedSlider.Value = zoom;
+                NoteSpeedReadout.Text =
+                    NoteSpeedSlider.Value.ToString("0.00", CultureInfo.InvariantCulture);
+            }
+            finally
+            {
+                _syncingNoteSpeed = false;
+            }
             RefreshStatus();
         }
 
@@ -2849,15 +2895,25 @@ namespace DJMaxEditor.Studio.Shell
             {
                 return;
             }
-            // Auditions go out on a channel the sequencer never uses, so previewing a keysound
-            // during playback cannot cut off a note that is sounding. Its own volume preference,
-            // separate from the master, because auditioning is a comparison and playback is a mix.
+            // Auditions go out on the top channel, which no shipped format addresses, so
+            // previewing a keysound during playback cannot cut off a note that is sounding. Its
+            // own volume preference, separate from the master, because auditioning is a
+            // comparison and playback is a mix.
             float gain = _settings == null ? 1f : (float)_settings.Audio.AuditionVolume;
             _audio.PlaySound(AuditionChannel, instrument.InsNum, gain, 64);
         }
 
-        /// <summary>A channel index above any track a chart can address, reserved for auditions.</summary>
-        private const uint AuditionChannel = 512;
+        /// <summary>
+        /// The channel auditions go out on. The top of the player's 100-channel table, not above
+        /// it: channel indices wrap modulo <c>MAX_CHANNEL</c>, so the old 512 was really channel
+        /// 12 - a track TECHNIKA charts and XB charts both address, and exactly the note an
+        /// audition must not steal. Nothing addressable is perfectly isolated - a trailer chart
+        /// can carry 256 tracks - but no shipped format puts gameplay on track 99, and with the
+        /// player's overlapping retrigger on (the default) even that collision would ring out
+        /// rather than cut. See <see cref="NAudioKeysoundPlayer.PlaySound"/> for why an audition
+        /// also breaks a settled pause instead of freezing silently inside it.
+        /// </summary>
+        private const uint AuditionChannel = 99;
 
         private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {

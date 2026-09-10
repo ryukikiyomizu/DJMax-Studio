@@ -856,42 +856,51 @@ namespace DJMaxEditor.Studio.Preview
                 dc.PushOpacity(PrepareOpacity);
             }
 
-            DrawTrail(dc, note, center, size, brushes);
+            DrawTrail(dc, note, size, brushes);
 
-            TechnikaNoteSprite sprite = _sprites.For(note.Kind);
+            // The head draws only while its own scan is on screen. A hold whose head the sweep
+            // has passed but whose tail is still ahead stays Active for its body (see the
+            // projector), and drawing its head at a stale scan position would park a struck
+            // note on the field behind the line. The trail above is the whole of it then.
+            bool headVisible = note.ScanIndex == _frame.CurrentIntScan ||
+                note.ScanIndex == _frame.CurrentIntScan + 1;
+            if (headVisible)
+            {
+                TechnikaNoteSprite sprite = _sprites.For(note.Kind);
 
-            if (note.ApproachVisible)
-            {
-                DrawApproach(dc, note, center, size);
-            }
-
-            Rect head = new Rect(
-                center.X - (headSize / 2), center.Y - (headSize / 2), headSize, headSize);
-            if (sprite == null)
-            {
-                // Vector chrome stands in for art that is missing; it does not layer under art that
-                // is present. The arcade glyphs carry their own glow inside their frame, and a
-                // second one behind them reads as a smudge around the note rather than as light
-                // coming off it. A filled ellipse still says where the note is and what kind it is,
-                // which is the whole job of the fallback.
-                dc.DrawEllipse(brushes.Glow, null, center, size * 0.72, size * 0.72);
-                dc.DrawEllipse(brushes.Fill, brushes.Edge, center, size / 2, size / 2);
-            }
-            else
-            {
-                // A chain head is an arrow, so it is the one glyph whose orientation carries
-                // meaning: it says where the chain goes next, and a chain crosses lanes. Turning
-                // the image is the whole of that - the vector fallback below is a disc, which has
-                // no direction to be wrong about.
-                bool turned = Math.Abs(angleDegrees) > 0.01;
-                if (turned)
+                if (note.ApproachVisible)
                 {
-                    dc.PushTransform(new RotateTransform(angleDegrees, center.X, center.Y));
+                    DrawApproach(dc, note, center, size);
                 }
-                dc.DrawImage(sprite.Frame(_frame.CurrentScan * ShineLoopsPerScan), head);
-                if (turned)
+
+                Rect head = new Rect(
+                    center.X - (headSize / 2), center.Y - (headSize / 2), headSize, headSize);
+                if (sprite == null)
                 {
-                    dc.Pop();
+                    // Vector chrome stands in for art that is missing; it does not layer under art
+                    // that is present. The arcade glyphs carry their own glow inside their frame,
+                    // and a second one behind them reads as a smudge around the note rather than
+                    // as light coming off it. A filled ellipse still says where the note is and
+                    // what kind it is, which is the whole job of the fallback.
+                    dc.DrawEllipse(brushes.Glow, null, center, size * 0.72, size * 0.72);
+                    dc.DrawEllipse(brushes.Fill, brushes.Edge, center, size / 2, size / 2);
+                }
+                else
+                {
+                    // A chain head is an arrow, so it is the one glyph whose orientation carries
+                    // meaning: it says where the chain goes next, and a chain crosses lanes.
+                    // Turning the image is the whole of that - the vector fallback below is a
+                    // disc, which has no direction to be wrong about.
+                    bool turned = Math.Abs(angleDegrees) > 0.01;
+                    if (turned)
+                    {
+                        dc.PushTransform(new RotateTransform(angleDegrees, center.X, center.Y));
+                    }
+                    dc.DrawImage(sprite.Frame(_frame.CurrentScan * ShineLoopsPerScan), head);
+                    if (turned)
+                    {
+                        dc.Pop();
+                    }
                 }
             }
 
@@ -1276,12 +1285,23 @@ namespace DJMaxEditor.Studio.Preview
             }
         }
 
-        /// <summary>Whether the note pass draws this note at all. A line joined to one it skips would
-        /// hang off a head that has already been played.</summary>
-        private static bool IsDrawn(ProjectedGameplayNote note)
+        /// <summary>
+        /// Whether a run line may join to this note: drawn, and with its head's scan on screen.
+        /// A line joined to a note the pass skips would hang off a head that has already been
+        /// played - and since a spanning hold stays Active for its body while its head is
+        /// behind the window, state alone no longer implies the head is there to join to. The
+        /// hold's continuation trail still draws through the note pass; it just has no head
+        /// in this window for a line to touch.
+        /// </summary>
+        private bool IsDrawn(ProjectedGameplayNote note)
         {
-            return note.State != GameplayPreviewNoteState.Inactive &&
-                note.State != GameplayPreviewNoteState.Resolved;
+            if (note.State == GameplayPreviewNoteState.Inactive ||
+                note.State == GameplayPreviewNoteState.Resolved)
+            {
+                return false;
+            }
+            return note.ScanIndex == _frame.CurrentIntScan ||
+                note.ScanIndex == _frame.CurrentIntScan + 1;
         }
 
         /// <summary>
@@ -1461,11 +1481,18 @@ namespace DJMaxEditor.Studio.Preview
         /// other way: the cap has a flat side and a round one, so drawing it unmirrored down there
         /// would point it back into the note.
         /// </para>
+        /// <para>
+        /// Drawn per visible scan, not as one run from the head: a hold longer than a scan crosses
+        /// the divider into the other half, where the sweep runs the other way, so one straight
+        /// body cannot cover it. Each of the two drawn scans gets the intersection of the hold's
+        /// span with that scan, and only the segment holding the tail gets the cap. A hold whose
+        /// head is behind the window still draws its continuation segments - that is the whole of
+        /// it then, since <see cref="DrawNote"/> skips the head.
+        /// </para>
         /// </summary>
         private void DrawTrail(
             DrawingContext dc,
             ProjectedGameplayNote note,
-            Point center,
             double size,
             TechnikaNoteBrushes brushes)
         {
@@ -1475,34 +1502,91 @@ namespace DJMaxEditor.Studio.Preview
                 return;
             }
 
-            // A duration is a span of the scan, so it is a span of X - and it runs in the sweep
-            // direction, which reverses between halves. Deriving it this way rather than from a
-            // pixel constant is what keeps a hold the right length at any tempo or zoom.
-            double span = note.DurationPulse / PulsesPerScan *
-                (TechnikaPlayfieldMetrics.NoteMarginRight - TechnikaPlayfieldMetrics.NoteMarginLeft) *
-                TechnikaPlayfieldMetrics.NativeWidth;
-            double length = _fit.Length(span);
+            double headFloatScan = note.Pulse / PulsesPerScan;
+            double tailFloatScan = (note.Pulse + note.DurationPulse) / PulsesPerScan;
+            double phase = _frame.CurrentScan * ShineLoopsPerScan;
+
+            for (int scan = _frame.CurrentIntScan; scan <= _frame.CurrentIntScan + 1; scan++)
+            {
+                // The hold's span intersected with this scan, in scan units: a continuation
+                // segment starts at the scan's edge rather than at the head.
+                double start = Math.Max(headFloatScan, scan);
+                double end = Math.Min(tailFloatScan, scan + 1);
+                if (start >= end)
+                {
+                    continue;
+                }
+                DrawTrailSegment(dc, note, size, brushes, phase, scan, start, end,
+                    tailFloatScan <= scan + 1);
+            }
+        }
+
+        /// <summary>
+        /// One scan's worth of a hold's body: the span [<paramref name="start"/>,
+        /// <paramref name="end"/>] in scan units, drawn in <paramref name="scan"/>'s half and lane.
+        /// <para>
+        /// The geometry is the projector's <c>PlaceTechnikaNote</c> run over a span instead of a
+        /// point - the same margins, the same lane stack, the lower half run backwards rather
+        /// than reflected - so a segment starts and ends exactly where notes at those instants
+        /// would. <paramref name="withCap"/> is true only for the segment holding the tail; a
+        /// continuation segment runs body to the scan's edge and stops, because the cap belongs
+        /// to the hold's end, not to the divider it crosses.
+        /// </para>
+        /// <para>
+        /// The lit "in" art follows the sweep per segment rather than per note: while the line
+        /// is inside this segment's span the player is holding this part of the body, and the
+        /// segment in the other half waits its turn at rest.
+        /// </para>
+        /// </summary>
+        private void DrawTrailSegment(
+            DrawingContext dc,
+            ProjectedGameplayNote note,
+            double size,
+            TechnikaNoteBrushes brushes,
+            double phase,
+            int scan,
+            double start,
+            double end,
+            bool withCap)
+        {
+            bool top = (scan & 1) == 1;
+            double left = TechnikaPlayfieldMetrics.NoteMarginLeft;
+            double right = TechnikaPlayfieldMetrics.NoteMarginRight;
+            double fromFraction = start - scan;
+            double toFraction = end - scan;
+            double fromX = top
+                ? left + ((right - left) * fromFraction)
+                : right - ((right - left) * fromFraction);
+            double toX = top
+                ? left + ((right - left) * toFraction)
+                : right - ((right - left) * toFraction);
+
+            int laneCount = Math.Max(1, _projection.LaneCount);
+            double inset = TechnikaPlayfieldMetrics.LaneInset;
+            double localY = inset + ((1.0 - (2.0 * inset)) * (note.Lane + 0.5) / laneCount);
+            double normalizedY = top ? localY / 2.0 : 0.5 + (localY / 2.0);
+
+            Point from = _fit.Note(fromX, normalizedY, top);
+            Point to = _fit.Note(toX, normalizedY, top);
+            double length = Math.Abs(to.X - from.X);
             if (length < 1)
             {
                 return;
             }
 
-            // Past its head and not yet resolved: the sweep is somewhere inside this note's duration,
-            // which is exactly when a player would have it held. The projector already keeps a held
-            // note Active until its tail rather than its head, so the two tests together bracket the
-            // body without this having to re-derive where the line is.
             bool ongoing = note.State == GameplayPreviewNoteState.Active &&
-                note.ApproachScanDistance > 0;
+                _frame.CurrentScan >= start && _frame.CurrentScan <= end;
 
             TechnikaNoteSprite cap = _sprites.TrailCap(note.Kind, ongoing);
             if (cap == null)
             {
-                // No art in the loaded set - the packaged glyphs have no cap - so a themed bar spans
-                // the same duration at lower fidelity, which is what this drew for every kind before.
+                // No art in the loaded set - the packaged glyphs have no cap - so a themed bar
+                // spans the segment at lower fidelity, which is what the trail drew for every
+                // kind before.
                 double flat = size * 0.42;
-                double from = note.IsTopHalf ? center.X : center.X - length;
+                double x = Math.Min(from.X, to.X);
                 dc.DrawRectangle(
-                    brushes.Trail, null, new Rect(from, center.Y - (flat / 2), length, flat));
+                    brushes.Trail, null, new Rect(x, from.Y - (flat / 2), length, flat));
                 return;
             }
 
@@ -1511,17 +1595,20 @@ namespace DJMaxEditor.Studio.Preview
             // at the full 90, and that difference is visible.
             double height = size * _sprites.ScaleOf(cap);
             double aspect = cap.FrameSize > 0 ? cap.FrameWidth / cap.FrameSize : 1.0;
-            double capWidth = Math.Min(length, height * aspect);
+            double capWidth = withCap ? Math.Min(length, height * aspect) : 0.0;
             double body = length - capWidth;
-            double phase = _frame.CurrentScan * ShineLoopsPerScan;
 
+            // Laid out along +x from the segment's start and mirrored when the sweep runs the
+            // other way, exactly as the single-span trail was: the cap has a flat side and a
+            // round one, so drawing it unmirrored on the lower half would point it back into
+            // the note.
             Matrix placement = new Matrix();
             placement.Translate(0, -height / 2.0);
-            if (!note.IsTopHalf)
+            if (to.X < from.X)
             {
                 placement.Scale(-1.0, 1.0);
             }
-            placement.Translate(center.X, center.Y);
+            placement.Translate(from.X, from.Y);
 
             dc.PushTransform(new MatrixTransform(placement));
             if (body > 0)
@@ -1532,7 +1619,10 @@ namespace DJMaxEditor.Studio.Preview
                 ImageSource run = sheet == null ? cap.Stem(phase) : sheet.Frame(phase);
                 dc.DrawImage(run, new Rect(0, 0, body, height));
             }
-            dc.DrawImage(cap.Frame(phase), new Rect(body, 0, capWidth, height));
+            if (withCap)
+            {
+                dc.DrawImage(cap.Frame(phase), new Rect(body, 0, capWidth, height));
+            }
             dc.Pop();
         }
 
