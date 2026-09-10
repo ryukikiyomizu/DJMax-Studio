@@ -15,5 +15,10 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones.Cyclon
         {
             return "Cyclon";
         }
+
+        public override string GetDescription()
+        {
+            return "Left and Right lane bands. Matches Cyclon charts.";
+        }
     }
 }

@@ -11,11 +11,14 @@ Theming is currently spread across two generations:
 is a list of `IEventRenderer` implementations — Null, Technika, Trilogy,
 Cyclon, Respect — picked from a toolbar dropdown (`MainForm.ApplyEventsTheme`)
 and persisted by name (`EditorForm`). `ZonesRenderer.Themes` mirrors it for
-lane/zone art (Trilogy 4/5/6/7/8K, Respect 4/5/6/8B, …). Limits: every theme
-is a compiled-in C# class doing purely procedural GDI+ drawing (no bitmap
-loading anywhere in those renderers), and the newer surfaces below bypass this
-system with their own palettes (TimelineV2 only receives the theme object for
-reference — `EditorForm` lines ~401–402).
+lane/zone art (Trilogy 4/5/6/7/8K, Respect 4/5/6/8B, …). The Technika/Trilogy/
+Cyclon note themes draw embedded `Resources` bitmaps (`DJMRessources`), while
+Default and Respect draw procedurally. Limits: every theme is still a
+compiled-in C# class (no external art files), and the newer surfaces below
+bypass this system with their own palettes (TimelineV2 only receives the theme
+object for reference — `EditorForm` lines ~401–402). A theme picker dialog
+(`UI/ThemePickerForm.cs`, opened from the toolbar "Themes..." button) now
+lists every theme with its `GetDescription()` subtext and applies on click.
 
 **Generation 2 — hardcoded palettes per surface**, all `static readonly`
 values that can only change at compile time:

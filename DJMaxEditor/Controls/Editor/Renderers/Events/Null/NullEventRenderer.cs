@@ -23,6 +23,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
             return "Default";
         }
 
+        public override string GetDescription()
+        {
+            return "Plain boxes with labels. Reads on every chart; nothing game-specific.";
+        }
+
         public override IEnumerable<KeyValuePair<string, EventData>> GetTemplates()
         {
             var list = new List<KeyValuePair<string, EventData>>();

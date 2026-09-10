@@ -12,5 +12,10 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones.Null
         {
             return "Default";
         }
+
+        public override string GetDescription()
+        {
+            return "No lane bands. Just the plain timeline background.";
+        }
     }
 }

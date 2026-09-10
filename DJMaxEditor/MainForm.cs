@@ -321,6 +321,8 @@ namespace DJMaxEditor
                 ApplyZonesTheme(theme);
             }
 
+            RestoreSavedThemes();
+
             BuildVerticalDirectionMenu();
 
             var eventDisplayModes = GetAll<EventDisplayMode>();
@@ -2097,13 +2099,8 @@ namespace DJMaxEditor
                     continue;
                 }
 
-                foreach (ToolStripMenuItem it in toolStripDropDownButton.DropDown.Items)
-                {
-                    it.Checked = false;
-                }
-
-                toolStripMenuItem.Checked = true;
                 ApplyEventsTheme(theme);
+                SyncEventsThemeChecks(theme);
                 break;
             }
         }
@@ -2119,6 +2116,8 @@ namespace DJMaxEditor
             ThemeDropDownButton.Text = "Events theme  " + theme.GetName();
             m_notes.ApplyTheme(theme);
             ApplyPreviewProfileFromEventTheme();
+            Properties.Settings.Default.EventsThemeName = theme.GetName();
+            Properties.Settings.Default.Save();
         }
 
         private void ApplyZonesTheme(IZoneRenderer theme)
@@ -2130,6 +2129,78 @@ namespace DJMaxEditor
 
             m_editorForm.Editor.CurrentZonesTheme = theme;
             zoneRendererToolStripDropDownButton.Text = "Zones theme  " + theme.GetName();
+            Properties.Settings.Default.ZonesThemeName = theme.GetName();
+            Properties.Settings.Default.Save();
+        }
+
+        /// <summary>
+        /// Re-applies the themes saved by a previous session. Unknown names are
+        /// ignored so a theme that no longer exists never breaks startup.
+        /// </summary>
+        private void RestoreSavedThemes()
+        {
+            var editor = m_editorForm.Editor;
+
+            string eventsName = Properties.Settings.Default.EventsThemeName;
+            if (!string.IsNullOrEmpty(eventsName))
+            {
+                foreach (IEventRenderer theme in editor.EventsThemeList)
+                {
+                    if (!string.Equals(theme.GetName(), eventsName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    ApplyEventsTheme(theme);
+                    SyncEventsThemeChecks(theme);
+                    break;
+                }
+            }
+
+            string zonesName = Properties.Settings.Default.ZonesThemeName;
+            if (!string.IsNullOrEmpty(zonesName))
+            {
+                foreach (IZoneRenderer theme in editor.ZonesThemeList)
+                {
+                    if (!string.Equals(theme.GetName(), zonesName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    ApplyZonesTheme(theme);
+                    SyncZonesThemeChecks(theme);
+                    break;
+                }
+            }
+        }
+
+        private void SyncEventsThemeChecks(IEventRenderer current)
+        {
+            foreach (ToolStripMenuItem item in ThemeDropDownButton.DropDownItems)
+            {
+                item.Checked = current != null && item.Text == current.GetName();
+            }
+        }
+
+        private void SyncZonesThemeChecks(IZoneRenderer current)
+        {
+            foreach (ToolStripMenuItem item in zoneRendererToolStripDropDownButton.DropDownItems)
+            {
+                item.Checked = current != null && item.Text == current.GetName();
+            }
+        }
+
+        private void themePickerToolStripButton_Click(object sender, EventArgs e)
+        {
+            var editor = m_editorForm.Editor;
+            using (var dialog = new ThemePickerForm(
+                editor.EventsThemeList,
+                () => editor.CurrentEventsTheme,
+                theme => { ApplyEventsTheme(theme); SyncEventsThemeChecks(theme); },
+                editor.ZonesThemeList,
+                () => editor.CurrentZonesTheme,
+                theme => { ApplyZonesTheme(theme); SyncZonesThemeChecks(theme); }))
+            {
+                dialog.ShowDialog(this);
+            }
         }
 
 
@@ -2270,12 +2341,8 @@ namespace DJMaxEditor
                     continue;
                 }
 
-                foreach (ToolStripMenuItem it in toolStripDropDownButton.DropDown.Items)
-                {
-                    it.Checked = false;
-                }
-                toolStripMenuItem.Checked = true;
                 ApplyZonesTheme(theme);
+                SyncZonesThemeChecks(theme);
                 break;
             }
         }

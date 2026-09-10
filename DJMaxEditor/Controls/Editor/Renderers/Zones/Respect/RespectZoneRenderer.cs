@@ -164,6 +164,11 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones.Respect
             return "Respect " + _layout.Mode + "B";
         }
 
+        public override string GetDescription()
+        {
+            return "Lane bands for " + _layout.Mode + "-button Respect V charts.";
+        }
+
         public override void DrawZones(
             GraphicsWrapper g,
             int trackIndex,

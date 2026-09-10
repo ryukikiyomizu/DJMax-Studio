@@ -14,6 +14,12 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
     {
         string GetName();
 
+        /// <summary>
+        /// One-line subtext for the theme picker, e.g. which game and note
+        /// look the theme targets. Never null or empty.
+        /// </summary>
+        string GetDescription();
+
         void RenderNote(GraphicsWrapper g, EventData eventData, Rectangle eventRectangle, int centerX, int centerY);
 
         void RenderEventData(GraphicsWrapper g, EventData eventData, Rectangle eventRectangle, int centerX, int centerY);
@@ -27,6 +33,8 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Events
     {
 
         public abstract string GetName();
+
+        public abstract string GetDescription();
 
         public abstract void RenderNote(GraphicsWrapper g, EventData eventData, Rectangle eventRectangle, int centerX, int centerY);
 

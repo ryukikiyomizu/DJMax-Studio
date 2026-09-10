@@ -7,6 +7,12 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones
         void DrawZones(GraphicsWrapper g, int trackIndex, int trackX, int trackY, int width, int height, Rectangle bounds);
 
         string GetName();
+
+        /// <summary>
+        /// One-line subtext for the theme picker, e.g. which lane layout the
+        /// bands target. Never null or empty.
+        /// </summary>
+        string GetDescription();
     }
 
     internal abstract class ZoneRenderer : Renderer, IZoneRenderer
@@ -14,6 +20,8 @@ namespace DJMaxEditor.Controls.Editor.Renderers.Zones
         public abstract void DrawZones(GraphicsWrapper g, int trackIndex, int trackX, int trackY, int width, int height, Rectangle bounds);
 
         public abstract string GetName();
+
+        public abstract string GetDescription();
 
         protected void DrawZone(GraphicsWrapper g, int trackIndex, int trackX, int trackY, int width, int height, Rectangle bounds, Brush brush, string text, int from, int to)
         {
