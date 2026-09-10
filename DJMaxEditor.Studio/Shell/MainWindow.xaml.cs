@@ -1688,7 +1688,8 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void OnPalettePick(object sender, RoutedEventArgs e)
         {
-            ToggleButton picked = sender as ToggleButton;
+            System.Windows.Controls.Primitives.ToggleButton picked =
+                sender as System.Windows.Controls.Primitives.ToggleButton;
             if (picked == null)
             {
                 return;
@@ -1698,7 +1699,8 @@ namespace DJMaxEditor.Studio.Shell
             // palette has ("no kind"), so re-check it and take no other action.
             foreach (object child in NotePaletteGrid.Children)
             {
-                ToggleButton button = child as ToggleButton;
+                System.Windows.Controls.Primitives.ToggleButton button =
+                    child as System.Windows.Controls.Primitives.ToggleButton;
                 if (button != null)
                 {
                     button.IsChecked = ReferenceEquals(button, picked);
