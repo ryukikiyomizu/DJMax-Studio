@@ -87,6 +87,7 @@ namespace DJMaxEditor.Studio.Documents
             _load.Register(new TQOpenFile());
             _load.Register(new CyclonXmlOpenFile());
             _load.Register(new BmsOpenFile());
+            _load.Register(new BmsonOpenFile());
 
             _save.Register(new PTSaveFile());
             _save.Register(new TQSaveFile());
@@ -185,6 +186,8 @@ namespace DJMaxEditor.Studio.Documents
                     return _load.GetHandlerForExtension(".xml");
                 case ChartFormat.BmsClassic:
                     return _load.GetHandlerForExtension(".bms");
+                case ChartFormat.Bmson:
+                    return _load.GetHandlerForExtension(".bmson");
                 default:
                     return null;
             }

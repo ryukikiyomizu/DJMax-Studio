@@ -1,0 +1,212 @@
+name: build
+
+# The sandbox this work was written in has no .NET toolchain, so the first build
+# happens here: a real Windows runner with the real WindowsDesktop targeting packs,
+# which is the only platform this solution's WinForms/WPF surfaces build on cleanly.
+#
+# The sandbox's network is GitHub-allowlisted and cannot fetch Actions log archives,
+# so on failure this workflow surfaces the errors two ways that survive the trip
+# back: one ::error annotation per build error (readable from the check-runs API)
+# and the full msbuild log committed to the ci-logs branch (readable via git).
+on:
+  push:
+    branches-ignore: ['ci-logs']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build (Debug)
+        run: dotnet build DJMaxEditor.sln -c Debug --nologo -flp:"logfile=build-debug.log;verbosity=normal"
+
+      - name: Build (Release)
+        if: success()
+        run: dotnet build DJMaxEditor.sln -c Release --nologo -flp:"logfile=build-release.log;verbosity=normal"
+
+      - name: Emit build errors as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          Copy-Item build-*.log $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue
+          $lines = Get-Content $env:RUNNER_TEMP\build-debug.log -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match ': (error|warning) [A-Z]+[0-9]+' }
+          $i = 0
+          foreach ($line in $lines) {
+            $i++
+            if ($i -gt 40) { Write-Output "::error::(more errors truncated - see ci-logs branch)"; break }
+            $msg = $line
+            if ($msg.Length -gt 1000) { $msg = $msg.Substring(0, 1000) }
+            Write-Output "::error::$msg"
+          }
+          if ($i -eq 0) { Write-Output "::error::build failed but no error line was captured - see ci-logs branch" }
+
+      - name: Save full build logs to ci-logs branch
+        if: failure()
+        shell: pwsh
+        run: |
+          git config user.name "arena-ai-coding-agent[bot]"
+          git config user.email "bot@users.noreply.github.com"
+          $branchExists = git ls-remote --heads origin ci-logs
+          git checkout --orphan ci-log-tmp
+          git rm -rf --quiet .
+          if ($branchExists) {
+            git fetch origin ci-logs
+            git checkout ci-logs
+            git branch -D ci-log-tmp
+          }
+          else {
+            git branch -m ci-log-tmp ci-logs
+          }
+          Copy-Item $env:RUNNER_TEMP\build-*.log . -Force
+          git add build-*.log
+          git commit -m "ci logs for $($env:GITHUB_SHA.Substring(0,8)) [skip ci]"
+          git push origin ci-logs
+
+  # The BMS/bmson import path is plain C# with no Windows surface, so it can be
+  # exercised end to end here: parse a classic chart that carries deliberately
+  # corrupt lines (per-line tolerance), then round-trip it through the bmson
+  # writer and the new bmson reader. The project is generated in the workflow,
+  # not committed - the repo grows no test harness for it.
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Generate smoke-test project
+        shell: bash
+        run: |
+          mkdir -p smoke
+          cat > smoke/smoke.csproj <<'SMOKE_CSPROJ_EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net8.0</TargetFramework>
+              <Nullable>disable</Nullable>
+              <LangVersion>12</LangVersion>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="..\DJMaxEditor.Core\DJMaxEditor.Core.csproj" />
+              <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" />
+              <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
+              <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
+              <Compile Include="..\Shared\Files\ChartLoadException.cs" />
+              <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
+              <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
+              <Compile Include="..\Shared\Logs.cs" />
+              <Compile Include="..\Shared\Diagnostics\DiagnosticLog.cs" />
+            </ItemGroup>
+          </Project>
+          SMOKE_CSPROJ_EOF
+          cat > smoke/Program.cs <<'SMOKE_PROG_EOF'
+          using System;
+          using System.IO;
+          using System.Linq;
+          using System.Text;
+          using DJMaxEditor.DJMax;
+          using DJMaxEditor.Files.bms;
+          using DJMaxEditor.Files.FormatDetection;
+          int checks = 0;
+          void Check(bool condition, string what)
+          {
+              checks++;
+              if (!condition) throw new InvalidOperationException("assert failed: " + what);
+              Console.WriteLine("ok: " + what);
+          }
+          // A classic chart with three deliberately corrupt lines: a non-numeric measure
+          // ratio, an object payload with a slot that is not base-36, and an odd-length
+          // payload. The parser must skip each line and keep the chart around it.
+          var bms = new StringBuilder();
+          bms.AppendLine("*---------- smoke");
+          bms.AppendLine("#TITLE Smoke");
+          bms.AppendLine("#ARTIST Tester");
+          bms.AppendLine("#BPM 120");
+          bms.AppendLine("#WAV01 smoke.wav");
+          bms.AppendLine("#00011:01010000");   // lane 1, measure 0: notes at slots 0 and 1 (object id 01)
+          bms.AppendLine("#00051:01010000");   // lane 1 long note from slot 0 to slot 1
+          bms.AppendLine("#00202:abc");        // corrupt: measure ratio
+          bms.AppendLine("#00201:0.0.0.0");    // corrupt: not base-36
+          bms.AppendLine("#00311:010");        // corrupt: odd length
+          File.WriteAllText("smoke.bms", bms.ToString(), new UTF8Encoding(false));
+          PlayerData player;
+          try
+          {
+              player = BmsChartSerializer.Parse(File.ReadAllText("smoke.bms"));
+          }
+          catch (Exception ex)
+          {
+              Console.WriteLine("FAIL: corrupt lines aborted the parse: " + ex.Message);
+              return 1;
+          }
+          Check(player != null, "parse produced a model");
+          Check(player.SourceFormat == ChartFormat.BmsClassic, "source format stamped BmsClassic");
+          Check(Math.Abs(player.Tempo - 120f) < 0.001f, "initial tempo 120");
+          var lane = player.Tracks.GetTrackAtIndex(0);
+          Check(lane != null && lane.TrackName == "BMS Lane 11", "lane 11 track created");
+          // A four-slot measure is 1152/4 = 288 virtual ticks per slot, and EventData stamps
+          // every fresh note with a default 36-virtual-tick body (Duration 6), which the
+          // classic reader leaves alone for normal notes.
+          var normal = lane.Events.Where(x => x.EventType == EventType.Note && x.VirtualDuration == 36).ToList();
+          var longs = lane.Events.Where(x => x.VirtualDuration > 36).ToList();
+          Check(normal.Count == 2, "two normal notes survived, got " + normal.Count);
+          Check(normal.Any(x => x.VirtualTick == 0) && normal.Any(x => x.VirtualTick == 288),
+                "normal notes at slots 0 and 1 (ticks 0 and 288)");
+          Check(longs.Count == 1 && longs[0].VirtualTick == 0 && longs[0].VirtualDuration == 288,
+                "long note 0..288 reconstructed from the 51 channel");
+          Check(lane.Events.All(x => x.Instrument != null && x.Instrument.Name == "smoke.wav"),
+                "notes point at the smoke.wav instrument");
+          // bmson round trip: the same model written as bmson, read back by the new parser.
+          string bmson = BmsonChartSerializer.Serialize(player);
+          File.WriteAllText("smoke.bmson", bmson, new UTF8Encoding(false));
+          Check(bmson.Contains("\"sound_channels\""), "writer emitted sound_channels");
+          byte[] bytes = File.ReadAllBytes("smoke.bmson");
+          var round = BmsonChartSerializer.Parse(bytes);
+          Check(round != null && round.SourceFormat == ChartFormat.Bmson, "bmson parse stamped Bmson");
+          Check(Math.Abs(round.Tempo - 120f) < 0.001f, "bmson init_bpm 120");
+          Check(round.Tracks.Count >= 1, "bmson produced tracks");
+          var lane1 = round.Tracks.GetTrackAtIndex(0);
+          Check(lane1.TrackName == "bmson Lane 1", "bmson lane 1 became bmson Lane 1");
+          var ticks = lane1.Events.Select(x => x.VirtualTick).OrderBy(x => x).ToList();
+          Check(ticks.Contains(0) && ticks.Contains(288), "bmson notes land on ticks 0 and 288");
+          Check(lane1.Events.Count(x => x.VirtualDuration == 288) == 1,
+                "bmson long note duration survives (288 virtual ticks)");
+          Check(lane1.Events.Count(x => x.VirtualDuration == 36) == 2,
+                "bmson normal notes keep the default body the classic reader gives");
+          Check(round.Instruments.Any(x => x.Name == "smoke.wav"), "keysound name survives by filename");
+          // Detection: the bmson bytes classify as bmson, and the classic text as BmsClassic.
+          var detected = ChartFormatDetector.Detect(bytes, ".bmson");
+          Check(detected.Format == ChartFormat.Bmson && detected.IsOpenable, "detector identifies bmson");
+          var detectedBms = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(bms.ToString()), ".bms");
+          Check(detectedBms.Format == ChartFormat.BmsClassic && detectedBms.IsOpenable,
+                "detector still identifies classic BMS");
+          Console.WriteLine("SMOKE PASS (" + checks + " checks)");
+          return 0;
+          SMOKE_PROG_EOF
+          ls -la smoke/
+      - name: Run smoke test
+        shell: pwsh
+        run: |
+          $out = dotnet run --project smoke -c Debug 2>&1
+          $out | ForEach-Object { Write-Host $_ }
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $out | Select-Object -Last 25 | ForEach-Object { Write-Output "::error::$_" }
+            exit $code
+          }

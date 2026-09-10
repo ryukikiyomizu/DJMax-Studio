@@ -118,7 +118,7 @@ namespace DJMaxEditor.Studio.Shell
         private bool _playfieldPanelChosen;
 
         private bool _pumpAttached;
-        private int _lastPumpTick = -1;
+        private int _lastPumpVirtualTick = -1;
         private bool _suppressComboEvents;
         private double _lastFrameMilliseconds;
 
@@ -1164,7 +1164,7 @@ namespace DJMaxEditor.Studio.Shell
             _player.Play(nativeTick);
             RestoreSoundingVoices(nativeTick);
             _viewModel.IsPlaybackActive = true;
-            _lastPumpTick = -1;
+            _lastPumpVirtualTick = -1;
             StartPump();
             RefreshPlayGlyph();
             LogTransport(edge);
@@ -1357,17 +1357,24 @@ namespace DJMaxEditor.Studio.Shell
 
             _player.Update();
 
-            int tick = _player.GetCurrentTick();
-            if (tick == _lastPumpTick)
+            // Round the playhead into virtual ticks - six per sequencer tick. Redrawing only when
+            // GetCurrentTick moved was the real frame cap all along: the sequencer advances at
+            // tempo * 48 ticks a second, so 48 redraws/s at 60 BPM and fewer below 75 BPM, no
+            // matter that this handler itself fires every composition frame. The sub-tick
+            // remainder from GetCurrentTickExact gives the same handler a fresh position six
+            // times as often - 288 virtual ticks/s at 60 BPM, above any display.
+            double exactTick = _player.GetCurrentTickExact();
+            int virtualTick = (int)(exactTick * EventData.VirtualTickSize);
+            if (virtualTick == _lastPumpVirtualTick)
             {
                 return;
             }
-            _lastPumpTick = tick;
+            _lastPumpVirtualTick = virtualTick;
 
             // One assignment moves the playhead, scrolls the follow window and repaints the note
             // band; the overlay is nudged separately because the setter short-circuits when the
             // tick has not changed and the playhead line still has to move within a frame.
-            _viewModel.PlayheadVirtualTick = tick * EventData.VirtualTickSize;
+            _viewModel.PlayheadVirtualTick = virtualTick;
             _canvas.InvalidateOverlay();
             SyncBga();
             _playfield.Sync(_viewModel.PlayheadVirtualTick);
@@ -1959,7 +1966,14 @@ namespace DJMaxEditor.Studio.Shell
 
             // PasteAt hands back the events it created so the caller can select them - which is
             // what you want after a paste, since the next thing you do is almost always move them.
-            IList<EventData> pasted = _document.Clipboard.PasteAt(_viewModel.PlayheadVirtualTick);
+            //
+            // PasteAt writes its destination verbatim - it does not snap. The playhead moves in
+            // virtual ticks now, so during playback it can sit between grid points, and a paste
+            // there would put notes off the tick grid every editor surface edits on. Round back
+            // to the grid line the playhead is inside of.
+            int destinationTick = _viewModel.PlayheadVirtualTick /
+                EventData.VirtualTickSize * EventData.VirtualTickSize;
+            IList<EventData> pasted = _document.Clipboard.PasteAt(destinationTick);
             if (pasted == null || pasted.Count == 0)
             {
                 return;

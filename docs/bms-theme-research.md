@@ -3,6 +3,11 @@
 Date: 2026-09-10. Status: research, plus the Studio-side seam it recommended — see §6 for what
 landed and what is still open. The legacy WinForms editor is unchanged by §6.
 
+> **Historical note (2026-09-10):** the legacy WinForms editor (`DJMaxEditor`) has since been
+> retired — `DJMaxEditor.Studio` is the only shell, and the sources it used to compile from that
+> tree now live in `Shared/`. The WinForms references below describe where these ideas were first
+> tried and are left as written; read them as history, not as a map of the tree.
+
 ## 1. What "theme" means in this repo today
 
 Theming is currently spread across two generations:

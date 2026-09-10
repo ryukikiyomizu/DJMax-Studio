@@ -24,6 +24,12 @@ namespace DJMaxEditor.Files.FormatDetection
         /// <summary>Classic text BMS family (.bms/.bme/.bml/.pms).</summary>
         BmsClassic,
 
+        /// <summary>
+        /// bmson (Be-Music JSON): a JSON chart whose sound channels are identified by filename,
+        /// which lifts the classic family's 1296-slot object-id ceiling.
+        /// </summary>
+        Bmson,
+
         /// <summary>A file that matches no known chart signature.</summary>
         Unknown,
 
