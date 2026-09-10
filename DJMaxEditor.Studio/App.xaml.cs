@@ -39,6 +39,13 @@ namespace DJMaxEditor.Studio
             Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 
+            // .NET 8 ships only UTF-8, UTF-16, UTF-32 and ASCII; most real-world classic BMS is
+            // Shift-JIS. Registering the Windows code-page tables here is what makes
+            // Encoding.GetEncoding(932) resolve when BmsChartSerializer.Decode needs it - without
+            // it the call throws NotSupportedException and the open path would flatten every
+            // Shift-JIS chart into "The BMS file could not be read."
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
 

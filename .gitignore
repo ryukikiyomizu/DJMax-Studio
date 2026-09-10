@@ -1,5 +1,3 @@
-/DJMaxEditor/bin
-/DJMaxEditor/obj
 **/bin/
 **/obj/
 /_*
@@ -10,15 +8,14 @@ tools
 /info.txt
 /PERFORMANCE_VERTICAL_TIMELINE_WORKLOG.md
 /video-128.png
-/DJMaxEditor/Resources/*.psd
-/DJMaxEditor/LocalAssets/RespectVertical/
+/Shared/Resources/*.psd
 /DJMaxEditor.Studio/LocalAssets/Technika2/
 Thumbs.db
-/DJMaxEditor/libs/NVorbis
-/.vs/DJMaxEditor/v14/*.suo
+/libs/NVorbis
 /*.suo
-/DJMaxEditor/*.user
 /*.dec
+/LocalAssets/
+*.user
 Debug
 Release
 packages
