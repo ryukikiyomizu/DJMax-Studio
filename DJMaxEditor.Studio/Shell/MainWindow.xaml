@@ -246,7 +246,12 @@
                         <Separator />
 
                         <!-- Last in the bar and behind its own separator: everything to the left of
-                             it acts on this chart, this one acts on the editor. -->
+                             it acts on this chart, these two act on the editor. -->
+                        <Button x:Name="ThemesButton" Style="{StaticResource Button.Tool}"
+                                Click="OnOpenThemes"
+                                ToolTip="Chart themes... - Studio">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Palette}" />
+                        </Button>
                         <Button x:Name="PreferencesButton" Style="{StaticResource Button.Tool}"
                                 Click="OnOpenPreferences" ToolTip="Preferences (Ctrl+,)">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Settings}" />

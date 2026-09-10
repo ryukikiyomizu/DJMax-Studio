@@ -355,4 +355,50 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "workspace.perfReadout", ShowPerformanceReadout);
         }
     }
+
+    /// <summary>
+    /// How the chart is drawn, as opposed to how it is laid out.
+    ///
+    /// One value today, and it is the one <see cref="Design.StudioChartTheme"/> exists to carry:
+    /// which canvas palette the timeline and the volume lane resolve their frozen brush sets from.
+    /// The section is separate from <see cref="TimelineSettings"/> on purpose - a theme is a
+    /// package of colours that travels together, and folding it in beside the grid and the zoom
+    /// step would bury the only setting on the page that changes what the chart looks like rather
+    /// than where things sit.
+    ///
+    /// Shell chrome is not in here. The research doc keeps "editor chrome" a separate axis from
+    /// note and lane art (StepMania's theme/noteskin split), and until there is a second chrome to
+    /// choose between, a setting that can only ever read "Studio" is just a way to be wrong later.
+    /// </summary>
+    public sealed class AppearanceSettings
+    {
+        /// <summary>
+        /// The chart palette, by the theme's stable id rather than by its display name - see
+        /// <see cref="Design.StudioChartTheme.Id"/> for why the id is what gets written to disk.
+        /// </summary>
+        public string ChartThemeId { get; set; } = Design.StudioChartTheme.StudioId;
+
+        internal void Clamp()
+        {
+            ChartThemeId = StudioSettings.CleanText(ChartThemeId);
+
+            // Resolved rather than merely checked, so the file and the canvas cannot settle on
+            // different answers: a settings file naming a theme this build does not ship comes back
+            // holding the one that will actually be drawn.
+            ChartThemeId = Design.StudioChartTheme.Find(ChartThemeId).Id;
+        }
+
+        internal AppearanceSettings Clone()
+        {
+            return new AppearanceSettings
+            {
+                ChartThemeId = ChartThemeId,
+            };
+        }
+
+        internal void Describe(StringBuilder text)
+        {
+            StudioSettings.Line(text, "appearance.chartTheme", ChartThemeId);
+        }
+    }
 }

@@ -47,6 +47,8 @@ namespace DJMaxEditor.Studio.Settings
 
         public WorkspaceSettings Workspace { get; set; } = new WorkspaceSettings();
 
+        public AppearanceSettings Appearance { get; set; } = new AppearanceSettings();
+
         /// <summary>
         /// Replaces missing sections and pulls every value back into range.
         ///
@@ -68,12 +70,14 @@ namespace DJMaxEditor.Studio.Settings
             if (Bga == null) { Bga = new BgaSettings(); }
             if (Format == null) { Format = new FormatSettings(); }
             if (Workspace == null) { Workspace = new WorkspaceSettings(); }
+            if (Appearance == null) { Appearance = new AppearanceSettings(); }
 
             Audio.Clamp();
             Timeline.Clamp();
             Bga.Clamp();
             Format.Clamp();
             Workspace.Clamp();
+            Appearance.Clamp();
         }
 
         /// <summary>
@@ -91,6 +95,7 @@ namespace DJMaxEditor.Studio.Settings
                 Bga = Bga == null ? new BgaSettings() : Bga.Clone(),
                 Format = Format == null ? new FormatSettings() : Format.Clone(),
                 Workspace = Workspace == null ? new WorkspaceSettings() : Workspace.Clone(),
+                Appearance = Appearance == null ? new AppearanceSettings() : Appearance.Clone(),
             };
         }
 
@@ -115,6 +120,9 @@ namespace DJMaxEditor.Studio.Settings
             Bga = other.Bga == null ? new BgaSettings() : other.Bga.Clone();
             Format = other.Format == null ? new FormatSettings() : other.Format.Clone();
             Workspace = other.Workspace == null ? new WorkspaceSettings() : other.Workspace.Clone();
+            Appearance = other.Appearance == null
+                ? new AppearanceSettings()
+                : other.Appearance.Clone();
             Normalise();
         }
 
@@ -137,6 +145,7 @@ namespace DJMaxEditor.Studio.Settings
             copy.Bga.Describe(text);
             copy.Format.Describe(text);
             copy.Workspace.Describe(text);
+            copy.Appearance.Describe(text);
             return text.ToString();
         }
 

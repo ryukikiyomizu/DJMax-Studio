@@ -11,6 +11,12 @@ The 24x24 stroke-based SVG shapes (`path`, `line`, `circle`, `rect`) were conver
 path geometry as text inside `Icons.xaml`; no lucide binary asset, SVG file, font, or other
 packaged artefact is redistributed with this project.
 
+One exception to the pinned package, recorded so the provenance stays honest: `Icon.Palette` was
+converted from `icons/palette.svg` in the `lucide-icons/lucide` repository (git blob
+`25fb773a61740a8605325a8be1b9b72813d937a2`, fetched 2026-09-10) rather than from
+`lucide-static 1.34.0`, which was not reachable from the machine it was added on. It is
+lucide-original, not a Feather derivative, so the ISC notice below covers it.
+
 ## ISC License
 
 ```text
