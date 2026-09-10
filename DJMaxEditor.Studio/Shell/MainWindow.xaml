@@ -599,7 +599,7 @@
                                           VerticalScrollBarVisibility="Disabled">
                                 <StackPanel Orientation="Horizontal" Margin="8,0">
                                     <TextBlock Text="SCROLL" Style="{StaticResource Text.Section}"
-                                               Margin="0,0,4" VerticalAlignment="Center" />
+                                               Margin="0,0,4,0" VerticalAlignment="Center" />
                                     <ComboBox x:Name="TechnikaScrollCombo" Width="80" SelectedIndex="0"
                                               SelectionChanged="OnTechnikaScrollChanged"
                                               ToolTip="Scroll direction effector: CW is the arcade default; CCW is the inverse; LL/RR sweep both halves one way">
@@ -609,7 +609,7 @@
                                         <ComboBoxItem Content="RR" />
                                     </ComboBox>
                                     <TextBlock Text="NOTES" Style="{StaticResource Text.Section}"
-                                               Margin="12,0,4" VerticalAlignment="Center" />
+                                               Margin="12,0,4,0" VerticalAlignment="Center" />
                                     <ComboBox x:Name="TechnikaFaderCombo" Width="92" SelectedIndex="0"
                                               SelectionChanged="OnTechnikaFaderChanged"
                                               ToolTip="Note fader effector: fade notes in as the sweep approaches, or out before it reaches them">
@@ -620,7 +620,7 @@
                                         <ComboBoxItem Content="FADE OUT 2" />
                                     </ComboBox>
                                     <TextBlock Text="LINE" Style="{StaticResource Text.Section}"
-                                               Margin="12,0,4" VerticalAlignment="Center" />
+                                               Margin="12,0,4,0" VerticalAlignment="Center" />
                                     <ComboBox x:Name="TechnikaLineCombo" Width="84" SelectedIndex="0"
                                               SelectionChanged="OnTechnikaLineChanged"
                                               ToolTip="Timeline effector: flash the sweep (blink) or hide it altogether (blind)">
