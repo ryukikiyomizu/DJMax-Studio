@@ -240,13 +240,14 @@ namespace DJMaxEditor.Controls.Vertical
         private const int BackgroundCount = 18;
 
         /// <summary>
-        /// A BMS turntable is drawn one spacer wider than a key. On a cabinet it is a platter under
+        /// A BMS turntable is drawn half again as wide as a key. On a cabinet it is a platter under
         /// the whole hand rather than a key under one finger, and the strip has to say which lane
-        /// that is without being read. Width and not height: a scratch that really is a long note has
-        /// to keep drawing its own duration, so the difference has to live on the axis that is not
-        /// time.
+        /// that is without being read - beatoraja's own playfields give the scratch column that
+        /// same 1.5x over a key lane, which is the reference anyone opening a .bms knows. Width
+        /// and not height: a scratch that really is a long note has to keep drawing its own
+        /// duration, so the difference has to live on the axis that is not time.
         /// </summary>
-        private const int BmsScratchWidth = GameplayWidth + LeadingWidth;
+        private const int BmsScratchWidth = (GameplayWidth * 3) / 2;
 
         // Source (song) track ids, matching the DPC presets exactly.
         private const int TrackUnused = 0;

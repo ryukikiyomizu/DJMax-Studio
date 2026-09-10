@@ -199,10 +199,12 @@ namespace DJMaxEditor.Studio.Shell
                 OverlapCheck.IsChecked = audio.AllowOverlappingRetrigger;
                 CacheBudgetSlider.Value = audio.KeysoundCacheBudgetMb;
                 LoadKeysoundsCheck.IsChecked = audio.LoadKeysoundsOnOpen;
+                PlayKeysoundOnClickCheck.IsChecked = audio.PlayKeysoundOnClick;
 
                 TimelineSettings timeline = _settings.Timeline;
                 TrackWidthSlider.Value = timeline.TrackWidthScale;
-                NoteHeightSlider.Value = timeline.NoteHeight;
+                NoteSpeedSlider.Value = timeline.NoteSpeed;
+                NoteHeightSlider.Value = timeline.NoteThickness;
                 ZoomStepSlider.Value = timeline.ZoomStep;
                 AutoFitCheck.IsChecked = timeline.AutoFitColumns;
                 FollowPlaybackCheck.IsChecked = timeline.FollowPlayback;
@@ -281,10 +283,12 @@ namespace DJMaxEditor.Studio.Shell
             audio.AllowOverlappingRetrigger = OverlapCheck.IsChecked == true;
             audio.KeysoundCacheBudgetMb = (int)Math.Round(CacheBudgetSlider.Value);
             audio.LoadKeysoundsOnOpen = LoadKeysoundsCheck.IsChecked == true;
+            audio.PlayKeysoundOnClick = PlayKeysoundOnClickCheck.IsChecked == true;
 
             TimelineSettings timeline = _settings.Timeline;
             timeline.TrackWidthScale = TrackWidthSlider.Value;
-            timeline.NoteHeight = NoteHeightSlider.Value;
+            timeline.NoteSpeed = NoteSpeedSlider.Value;
+            timeline.NoteThickness = NoteHeightSlider.Value;
             timeline.ZoomStep = ZoomStepSlider.Value;
             timeline.AutoFitColumns = AutoFitCheck.IsChecked == true;
             timeline.FollowPlayback = FollowPlaybackCheck.IsChecked == true;
@@ -388,6 +392,8 @@ namespace DJMaxEditor.Studio.Shell
 
             TrackWidthReadout.Text =
                 TrackWidthSlider.Value.ToString("0.00", CultureInfo.InvariantCulture) + "x";
+            NoteSpeedReadout.Text =
+                NoteSpeedSlider.Value.ToString("0.00", CultureInfo.InvariantCulture);
             NoteHeightReadout.Text =
                 NoteHeightSlider.Value.ToString("0.00", CultureInfo.InvariantCulture);
             ZoomStepReadout.Text =

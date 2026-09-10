@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
@@ -35,7 +35,7 @@ namespace DJMaxEditor.Studio.Preview
     /// cost the WPF rewrite existed to remove.
     /// </para>
     /// </summary>
-    internal sealed class TechnikaPlayfieldView : FrameworkElement
+    internal sealed class TechnikaPlayfieldView : FrameworkElement, IGameplayPlayfieldView
     {
         /// <summary>
         /// Beats in one scan: the projector's <c>DefaultBeatsPerScan</c>, and the unit the countdown

@@ -56,6 +56,7 @@ namespace DJMaxEditor.Controls.Vertical
 
         private readonly HashSet<EventData> _selected = new HashSet<EventData>();
         private double _pixelsPerTick = BasePixelsPerTick;
+        private double _noteThickness = 1.0;
         private double _columnScale = 1.0;
         private float _dpiScale = 1f;
         private double _originTick;
@@ -180,6 +181,38 @@ namespace DJMaxEditor.Controls.Vertical
         public bool FollowPlayback { get; set; }
 
         public bool IsPlaybackActive { get; set; }
+
+        public const double MinNoteThickness = 0.25;
+        public const double MaxNoteThickness = 4.0;
+
+        /// <summary>
+        /// Visual thickness of a note head, as a multiplier of the floor height a zero-duration
+        /// note is drawn with. Deliberately independent of <see cref="PixelsPerTick"/>: how tall
+        /// a note head looks and how fast the chart scrolls past are two different preferences,
+        /// and coupling them meant the "note height" slider was secretly the scroll-speed slider.
+        /// Long notes keep their true duration in ticks - only the minimum head height scales.
+        /// </summary>
+        public double NoteThickness
+        {
+            get { return _noteThickness; }
+            set
+            {
+                double clamped = Math.Max(MinNoteThickness, Math.Min(MaxNoteThickness, value));
+                if (double.IsNaN(clamped) || Math.Abs(clamped - _noteThickness) < 0.0001)
+                {
+                    return;
+                }
+                _noteThickness = clamped;
+                LastFrame = null;
+                RequestRepaint();
+            }
+        }
+
+        /// <summary>The floor height a zero-duration note is drawn with, after the thickness scale.</summary>
+        public double MinimumNoteHeight
+        {
+            get { return VerticalTimelineFrame.MinimumItemHeight * _noteThickness; }
+        }
 
         /// <summary>
         /// 0 = detect the layout from the chart; 4/5/6/8 forces a button preset,
@@ -375,7 +408,8 @@ namespace DJMaxEditor.Controls.Vertical
                 _originNativeX,
                 _lastWidth,
                 _lastHeight,
-                _playheadVirtualTick);
+                _playheadVirtualTick,
+                _noteThickness);
             return LastFrame;
         }
 
@@ -467,7 +501,20 @@ namespace DJMaxEditor.Controls.Vertical
         {
             if (Projection == null) return false;
 
-            int tick = Math.Max(0, Coordinates.YToTick(y, _originTick));
+            return SeekToTick(Coordinates.YToTick(y, _originTick));
+        }
+
+        /// <summary>
+        /// Requests a playhead move to a virtual tick directly - the wheel scrub's version of a
+        /// ruler click. Same contract as <see cref="SeekAt(double)"/>: clamped into the chart on
+        /// the shared virtual-tick base, and announced through <see cref="SeekRequested"/> so the
+        /// shell drives audio and the other surfaces from it unchanged.
+        /// </summary>
+        public bool SeekToTick(int virtualTick)
+        {
+            if (Projection == null) return false;
+
+            int tick = Math.Max(0, virtualTick);
             if (DocumentEndTick > 0)
             {
                 tick = Math.Min(tick, DocumentEndTick);
@@ -478,6 +525,36 @@ namespace DJMaxEditor.Controls.Vertical
                 SeekRequested(this, new VerticalSeekEventArgs(tick));
             }
             return true;
+        }
+
+        /// <summary>
+        /// Pans the origin just enough that the playhead is inside the visible window, and does
+        /// nothing when it already is. The wheel scrub's companion: a seek that walks off the
+        /// edge of the screen has to pull the view after it whether or not playback-follow is
+        /// on, or scrubbing reads as if it did nothing once the playhead leaves the window.
+        /// </summary>
+        public void RevealPlayhead()
+        {
+            if (Projection == null)
+            {
+                return;
+            }
+
+            double visible = VisibleTickCount;
+            if (visible <= 0)
+            {
+                return;
+            }
+
+            double lead = visible * 0.15;
+            if (_playheadVirtualTick < _originTick + lead)
+            {
+                OriginTick = _playheadVirtualTick - lead;
+            }
+            else if (_playheadVirtualTick > _originTick + visible - lead)
+            {
+                OriginTick = _playheadVirtualTick - visible + lead;
+            }
         }
 
         /// <summary>

@@ -1143,6 +1143,16 @@ namespace DJMaxEditor.Studio.Preview
                 {
                     return resolved;
                 }
+
+                // An unwrapped copy: the arcade keeps its frames under a folder named like the
+                // effect (CoolBomb\0\cool), but a copy of one set - the Shino-Toku tree is the
+                // common case - has cool\ hanging straight off the set root. The wrapped shape
+                // above keeps precedence, so an owner who has both sees no change.
+                resolved = ResolveEffectFolder(current, prefix, preferredSet);
+                if (resolved != null)
+                {
+                    return resolved;
+                }
                 current = Path.GetDirectoryName(current);
             }
             return null;
@@ -1251,6 +1261,10 @@ namespace DJMaxEditor.Studio.Preview
         /// A folder holding sprites, or its first subfolder that does. The arcade keeps six
         /// complete note sets side by side in numbered folders, so an owner who copies that tree
         /// across lands one level above the files; descending once means the copy works as-is.
+        /// Effects live a level deeper still (<c>0\cool\cool_0000.png</c>), and a copy of just
+        /// that tree declares no glyphs at all: it is accepted as a root too - glyph lookups come
+        /// back null and the renderer draws the packaged set, while the effect resolver finds the
+        /// bursts by its own tree walk. Also what the Shino-Toku clone looks like.
         /// </summary>
         private static string ResolveRoot(string candidate)
         {
@@ -1274,6 +1288,11 @@ namespace DJMaxEditor.Studio.Preview
                         return Path.GetFullPath(children[i]);
                     }
                 }
+
+                if (LooksLikeSpriteTree(candidate, children))
+                {
+                    return Path.GetFullPath(candidate);
+                }
             }
             catch (IOException)
             {
@@ -1283,6 +1302,27 @@ namespace DJMaxEditor.Studio.Preview
             {
             }
             return null;
+        }
+
+        /// <summary>
+        /// Whether any frame PNGs hang off the candidate within two levels - the depth a copied
+        /// effect tree (<c>cool\cool_0000.png</c>, or one numbered set above it) puts them at.
+        /// Two levels and no more, so "some random folder" is still not a sprite root.
+        /// </summary>
+        private static bool LooksLikeSpriteTree(string candidate, string[] children)
+        {
+            for (int i = 0; i < children.Length; i++)
+            {
+                string[] grandchildren = Directory.GetDirectories(children[i]);
+                for (int j = 0; j < grandchildren.Length; j++)
+                {
+                    if (Directory.GetFiles(grandchildren[j], "*.png").Length > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         private static IEnumerable<string> CandidatePaths()

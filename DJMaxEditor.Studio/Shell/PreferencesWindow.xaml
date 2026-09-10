@@ -220,6 +220,14 @@
                                        Foreground="{StaticResource Brush.TextMuted}"
                                        Text="Turn off to work on a chart whose audio is missing, or on a slow disk where the load is just noise." />
 
+                            <CheckBox x:Name="PlayKeysoundOnClickCheck" Margin="0,12,0,0"
+                                      Content="Play keysounds on click"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Clicking a note on the timeline sounds its keysound once, at the audition volume above - including the Addition tool's click on an existing note, which selects it." />
+
                             <CheckBox x:Name="OverlapCheck" Margin="0,12,0,0"
                                       Content="Let a retriggered keysound ring out"
                                       Click="OnToggleChanged" />
@@ -292,11 +300,33 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="70" />
                                 </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Note speed"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="NoteSpeedSlider"
+                                        Minimum="0.05" Maximum="4.0" Value="0.55"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="NoteSpeedReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Pixels per tick - how fast the chart moves. 0.55 is the surface's own base scale, so it is a zoom factor of exactly 1." />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Note height"
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" x:Name="NoteHeightSlider"
-                                        Minimum="0.05" Maximum="4.0" Value="0.55"
+                                        Minimum="0.25" Maximum="4.0" Value="1.0"
                                         VerticalAlignment="Center"
                                         ValueChanged="OnSliderChanged" />
                                 <TextBlock Grid.Column="2" x:Name="NoteHeightReadout"
@@ -306,7 +336,7 @@
                             <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
-                                       Text="Pixels per tick. 0.55 is the surface's own base scale, so it is a zoom factor of exactly 1." />
+                                       Text="How thick note heads draw, as a multiplier. Long notes keep their true duration; this never changes the chart's speed." />
 
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
@@ -329,7 +359,7 @@
                             <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
-                                       Text="How far one zoom button press, or one Ctrl+wheel notch, moves." />
+                                       Text="How far one zoom button press, or one Alt+wheel notch, moves." />
 
                             <CheckBox x:Name="AutoFitCheck" Margin="0,12,0,0"
                                       Content="Let the viewport choose the lane width"

@@ -166,6 +166,21 @@ namespace DJMaxEditor.Studio.Timeline
         public event EventHandler<VerticalHitResult> ContextRequested;
 
         /// <summary>
+        /// Raised when a click lands on an existing note, whichever tool handled it - the shell's
+        /// cue to audition that note's keysound when the preference is on. Carries the note hit,
+        /// so no re-hit-test is needed on the receiving end.
+        /// </summary>
+        public event EventHandler<EventData> NoteClicked;
+
+        /// <summary>
+        /// Raised when the wheel turns with Ctrl held, asking the shell to step the snap divisor
+        /// in the given direction (+1 finer, -1 coarser). The combo owns the list, so the canvas
+        /// asks rather than mutating it - that is the osu! editor's Ctrl+wheel, routed through
+        /// the same selection path the combo itself uses.
+        /// </summary>
+        public event EventHandler<int> GridCycleRequested;
+
+        /// <summary>
         /// Raised at the end of every render pass, after <see cref="Frame"/> has been rebuilt.
         ///
         /// <para>
@@ -179,6 +194,22 @@ namespace DJMaxEditor.Studio.Timeline
         public event EventHandler FrameBuilt;
 
         public ToolMode Tool { get; set; }
+
+        /// <summary>
+        /// The attribute newly placed notes are created with - the TECHNIKA note kind picked in
+        /// the note palette: 0 tap/drag, 5 chain head, 6 chain node, 10 repeat, 11 repeat roll,
+        /// 12 hold. Meaningless outside a TECHNIKA layout, which is the same exposure the note
+        /// art already has, so the shell simply keeps the palette away from other formats.
+        /// </summary>
+        public byte NewNoteAttribute { get; set; }
+
+        /// <summary>
+        /// Whether a newly placed note starts life long. TECHNIKA reads a gesture's length out of
+        /// the same attribute also flags its kind (attribute 0 over six virtual ticks is a drag,
+        /// attribute 10 over six is a repeat-hold), so the palette's long entries ask for a
+        /// duration at creation instead of needing an immediate Edit-tool drag after the click.
+        /// </summary>
+        public bool NewNoteIsLong { get; set; }
 
         public GridDivision Grid { get; set; }
 
@@ -1214,7 +1245,7 @@ namespace DJMaxEditor.Studio.Timeline
             double y = coords.TickToY(snapped, frame.OriginTick);
             double left = coords.NativeXToScreen(hit.Column.NativeLeft, frame.OriginNativeX);
             double width = hit.Column.Width * coords.ColumnScale;
-            double height = Math.Max(VerticalTimelineFrame.MinimumItemHeight, GridStepPixels());
+            double height = Math.Max(_viewModel.MinimumNoteHeight, GridStepPixels());
 
             double top = coords.TimeDirection == VerticalTimeDirection.Upward ? y - height : y;
             return new Rect(Math.Round(left) + 0.5, Math.Round(top) + 0.5,
@@ -1225,7 +1256,7 @@ namespace DJMaxEditor.Studio.Timeline
         {
             if (_frame == null || Grid == null || Grid.IsFree)
             {
-                return VerticalTimelineFrame.MinimumItemHeight;
+                return _viewModel.MinimumNoteHeight;
             }
             return Grid.StepTicks(TicksPerMeasure()) * _frame.Coordinates.PixelsPerTick;
         }
@@ -1427,6 +1458,15 @@ namespace DJMaxEditor.Studio.Timeline
             DrawOverlay();
         }
 
+        /// <summary>
+        /// The osu! editor's wheel contract, which is the one thing every VSRG chart author's
+        /// hand expects: the wheel walks the playhead through the chart snapped to the current
+        /// grid, Ctrl+wheel steps the snap divisor itself, and zoom lives behind Alt. Shift keeps
+        /// its old job of crossing the lanes, which osu! does not need (it has no lane axis).
+        /// A plain wheel *scroll* of the canvas is gone deliberately: scrolling the view while
+        /// the playhead stayed put was exactly the gesture that lost the playhead off the bottom
+        /// of the screen, and the middle-drag pan still covers free browsing.
+        /// </summary>
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             base.OnMouseWheel(e);
@@ -1436,20 +1476,85 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             Point point = Surface(e);
+            ModifierKeys modifiers = Keyboard.Modifiers;
 
-            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            if ((modifiers & ModifierKeys.Control) != 0)
+            {
+                EventHandler<int> cycle = GridCycleRequested;
+                if (cycle != null)
+                {
+                    cycle(this, e.Delta > 0 ? 1 : -1);
+                }
+            }
+            else if ((modifiers & ModifierKeys.Alt) != 0)
             {
                 _viewModel.ZoomAt(point.Y, e.Delta > 0 ? 1.15 : 1.0 / 1.15);
             }
-            else if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+            else if ((modifiers & ModifierKeys.Shift) != 0)
             {
                 _viewModel.ScrollByNativeX(e.Delta > 0 ? -60 : 60);
             }
             else
             {
-                _viewModel.ScrollByScreenDelta(-e.Delta);
+                ScrubPlayhead(e.Delta > 0 ? -1 : 1);
             }
             e.Handled = true;
+        }
+
+        /// <summary>
+        /// Moves the playhead one grid step in <paramref name="direction"/> (+1 later, -1
+        /// earlier), snapped to the grid the way osu!'s wheel scrub is. Free grid falls back to
+        /// one beat, because a scrub that jumped a whole measure per notch would be useless and
+        /// one that moved a single tick would be worse. The view is pulled after the playhead by
+        /// <see cref="VerticalTimelineViewModel.RevealPlayhead"/>, so scrubbing past the edge of
+        /// the window keeps working instead of scrubbing into the void.
+        /// </summary>
+        private void ScrubPlayhead(int direction)
+        {
+            double step = ScrubStepTicks();
+            if (step <= 0)
+            {
+                return;
+            }
+
+            int current = _viewModel.PlayheadVirtualTick;
+            double boundary = direction > 0
+                ? (Math.Floor(current / step) + 1) * step
+                : (Math.Ceiling(current / step) - 1) * step;
+
+            // Rounding around a playhead sitting exactly on a boundary: it has to move, or the
+            // notch is dead. AwayFromZero in the grid snap can land a fraction off, so test
+            // rather than assume.
+            if (direction > 0 && boundary <= current)
+            {
+                boundary += step;
+            }
+            else if (direction < 0 && boundary >= current)
+            {
+                boundary -= step;
+            }
+
+            if (!_viewModel.SeekToTick((int)Math.Round(boundary)))
+            {
+                return;
+            }
+            _viewModel.RevealPlayhead();
+            InvalidateOverlay();
+        }
+
+        /// <summary>One scrub step in virtual ticks: the grid step, or one beat when the grid is Free.</summary>
+        private double ScrubStepTicks()
+        {
+            int ticksPerMeasure = TicksPerMeasure();
+            if (Grid != null && !Grid.IsFree)
+            {
+                double step = Grid.StepTicks(ticksPerMeasure);
+                if (step > 0)
+                {
+                    return step;
+                }
+            }
+            return ticksPerMeasure / 4.0;
         }
 
         private void HandleToolPress(Point point, bool additive)
@@ -1458,11 +1563,12 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 case ToolMode.Select:
                     _viewModel.SelectAt(point.X, point.Y, additive);
+                    RaiseNoteClickedAt(point);
                     RaiseInteractionCompleted();
                     break;
 
                 case ToolMode.Addition:
-                    AddNoteAt(point);
+                    AddNoteAt(point, additive);
                     break;
 
                 case ToolMode.Delete:
@@ -1473,14 +1579,48 @@ namespace DJMaxEditor.Studio.Timeline
                     // Selecting is the first half of an edit drag; the resize itself happens on
                     // drag in OnMouseMove once a note is under the pointer.
                     _viewModel.SelectAt(point.X, point.Y, additive);
+                    RaiseNoteClickedAt(point);
                     RaiseInteractionCompleted();
                     break;
             }
         }
 
-        private void AddNoteAt(Point point)
+        /// <summary>
+        /// Reports a press that landed on an existing note, for the keysound-on-click preference.
+        /// Hit-tested here rather than inferred from the selection, because an additive click on
+        /// an already-selected note still clicked that note and should still sound it.
+        /// </summary>
+        private void RaiseNoteClickedAt(Point point)
+        {
+            EventHandler<EventData> handler = NoteClicked;
+            if (handler == null || _frame == null)
+            {
+                return;
+            }
+
+            VerticalHitResult hit = _frame.HitTest(point.X, point.Y);
+            if (hit != null && hit.HasItem)
+            {
+                handler(this, hit.Item.Item.SourceEvent);
+            }
+        }
+
+        private void AddNoteAt(Point point, bool additive)
         {
             VerticalHitResult hit = _frame.HitTest(point.X, point.Y);
+
+            // A click on an existing note selects it instead of stacking a duplicate on top of
+            // it. ptSequencer's Addition tool double-booking a lane was the single most common
+            // way charts picked up hidden stacked notes - a duplicate sits exactly under the one
+            // you can see, and nothing on screen says there are two.
+            if (hit.HasItem)
+            {
+                _viewModel.SelectAt(point.X, point.Y, additive);
+                RaiseNoteClickedAt(point);
+                RaiseInteractionCompleted();
+                return;
+            }
+
             if (!hit.HasColumn || hit.Column.SourceTrackId < 0)
             {
                 return;
@@ -1497,11 +1637,27 @@ namespace DJMaxEditor.Studio.Timeline
             template.Volume = 127;
             template.Vel = 127;
             template.Pan = 64;
+            template.Attribute = NewNoteAttribute;
+
+            // Long palette entries ask for a starting duration, snapped to the grid like the
+            // tick itself. 24 virtual ticks is the floor that makes a TECHNIKA attribute-0 note
+            // read as a drag at all - anything at or under 6 classifies back to a tap.
+            if (NewNoteIsLong)
+            {
+                double step = Grid != null && !Grid.IsFree
+                    ? Grid.StepTicks(TicksPerMeasure())
+                    : 0;
+                template.VirtualDuration = (ushort)Math.Max(24, Math.Min(ushort.MaxValue, step));
+            }
 
             EventData created = document.Edits.CreateEvent(
                 template, (uint)hit.Column.SourceTrackId, SnapTick(hit.Tick));
             if (created != null)
             {
+                if (document.Selection != null)
+                {
+                    document.Selection.Replace(new EventData[] { created });
+                }
                 _viewModel.Rebuild();
                 InvalidateBand();
                 RaiseInteractionCompleted();
