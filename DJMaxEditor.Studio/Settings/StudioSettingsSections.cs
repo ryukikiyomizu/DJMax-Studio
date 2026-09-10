@@ -151,6 +151,16 @@ namespace DJMaxEditor.Studio.Settings
         public bool HorizontalOrientation { get; set; } = false;
 
         /// <summary>
+        /// Whether the mouse wheel walks the chart the other way. Off, the osu! editor contract
+        /// the canvas documents in <c>OnMouseWheel</c>: wheel up scrubs the playhead to earlier
+        /// bars and Shift+wheel pushes the columns one way; on, every notched scroll drives the
+        /// opposite direction, for hands that read wheel-up as "go forward through the document".
+        /// Zoom (Alt+wheel) and the grid divisor (Ctrl+wheel) are deliberately not inverted:
+        /// wheel-up zooming in is not a scroll and has a near-universal convention of its own.
+        /// </summary>
+        public bool InverseScrolling { get; set; } = false;
+
+        /// <summary>
         /// Bar divisions notes snap to, 0 for Free. Stored as the denominator rather than as an
         /// index into <see cref="GridDivision.All"/> so inserting a division into that list cannot
         /// silently change what an existing settings file means.
@@ -211,6 +221,7 @@ namespace DJMaxEditor.Studio.Settings
                 ShowNoteArt = ShowNoteArt,
                 GameplayTimeDirection = GameplayTimeDirection,
                 HorizontalOrientation = HorizontalOrientation,
+                InverseScrolling = InverseScrolling,
                 GridDenominator = GridDenominator,
                 BeatDenominator = BeatDenominator,
                 ZoomStep = ZoomStep,
@@ -228,6 +239,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "timeline.showNoteArt", ShowNoteArt);
             StudioSettings.Line(text, "timeline.gameplayDirection", GameplayTimeDirection);
             StudioSettings.Line(text, "timeline.horizontal", HorizontalOrientation);
+            StudioSettings.Line(text, "timeline.inverseScrolling", InverseScrolling);
             StudioSettings.Line(text, "timeline.grid", GridDenominator);
             StudioSettings.Line(text, "timeline.beat", BeatDenominator);
             StudioSettings.Line(text, "timeline.zoomStep", ZoomStep);

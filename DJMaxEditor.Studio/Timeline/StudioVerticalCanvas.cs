@@ -271,6 +271,14 @@ namespace DJMaxEditor.Studio.Timeline
         /// </summary>
         public bool ShowNoteAssets { get; set; } = true;
 
+        /// <summary>
+        /// Walks the time and lane axes the other way under the wheel. Off is the osu! editor
+        /// contract <see cref="OnMouseWheel"/> documents (wheel up towards earlier bars); on
+        /// reverses the playhead scrub and the Shift+wheel column pan. Alt+wheel zoom and
+        /// Ctrl+wheel grid cycling keep their convention, since neither is a scroll.
+        /// </summary>
+        public bool InverseScrolling { get; set; }
+
         public VerticalTimelineViewModel ViewModel
         {
             get { return _viewModel; }
@@ -1466,6 +1474,11 @@ namespace DJMaxEditor.Studio.Timeline
         /// A plain wheel *scroll* of the canvas is gone deliberately: scrolling the view while
         /// the playhead stayed put was exactly the gesture that lost the playhead off the bottom
         /// of the screen, and the middle-drag pan still covers free browsing.
+        /// <para>
+        /// <see cref="InverseScrolling"/> flips the two travel axes for hands that read wheel-up
+        /// as "forward through the document". It deliberately leaves zoom and grid cycling alone:
+        /// wheel-up zooming in is its own convention, not a scroll direction.
+        /// </para>
         /// </summary>
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
@@ -1477,6 +1490,7 @@ namespace DJMaxEditor.Studio.Timeline
 
             Point point = Surface(e);
             ModifierKeys modifiers = Keyboard.Modifiers;
+            int wheel = InverseScrolling ? -e.Delta : e.Delta;
 
             if ((modifiers & ModifierKeys.Control) != 0)
             {
@@ -1492,11 +1506,11 @@ namespace DJMaxEditor.Studio.Timeline
             }
             else if ((modifiers & ModifierKeys.Shift) != 0)
             {
-                _viewModel.ScrollByNativeX(e.Delta > 0 ? -60 : 60);
+                _viewModel.ScrollByNativeX(wheel > 0 ? -60 : 60);
             }
             else
             {
-                ScrubPlayhead(e.Delta > 0 ? -1 : 1);
+                ScrubPlayhead(wheel > 0 ? -1 : 1);
             }
             e.Handled = true;
         }

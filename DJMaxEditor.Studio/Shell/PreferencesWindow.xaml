@@ -440,6 +440,13 @@
                             <CheckBox x:Name="FollowPlaybackCheck" Margin="0,12,0,0"
                                       Content="Scroll to keep the playhead on screen"
                                       Click="OnToggleChanged" />
+                            <CheckBox x:Name="InverseScrollingCheck" Margin="0,12,0,0"
+                                      Content="Invert mouse-wheel scrolling"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Wheel up walks the playhead to later bars instead of earlier, and pans the columns the other way. Zoom and grid cycling are not inverted." />
                         </StackPanel>
                     </ScrollViewer>
 

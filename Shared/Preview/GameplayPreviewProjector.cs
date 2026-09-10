@@ -13,6 +13,39 @@ namespace DJMaxEditor.Preview
         Technika
     }
 
+    /// <summary>
+    /// The arcade's scroll-direction effector for a TECHNIKA field.
+    ///
+    /// <para>
+    /// The timeline sweeps the two halves clockwise by default - over the top half it travels
+    /// left to right, over the bottom half right to left - and the pre-song effector screen
+    /// offers three alternatives, present since TECHNIKA 1's mission courses and in both
+    /// sequels (the Korean manuals name them CW / ACW / LL / RR):
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><see cref="Clockwise"/> (CW): top left-to-right, bottom right-to-left.
+    /// The default and the only direction charts are authored against.</description></item>
+    /// <item><description><see cref="CounterClockwise"/> (ACW): the inverse reading - top
+    /// right-to-left, bottom left-to-right.</description></item>
+    /// <item><description><see cref="AllLeft"/> (LL): both halves sweep toward the left.</description></item>
+    /// <item><description><see cref="AllRight"/> (RR): both halves sweep toward the right.</description></item>
+    /// </list>
+    /// <para>
+    /// The scan a note belongs to and which half that scan fills are properties of the clock
+    /// and never change; only the direction of travel inside the field does, which is why this
+    /// is one enum feeding note placement, the scanline, hold bodies and the approach glow
+    /// rather than a second projection. It is the one effector the manuals note can help a
+    /// player's score, so it gets modelled even though the preview cannot be played.
+    /// </para>
+    /// </summary>
+    public enum TechnikaScrollDirection
+    {
+        Clockwise,
+        CounterClockwise,
+        AllLeft,
+        AllRight
+    }
+
     public enum GameplayPreviewNoteKind
     {
         Basic,
@@ -240,13 +273,15 @@ namespace DJMaxEditor.Preview
             int beatsPerScan,
             double tempo,
             IList<ProjectedGameplayNote> notes,
-            IList<string> diagnostics)
+            IList<string> diagnostics,
+            TechnikaScrollDirection scrollDirection = TechnikaScrollDirection.Clockwise)
         {
             Profile = profile;
             StatusLabel = statusLabel;
             LaneCount = laneCount;
             _ticksPerMeasure = ticksPerMeasure;
             _beatsPerScan = beatsPerScan;
+            ScrollDirection = scrollDirection;
             ScanSeconds = tempo > 0.0 ? (beatsPerScan * 60.0) / tempo : 0.0;
             Notes = new List<ProjectedGameplayNote>(notes).AsReadOnly();
             Diagnostics = new List<string>(diagnostics).AsReadOnly();
@@ -257,6 +292,14 @@ namespace DJMaxEditor.Preview
         public string StatusLabel { get; private set; }
 
         public int LaneCount { get; private set; }
+
+        /// <summary>
+        /// The TECHNIKA scroll-direction effector this projection was placed under;
+        /// <see cref="TechnikaScrollDirection.Clockwise"/> for the arcade default and for every
+        /// non-TECHNIKA profile. Renderers read it to sweep the scanline, lay hold bodies and
+        /// orient the approach glow the same way the notes were placed.
+        /// </summary>
+        public TechnikaScrollDirection ScrollDirection { get; private set; }
 
         /// <summary>
         /// How long one scan lasts at the chart's header tempo, in seconds, or 0 when the chart
@@ -458,6 +501,36 @@ namespace DJMaxEditor.Preview
         private const int DefaultBeatsPerScan = 4;
 
         /// <summary>
+        /// Whether the timeline sweeps left-to-right (true) or right-to-left (false) over the
+        /// named half under a scroll-direction effector. See
+        /// <see cref="TechnikaScrollDirection"/> for the four arcade readings; this is the one
+        /// rule both the projector's note placement and every renderer-side sweep (scanline,
+        /// hold body, approach glow) answer to, so they cannot disagree about which way a scan
+        /// runs.
+        /// </summary>
+        public static bool TechnikaSweepRightward(
+            bool isTopHalf,
+            TechnikaScrollDirection direction)
+        {
+            switch (direction)
+            {
+                case TechnikaScrollDirection.CounterClockwise:
+                    // The inverse of the clockwise default: top runs right-to-left, bottom
+                    // left-to-right.
+                    return !isTopHalf;
+                case TechnikaScrollDirection.AllLeft:
+                    // Both halves travel toward the left edge.
+                    return false;
+                case TechnikaScrollDirection.AllRight:
+                    // Both halves travel toward the right edge.
+                    return true;
+                default:
+                    // Clockwise: top left-to-right, bottom right-to-left.
+                    return isTopHalf;
+            }
+        }
+
+        /// <summary>
         /// Left edge of the TECHNIKA note field, as a fraction of the arcade's 1280 px width.
         ///
         /// <para>
@@ -548,13 +621,29 @@ namespace DJMaxEditor.Preview
             PlayerData model,
             GameplayPreviewProfile profile)
         {
+            return Project(model, profile, TechnikaScrollDirection.Clockwise);
+        }
+
+        /// <summary>
+        /// Projects a chart, applying a scroll-direction effector to the TECHNIKA field. The
+        /// direction changes where every note sits inside its scan, so it is applied here at
+        /// placement time rather than as a renderer-side mirror; a Generic projection ignores
+        /// it, because the vertical gear has no such effector.
+        /// </summary>
+        public static GameplayPreviewProjection Project(
+            PlayerData model,
+            GameplayPreviewProfile profile,
+            TechnikaScrollDirection scrollDirection)
+        {
             if (model == null) throw new ArgumentNullException("model");
             return profile == GameplayPreviewProfile.Technika
-                ? ProjectTechnika(model)
+                ? ProjectTechnika(model, scrollDirection)
                 : ProjectGeneric(model);
         }
 
-        private static GameplayPreviewProjection ProjectTechnika(PlayerData model)
+        private static GameplayPreviewProjection ProjectTechnika(
+            PlayerData model,
+            TechnikaScrollDirection scrollDirection)
         {
             int ticksPerMeasure = Math.Max(1, (int)model.TickPerMinute);
             var diagnostics = new List<string>();
@@ -616,7 +705,7 @@ namespace DJMaxEditor.Preview
             int laneCount = DeriveLaneCount(notes);
             foreach (ProjectedGameplayNote note in notes)
             {
-                PlaceTechnikaNote(note, laneCount);
+                PlaceTechnikaNote(note, laneCount, scrollDirection);
             }
 
             return new GameplayPreviewProjection(
@@ -627,7 +716,8 @@ namespace DJMaxEditor.Preview
                 DefaultBeatsPerScan,
                 model.Tempo,
                 notes,
-                diagnostics);
+                diagnostics,
+                scrollDirection);
         }
 
         private static GameplayPreviewProjection ProjectGeneric(PlayerData model)
@@ -1042,7 +1132,10 @@ namespace DJMaxEditor.Preview
             return lane3 ? 4 : 3;
         }
 
-        private static void PlaceTechnikaNote(ProjectedGameplayNote note, int laneCount)
+        private static void PlaceTechnikaNote(
+            ProjectedGameplayNote note,
+            int laneCount,
+            TechnikaScrollDirection scrollDirection)
         {
             double floatScan = note.Pulse / (double)(PulsesPerBeat * DefaultBeatsPerScan);
             int intScan = (int)Math.Floor(floatScan);
@@ -1056,6 +1149,7 @@ namespace DJMaxEditor.Preview
 
             double relative = floatScan - intScan;
             bool top = (intScan & 1) == 1;
+            bool rightward = TechnikaSweepRightward(top, scrollDirection);
             double travel = (ScanFieldRight - ScanFieldLeft) * relative;
             double laneHeight = (1.0 - 0.05 - 0.05) / laneCount;
             double localY = 0.05 + laneHeight * (note.Lane + 0.5);
@@ -1064,11 +1158,13 @@ namespace DJMaxEditor.Preview
             note.RelativeScan = relative;
             note.IsTopHalf = top;
 
-            // Both halves sweep the same rectangle - the upper one left to right, the lower one
-            // right to left - so the lower half is the same window run backwards, not the upper
-            // half's window reflected. See ScanFieldLeft: the field is 7 px left of centre, so
-            // reflecting it (1 - x) would put every lower-half note 7 px off the arcade's.
-            note.X = top ? ScanFieldLeft + travel : ScanFieldRight - travel;
+            // Both halves sweep the same rectangle; under the clockwise default the upper one
+            // runs left to right and the lower one right to left, so the lower half is the same
+            // window run backwards, not the upper half's window reflected. See ScanFieldLeft:
+            // the field is 7 px left of centre, so reflecting it (1 - x) would put every
+            // leftward-sweeping note 7 px off the arcade's. The scroll effector only changes
+            // which way that run goes, which TechnikaSweepRightward answers for all four modes.
+            note.X = rightward ? ScanFieldLeft + travel : ScanFieldRight - travel;
             note.Y = top ? localY / 2.0 : 0.5 + localY / 2.0;
         }
     }

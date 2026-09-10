@@ -562,6 +562,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="26" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="{StaticResource Brush.Raised}"
                                 BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1">
@@ -581,10 +582,64 @@
                                            TextTrimming="CharacterEllipsis" Margin="10,0,8,0" />
                             </Grid>
                         </Border>
+                        <!-- TECHNIKA-only effector strip. The arcade offers these on the pre-song
+                             effector screen: a scroll-direction effector (clockwise default,
+                             inverse counter-clockwise, both-left, both-right), note faders
+                             (fade in / fade out), timeline blink/blind, and measurement guides
+                             are an editor aid rather than an arcade effector. Scroll direction
+                             rebuilds the projection; the rest are renderer state. -->
+                        <Border Grid.Row="1" x:Name="TechnikaEffectorStrip"
+                                Visibility="Collapsed"
+                                Background="{StaticResource Brush.Raised}"
+                                BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1"
+                                Padding="0,3">
+                            <!-- The right dock can be narrower than the controls; clipping them
+                                 would hide an effector with no gesture back to it. -->
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled">
+                                <StackPanel Orientation="Horizontal" Margin="8,0">
+                                    <TextBlock Text="SCROLL" Style="{StaticResource Text.Section}"
+                                               Margin="0,0,4" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaScrollCombo" Width="80" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaScrollChanged"
+                                              ToolTip="Scroll direction effector: CW is the arcade default; CCW is the inverse; LL/RR sweep both halves one way">
+                                        <ComboBoxItem Content="CW" />
+                                        <ComboBoxItem Content="CCW" />
+                                        <ComboBoxItem Content="LL" />
+                                        <ComboBoxItem Content="RR" />
+                                    </ComboBox>
+                                    <TextBlock Text="NOTES" Style="{StaticResource Text.Section}"
+                                               Margin="12,0,4" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaFaderCombo" Width="92" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaFaderChanged"
+                                              ToolTip="Note fader effector: fade notes in as the sweep approaches, or out before it reaches them">
+                                        <ComboBoxItem Content="OFF" />
+                                        <ComboBoxItem Content="FADE IN" />
+                                        <ComboBoxItem Content="FADE IN 2" />
+                                        <ComboBoxItem Content="FADE OUT" />
+                                        <ComboBoxItem Content="FADE OUT 2" />
+                                    </ComboBox>
+                                    <TextBlock Text="LINE" Style="{StaticResource Text.Section}"
+                                               Margin="12,0,4" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaLineCombo" Width="84" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaLineChanged"
+                                              ToolTip="Timeline effector: flash the sweep (blink) or hide it altogether (blind)">
+                                        <ComboBoxItem Content="ON" />
+                                        <ComboBoxItem Content="BLINK" />
+                                        <ComboBoxItem Content="BLINK 2" />
+                                        <ComboBoxItem Content="BLIND" />
+                                    </ComboBox>
+                                    <CheckBox x:Name="TechnikaGuidesCheck" Margin="12,0,0,0"
+                                              VerticalAlignment="Center" Content="GUIDES"
+                                              Click="OnTechnikaGuidesChanged"
+                                              ToolTip="Draw scan margins, lane centre rules and the arcade HUD cells - measurement aids, not gameplay" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
                         <!-- No fixed height: the view measures itself to the arcade's 1280x768
                              aspect, so the panel is exactly as tall as the dock is wide and never
                              shows letterbox bars. -->
-                        <Border Grid.Row="1" x:Name="PlayfieldHost"
+                        <Border Grid.Row="2" x:Name="PlayfieldHost"
                                 Background="Black" ClipToBounds="True" />
                     </Grid>
 
