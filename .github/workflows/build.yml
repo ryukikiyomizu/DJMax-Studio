@@ -28,6 +28,22 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Check XAML thickness literals
+        # WPF compiles Margin/Padding/BorderThickness strings to BAML without
+        # validating the token count, then ThicknessConverter throws at window
+        # load: a three-value literal (e.g. "0,0,4") takes MainWindow down at
+        # startup despite a green build. Thickness accepts 1, 2 or 4 values.
+        shell: bash
+        run: |
+          set -e
+          bad=$(grep -rnE '(Margin|Padding|BorderThickness)="[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+"' --include='*.xaml' . || true)
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "::error::XAML thickness must have 1, 2 or 4 values, never 3 (runtime XamlParseException)"
+            exit 1
+          fi
+          echo "No malformed thickness literals."
+
       - name: Build (Debug)
         run: dotnet build DJMaxEditor.sln -c Debug --nologo -flp:"logfile=build-debug.log;verbosity=normal"
 
