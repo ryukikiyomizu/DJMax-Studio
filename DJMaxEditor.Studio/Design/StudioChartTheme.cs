@@ -52,6 +52,9 @@ namespace DJMaxEditor.Studio.Design
         /// <summary>Id of the built-in IIDX palette.</summary>
         public const string IidxId = "iidx";
 
+        /// <summary>Id of the built-in RESPECT V palette.</summary>
+        public const string RespectVId = "respectv";
+
         // ===================================================================================
         // Identity
         // ===================================================================================
@@ -249,11 +252,12 @@ namespace DJMaxEditor.Studio.Design
         public static readonly StudioChartTheme Iidx = new StudioChartTheme
         {
             Id = IidxId,
-            Name = "IIDX (white / blue / red)",
+            Name = "IIDX / beatoraja (white / blue / red)",
             Description =
-                "beatmania IIDX lane roles: white keys, blue keys, a red turntable and a red " +
-                "judge line. Colour tracks the lane rather than the note type, so a long note is " +
-                "read by its height. The natural pairing for a .bms chart.",
+                "The look beatoraja's default BMS playfield is built on, which is beatmania " +
+                "IIDX's: white keys, blue keys, a red turntable and a red judge line. Colour " +
+                "tracks the lane rather than the note type, so a long note is read by its " +
+                "height. The natural pairing for a .bms chart, and the one BMS files open with.",
 
             // A field with a blue cast rather than a neutral one: on a black canvas the tint is
             // what separates "lane" from "gap", and it keeps the white keys reading as white.
@@ -304,8 +308,77 @@ namespace DJMaxEditor.Studio.Design
             Accent = "#FFE0343C",
         };
 
+        /// <summary>
+        /// A DJMAX RESPECT V canvas.
+        ///
+        /// <para>
+        /// RESPECT V's reading is colder than IIDX's: the gear is a near-black navy glass and the
+        /// notes are ice - white-cyan on the primary lanes, azure on the alternating ones, with
+        /// the game's hot pink reserved for what demands attention (the analogue rails in
+        /// gameplay, the accent notes here). Colour again tracks the lane, because that is what
+        /// the gear's own lane stagger teaches, and because 4B/5B/6B/8B presets alternate
+        /// primary/alternate lane roles exactly the way <see cref="NotesColouredByLane"/>
+        /// consumes them. No asset from the game is embedded - the hues are re-derived, and the
+        /// actual note and gear art lives in the owner's Shino-Tokuu folder next to the build
+        /// (see <c>docs/arcade-assets.md</c>), which is where the preview takes it from.
+        /// </para>
+        /// </summary>
+        public static readonly StudioChartTheme RespectV = new StudioChartTheme
+        {
+            Id = RespectVId,
+            Name = "RESPECT V (ice on navy)",
+            Description =
+                "DJMAX RESPECT V's gear: navy glass, icy white-cyan keys, azure alternates and " +
+                "the hot pink the game saves for what matters. Colour tracks the lane. RESPECT V " +
+                "trailer charts open with this one; pair it with the Shino-Tokuu assets and the " +
+                "playfield preview draws the real notes.",
+
+            Field = "#FF080D16",
+            FieldAlternate = "#FF0C1524",
+            FieldScratch = "#FF1A0F1E",
+            FieldDead = "#FF05080D",
+            FieldBackground = "#FF0B101A",
+
+            GridSub = "#FF121A28",
+            GridBeat = "#FF1B2942",
+            // A cool steel blue: the bar rule must not be mistaken for the cyan playhead or the
+            // pink accents, the same discipline the IIDX palette keeps with its red.
+            GridBar = "#FF46648C",
+
+            LaneEdge = "#FF233348",
+            LaneEdgeStrong = "#FF5A7DA8",
+
+            LaneChips = new[]
+            {
+                "#FF4E7BA8", "#FF2E6E96", "#FF6E86A2", "#FF2B4A70", "#FF5F9CC7",
+                "#FF3E5E85", "#FF36485E", "#FF7285A0", "#FF2C4666", "#FF8A5F8F",
+            },
+
+            NotesColouredByLane = true,
+            NoteWhiteKey = "#FFE9F8FF",
+            NoteWhiteKeyEdge = "#FFBDEFFF",
+            NoteBlueKey = "#FF25B4E8",
+            NoteBlueKeyEdge = "#FF8FE5FF",
+            NoteScratch = "#FFFF4D8E",
+            NoteScratchEdge = "#FFFFA8CC",
+
+            NotePlayable = "#FF25B4E8",
+            NotePlayableEdge = "#FF8FE5FF",
+            NoteAccent = "#FFFF4D8E",
+            NoteAccentEdge = "#FFFFA8CC",
+            NoteLong = "#FF3E7FD6",
+            NoteLongEdge = "#FFA8D4FF",
+            NoteBackground = "#FF4E5A6C",
+            NoteBackgroundEdge = "#FF8E9AB0",
+
+            // Deep navy, unreadable on white: the same constraint the IIDX palette states.
+            TextOnNote = "#FF04222E",
+
+            Accent = "#FF38E0FF",
+        };
+
         /// <summary>Every theme the picker offers, in the order it lists them.</summary>
-        public static readonly StudioChartTheme[] All = { Studio, Iidx };
+        public static readonly StudioChartTheme[] All = { Studio, Iidx, RespectV };
 
         /// <summary>The theme a canvas uses until told otherwise, and the settings default.</summary>
         public static StudioChartTheme Default { get { return Studio; } }

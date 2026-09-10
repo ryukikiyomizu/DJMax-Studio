@@ -14,6 +14,7 @@ using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.Diagnostics;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
+using DJMaxEditor.Files.FormatDetection;
 using DJMaxEditor.Preview;
 using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Design;
@@ -66,6 +67,14 @@ namespace DJMaxEditor.Studio.Shell
         private readonly BgaPreview _bga = new BgaPreview();
         private readonly BgaClockMap _bgaClock = new BgaClockMap();
         private readonly TechnikaPlayfieldView _playfield = new TechnikaPlayfieldView();
+        private readonly RespectPlayfieldView _respectPlayfield = new RespectPlayfieldView();
+
+        /// <summary>
+        /// The playfield view the render pump is driving right now - TECHNIKA for PT charts,
+        /// RESPECT V for its own container, and null for everything else, where "no gameplay
+        /// preview" is the honest answer. Swapped by <see cref="BindPlayfield"/>.
+        /// </summary>
+        private IGameplayPlayfieldView _activePlayfield;
 
         private NAudioKeysoundPlayer _audio;
         private Player _player;
@@ -117,6 +126,33 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private bool _playfieldPanelChosen;
 
+        /// <summary>
+        /// Same rule as the panel flags above: adopting a TECHNIKA chart may switch the timeline
+        /// to the DAW reading once (item: it is the layout the game and its editors are read in),
+        /// but only until the user has picked an orientation themselves this session.
+        /// </summary>
+        private bool _orientationChosen;
+
+        /// <summary>
+        /// The orientation the settings file held at load. SaveSettings prefers this over the
+        /// toggle while <see cref="_orientationChosen"/> is false, so an adopt-time default is
+        /// not written back as if it were a preference.
+        /// </summary>
+        private bool _persistedOrientation;
+
+        /// <summary>Same rule again, for the chart theme a newly adopted file suggests.</summary>
+        private bool _themeChosen;
+
+        /// <summary>The theme id the settings file held at load; see <see cref="_persistedOrientation"/>.</summary>
+        private string _persistedThemeId;
+
+        /// <summary>
+        /// The open chart's detected container format, captured at adopt time. Every per-format
+        /// behaviour below drives off this one answer: which toolbar toggles exist, which default
+        /// orientation and theme the chart suggests, and whether the note palette has meaning.
+        /// </summary>
+        private ChartFormat? _chartFormat;
+
         private bool _pumpAttached;
         private int _lastPumpVirtualTick = -1;
         private bool _suppressComboEvents;
@@ -160,6 +196,8 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.SeekRequested += OnCanvasSeekRequested;
             _canvas.InteractionCompleted += OnCanvasInteractionCompleted;
             _canvas.ContextRequested += OnCanvasContextRequested;
+            _canvas.NoteClicked += OnCanvasNoteClicked;
+            _canvas.GridCycleRequested += OnCanvasGridCycle;
             _volumeLane.VolumeEdited += OnCanvasInteractionCompleted;
 
             // Owns the bar from here on: it subscribes to the canvas's FrameBuilt itself, so the
@@ -200,7 +238,8 @@ namespace DJMaxEditor.Studio.Shell
             // so applying them once here is what makes the two agree from the first frame.
             _viewModel.ColumnScale = TrackWidthSlider.Value;
             _viewModel.TrySetTimeZoom(
-                (float)(NoteHeightSlider.Value / VerticalTimelineViewModel.BasePixelsPerTick));
+                (float)(NoteSpeedSlider.Value / VerticalTimelineViewModel.BasePixelsPerTick));
+            _viewModel.NoteThickness = NoteHeightSlider.Value;
             RefreshPlayGlyph();
             RefreshStatus();
 
@@ -398,10 +437,14 @@ namespace DJMaxEditor.Studio.Shell
                 timeline.TrackWidthScale.ToString("0.00", CultureInfo.InvariantCulture) + "x";
             _viewModel.ColumnScale = timeline.TrackWidthScale;
 
-            NoteHeightSlider.Value = timeline.NoteHeight;
-            NoteHeightReadout.Text = timeline.NoteHeight.ToString("0.00", CultureInfo.InvariantCulture);
+            NoteSpeedSlider.Value = timeline.NoteSpeed;
+            NoteSpeedReadout.Text = timeline.NoteSpeed.ToString("0.00", CultureInfo.InvariantCulture);
             _viewModel.TrySetTimeZoom(
-                (float)(timeline.NoteHeight / VerticalTimelineViewModel.BasePixelsPerTick));
+                (float)(timeline.NoteSpeed / VerticalTimelineViewModel.BasePixelsPerTick));
+
+            NoteHeightSlider.Value = timeline.NoteThickness;
+            NoteHeightReadout.Text = timeline.NoteThickness.ToString("0.00", CultureInfo.InvariantCulture);
+            _viewModel.NoteThickness = timeline.NoteThickness;
 
             // After the width, never before: assigning ColumnScale is what the auto-fit flag is
             // about, so the flag has to be the last word on it.
@@ -427,6 +470,10 @@ namespace DJMaxEditor.Studio.Shell
                 _canvas.Beats = beats;
             }
 
+            // The value as loaded, kept for SaveSettings: an adopt-time default (ApplyDocumentShape)
+            // may move the toggle without the user ever choosing an orientation, and a default that
+            // silently persisted itself would stop being a default next session.
+            _persistedOrientation = timeline.HorizontalOrientation;
             if ((OrientationToggle.IsChecked == true) != timeline.HorizontalOrientation)
             {
                 OrientationToggle.IsChecked = timeline.HorizontalOrientation;
@@ -508,6 +555,23 @@ namespace DJMaxEditor.Studio.Shell
             PerfReadoutPanel.Visibility = workspace.ShowPerformanceReadout
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+
+            // The stored height is the whole panel (header + host + grip); the control sized is
+            // the host. See OnBgaGripDragDelta for the same arithmetic in the other direction.
+            BgaHost.Height = Math.Max(64.0, workspace.BgaPanelHeight - 31.0);
+        }
+
+        /// <summary>
+        /// The BGA panel's bottom grip: trade BGA height against inspector (and playfield) room.
+        /// The row above it is Auto-sized, so resizing <c>BgaHost.Height</c> is the whole layout
+        /// pass - no splitter bookkeeping, no fighting the playfield's aspect-locked row.
+        /// </summary>
+        private void OnBgaGripDragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+        {
+            double next = BgaHost.Height + e.VerticalChange;
+            // 64..609 here equals the 96..640 the settings layer clamps the whole panel to
+            // (host + 26 header + 5 grip), so a drag never lands somewhere a reload would move.
+            BgaHost.Height = Math.Max(64.0, Math.Min(609.0, next));
         }
 
         /// <summary>
@@ -529,6 +593,15 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void ApplyAppearanceSettings(AppearanceSettings appearance)
         {
+            // Snapshot what the file said, the first time through. ApplyDocumentShape may later
+            // point the live settings at a suggested theme, and SaveSettings restores this when
+            // the user never picked one - the same rule _persistedOrientation keeps for the DAW
+            // default.
+            if (_persistedThemeId == null && appearance != null)
+            {
+                _persistedThemeId = appearance.ChartThemeId;
+            }
+
             // A missing section is not a reason to draw nothing: the shipped palette is the answer
             // until the settings say otherwise, which is also the answer for an id this build does
             // not know (StudioChartTheme.Find is total).
@@ -575,6 +648,10 @@ namespace DJMaxEditor.Studio.Shell
             {
                 return;
             }
+
+            // A deliberate pick ends adopt-time theme suggestions: the chart the user is looking
+            // at now wears what they asked for, whatever the next file would suggest.
+            _themeChosen = true;
 
             // Written into the live settings object and applied through the one apply path, exactly
             // as a preferences edit is: no second route from a control to a surface. Persistence
@@ -657,12 +734,26 @@ namespace DJMaxEditor.Studio.Shell
             {
                 TimelineSettings timeline = _settings.Timeline;
                 timeline.TrackWidthScale = TrackWidthSlider.Value;
-                timeline.NoteHeight = NoteHeightSlider.Value;
+                timeline.NoteSpeed = NoteSpeedSlider.Value;
+                timeline.NoteThickness = NoteHeightSlider.Value;
                 timeline.AutoFitColumns = _viewModel.AutoFitColumns;
                 timeline.ShowNoteLabels = LabelsToggle.IsChecked == true;
                 timeline.ShowNoteArt = AssetsToggle.IsChecked == true;
                 timeline.GameplayTimeDirection = DirectionToggle.IsChecked == true;
-                timeline.HorizontalOrientation = OrientationToggle.IsChecked == true;
+                // Only a real user choice earns persistence; the TECHNIKA chart that defaulted the
+                // DAW view earlier in the session did not decide the default for everything else.
+                timeline.HorizontalOrientation = _orientationChosen
+                    ? OrientationToggle.IsChecked == true
+                    : _persistedOrientation;
+
+                // And the same rule for the theme a chart suggested: a suggestion the user never
+                // confirmed is reverted to what the file held, otherwise every BMS chart danced
+                // every other chart onto its palette after one session.
+                if (!_themeChosen && _persistedThemeId != null &&
+                    _settings.Appearance != null)
+                {
+                    _settings.Appearance.ChartThemeId = _persistedThemeId;
+                }
 
                 GridDivision division = GridCombo.SelectedItem as GridDivision;
                 if (division != null)
@@ -679,6 +770,14 @@ namespace DJMaxEditor.Studio.Shell
                 workspace.ShowLeftDock = LeftDockToggle.IsChecked == true;
                 workspace.ShowRightDock = RightDockToggle.IsChecked == true;
                 workspace.ShowVolumeLane = VolumeLaneToggle.IsChecked == true;
+
+                // The panel is a 26 px header and a 5 px grip on top of the host; the setting
+                // stores the whole rather than the part, so a default and a dragged height are
+                // the same unit.
+                if (BgaPanel.Visibility == Visibility.Visible)
+                {
+                    workspace.BgaPanelHeight = BgaHost.Height + 31.0;
+                }
 
                 _settingsStore.Save(_settings);
             }
@@ -856,6 +955,7 @@ namespace DJMaxEditor.Studio.Shell
             long tBga = adopt.ElapsedMilliseconds;
 
             BindPlayfield(model);
+            ApplyDocumentShape(model);
             long tPlayfield = adopt.ElapsedMilliseconds;
 
             SampleList.ItemsSource = model.Instruments;
@@ -1261,7 +1361,10 @@ namespace DJMaxEditor.Studio.Shell
             _viewModel.IsPlaybackActive = false;
             RefreshPlayGlyph();
             RefreshStatus();
-            _playfield.Sync(_viewModel.PlayheadVirtualTick);
+            if (_activePlayfield != null)
+            {
+                _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
+            }
             LogTransport("stop");
         }
 
@@ -1377,8 +1480,10 @@ namespace DJMaxEditor.Studio.Shell
             _viewModel.PlayheadVirtualTick = virtualTick;
             _canvas.InvalidateOverlay();
             SyncBga();
-            _playfield.Sync(_viewModel.PlayheadVirtualTick);
-
+            if (_activePlayfield != null)
+            {
+                _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
+            }
             RenderingEventArgs rendering = e as RenderingEventArgs;
             if (rendering != null)
             {
@@ -1517,7 +1622,10 @@ namespace DJMaxEditor.Studio.Shell
             }
             UpdateTimeReadout();
             SyncBga();
-            _playfield.Sync(_viewModel.PlayheadVirtualTick);
+            if (_activePlayfield != null)
+            {
+                _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
+            }
         }
 
         private void OnCanvasInteractionCompleted(object sender, EventArgs e)
@@ -1525,6 +1633,95 @@ namespace DJMaxEditor.Studio.Shell
             _volumeLane.InvalidateVisual();
             RefreshStatus();
             RefreshInspector();
+        }
+
+        /// <summary>
+        /// Ctrl+wheel on the canvas: step the snap divisor, the osu! editor's one wheel modifier
+        /// everyone reaching for it actually means. Routed through the combo's own selection path
+        /// so the button, the status readout and the settings harvest all see the same value.
+        /// Free sits at the end of the list and is skipped over in both directions: stepping the
+        /// divisor and landing on "no divisor at all" is a trap, not a value.
+        /// </summary>
+        private void OnCanvasGridCycle(object sender, int direction)
+        {
+            int index = GridCombo.SelectedIndex;
+            int count = GridCombo.Items.Count;
+            // The last entry is Free: excluded from the cycle. Clamped rather than wrapped, so
+            // holding the wheel against an end parks there instead of teleporting to the other.
+            int next = index + direction;
+            if (next < 0) next = 0;
+            if (next > count - 2) next = count - 2;
+            if (next != index)
+            {
+                GridCombo.SelectedIndex = next;
+            }
+        }
+
+        /// <summary>
+        /// "Play keysounds on click": a click landing on a note sounds that note's keysound once,
+        /// through the same isolated channel and gain a sample-list double-click uses, so it never
+        /// cuts a note that playback has sounding.
+        /// </summary>
+        private void OnCanvasNoteClicked(object sender, EventData note)
+        {
+            if (note == null || _audio == null || _settings == null ||
+                !_settings.Audio.PlayKeysoundOnClick)
+            {
+                return;
+            }
+
+            InstrumentData instrument = note.Instrument;
+            if (instrument == null || instrument.InsNum == 0)
+            {
+                return;
+            }
+
+            float gain = (float)_settings.Audio.AuditionVolume;
+            _audio.PlaySound(AuditionChannel, instrument.InsNum, gain, 64);
+        }
+
+        /// <summary>
+        /// One of the TECHNIKA note-kind buttons. The pick lives on the canvas (attribute plus
+        /// whether the note starts long), the buttons are exclusive, and picking one arms the
+        /// Addition tool: a palette that changed art but not the tool would place whatever the
+        /// previous pick was while looking like it changed its mind.
+        /// </summary>
+        private void OnPalettePick(object sender, RoutedEventArgs e)
+        {
+            System.Windows.Controls.Primitives.ToggleButton picked =
+                sender as System.Windows.Controls.Primitives.ToggleButton;
+            if (picked == null)
+            {
+                return;
+            }
+
+            // Clicking the latched button would uncheck everything; that is not a state the
+            // palette has ("no kind"), so re-check it and take no other action.
+            foreach (object child in NotePaletteGrid.Children)
+            {
+                System.Windows.Controls.Primitives.ToggleButton button =
+                    child as System.Windows.Controls.Primitives.ToggleButton;
+                if (button != null)
+                {
+                    button.IsChecked = ReferenceEquals(button, picked);
+                }
+            }
+
+            string tag = picked.Tag as string ?? "0";
+            bool isLong = tag.EndsWith("|long", StringComparison.Ordinal);
+            if (isLong)
+            {
+                tag = tag.Substring(0, tag.Length - "|long".Length);
+            }
+
+            byte attribute;
+            if (!byte.TryParse(tag, out attribute))
+            {
+                attribute = 0;
+            }
+            _canvas.NewNoteAttribute = attribute;
+            _canvas.NewNoteIsLong = isLong;
+            SetTool(ToolMode.Addition);
         }
 
         private void OnCanvasContextRequested(object sender, VerticalHitResult e)
@@ -2188,6 +2385,13 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void OnToggleOrientation(object sender, RoutedEventArgs e)
         {
+            // A click is a decision, same convention as the BGA and playfield toggles: adopt-time
+            // defaults pass this window as the sender so they do not count as one.
+            if (sender != this)
+            {
+                _orientationChosen = true;
+            }
+
             bool horizontal = OrientationToggle.IsChecked == true;
 
             _canvas.Orientation = horizontal
@@ -2257,6 +2461,28 @@ namespace DJMaxEditor.Studio.Shell
             _volumeLane.InvalidateVisual();
         }
 
+        /// <summary>
+        /// "Note speed": the time-axis density. This is what the old Note height slider actually
+        /// did - everything between two bar lines stretches or squeezes, which is the chart's
+        /// pace on screen.
+        /// </summary>
+        private void OnNoteSpeedChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_ready)
+            {
+                return;
+            }
+            NoteSpeedReadout.Text = e.NewValue.ToString("0.00", CultureInfo.InvariantCulture);
+            _viewModel.TrySetTimeZoom((float)(e.NewValue / VerticalTimelineViewModel.BasePixelsPerTick));
+            _canvas.InvalidateAll();
+            _volumeLane.InvalidateVisual();
+            RefreshStatus();
+        }
+
+        /// <summary>
+        /// "Note height": how thick a note head draws, and nothing else. Kept off the time map on
+        /// purpose - the chart's motion is the speed slider's job, not this one's.
+        /// </summary>
         private void OnNoteHeightChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (!_ready)
@@ -2264,10 +2490,9 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
             NoteHeightReadout.Text = e.NewValue.ToString("0.00", CultureInfo.InvariantCulture);
-            _viewModel.TrySetTimeZoom((float)(e.NewValue / VerticalTimelineViewModel.BasePixelsPerTick));
+            _viewModel.NoteThickness = e.NewValue;
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
-            RefreshStatus();
         }
 
         // ===================================================================================
@@ -2407,9 +2632,93 @@ namespace DJMaxEditor.Studio.Shell
 
             // The view only redraws on a tick change, and while stopped there are none, so a panel
             // that was hidden when the chart was adopted needs one push to have something in it.
-            if (PlayfieldPanel.Visibility == Visibility.Visible)
+            if (PlayfieldPanel.Visibility == Visibility.Visible &&
+                _activePlayfield != null)
             {
-                _playfield.Sync(_viewModel.PlayheadVirtualTick);
+                _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
+            }
+        }
+
+        /// <summary>
+        /// Per-format shell shape, settled once per adopted document. Three rules, all from real
+        /// feature requests:
+        ///
+        /// <para>
+        /// <b>TECHNIKA-only tools only exist for TECHNIKA files.</b> The arcade-art toggle draws
+        /// TECHNIKA attribute art by construction and the playfield panel projects a TECHNIKA
+        /// profile, so on a BMS or RESPECT V chart both could only mislabel things. They are
+        /// removed from the toolbar rather than disabled - a disabled button advertises a feature
+        /// the format cannot have. The note palette (left dock) follows the same gate: attributes
+        /// 5/6/10/11/12 mean something only under a TECHNIKA layout.
+        /// </para>
+        /// <para>
+        /// <b>TECHNIKA charts default to the DAW reading.</b> TECHNIKA itself is a horizontal
+        /// game - a scan sweeps sideways - and its editors read that way, so an adopted .pt
+        /// lands transposed until the user picks an orientation themselves this session. The
+        /// escape hatch is the same "once unless chosen" convention the BGA/playfield panels use.
+        /// </para>
+        /// <para>
+        /// <b>The file suggests its theme.</b> A BMS chart opens on the beatoraja-style IIDX
+        /// palette, a RESPECT V trailer on the RESPECT V one, a TECHNIKA .pt on the Studio one
+        /// whose arcade art carries the look - again only until the user has picked a theme.
+        /// </para>
+        /// </summary>
+        private void ApplyDocumentShape(PlayerData model)
+        {
+            ChartFormat? format = model == null ? null : model.SourceFormat;
+            _chartFormat = format;
+
+            bool technika = format == ChartFormat.PtffDecrypted ||
+                format == ChartFormat.PtffEncryptedTechnika;
+            bool respectV = format == ChartFormat.TrailerRespectV;
+            bool bms = format == ChartFormat.BmsClassic || format == ChartFormat.Bmson;
+
+            bool hasPlayfield = technika || respectV;
+            PlayfieldToggle.Visibility = hasPlayfield ? Visibility.Visible : Visibility.Collapsed;
+            AssetsToggle.Visibility = technika ? Visibility.Visible : Visibility.Collapsed;
+            NotePalettePanel.Visibility = technika ? Visibility.Visible : Visibility.Collapsed;
+            PlayfieldToggle.ToolTip = technika
+                ? "Show the TECHNIKA gameplay playfield"
+                : "Show the RESPECT V playfield";
+
+            if (!hasPlayfield)
+            {
+                // A panel from the previous chart must not leak into a format that has nothing
+                // to project; the user's choice flag is untouched, so the next TECHNIKA chart
+                // behaves exactly as if this one had never come between.
+                if (PlayfieldToggle.IsChecked == true)
+                {
+                    PlayfieldToggle.IsChecked = false;
+                }
+                PlayfieldPanel.Visibility = Visibility.Collapsed;
+            }
+
+            if (!_orientationChosen)
+            {
+                bool wantHorizontal = technika;
+                if ((OrientationToggle.IsChecked == true) != wantHorizontal)
+                {
+                    OrientationToggle.IsChecked = wantHorizontal;
+                    OnToggleOrientation(this, null);
+                }
+            }
+
+            if (!_themeChosen && _settings != null && _settings.Appearance != null)
+            {
+                string themeId = bms
+                    ? StudioChartTheme.IidxId
+                    : respectV
+                        ? StudioChartTheme.RespectVId
+                        : technika
+                            ? StudioChartTheme.StudioId
+                            : null;
+                if (themeId != null &&
+                    !string.Equals(_settings.Appearance.ChartThemeId, themeId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    _settings.Appearance.ChartThemeId = themeId;
+                    ApplyAppearanceSettings(_settings.Appearance);
+                }
             }
         }
 
@@ -2426,9 +2735,15 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void BindPlayfield(PlayerData model)
         {
+            // The format question decides which gear the panel dresses as, so it is settled here
+            // and kept: ApplyDocumentShape reads _chartFormat for toolbar visibility.
+            _chartFormat = model == null ? (ChartFormat?)null : model.SourceFormat;
+
             if (model == null)
             {
                 _playfield.Unbind();
+                _respectPlayfield.Unbind();
+                _activePlayfield = null;
                 PlayfieldStatus.Text = "no chart loaded";
                 PlayfieldStatus.ToolTip = null;
                 return;
@@ -2447,39 +2762,79 @@ namespace DJMaxEditor.Studio.Shell
                 // carries on; the projector's own diagnostics are in the log.
                 DiagnosticLog.Exception("technika.playfield", ex);
                 _playfield.Unbind();
+                _respectPlayfield.Unbind();
+                _activePlayfield = null;
                 PlayfieldStatus.Text = "projection failed";
                 PlayfieldStatus.ToolTip = ex.Message;
                 return;
             }
 
-            _playfield.Bind(projection);
-
-            if (projection.Profile != GameplayPreviewProfile.Technika)
+            if (projection.Profile == GameplayPreviewProfile.Technika)
             {
-                PlayfieldStatus.Text = "not a TECHNIKA chart";
+                _respectPlayfield.Unbind();
+                HostPlayfield(_playfield);
+                _playfield.Bind(projection);
+                _activePlayfield = _playfield;
+
+                PlayfieldStatus.Text = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} lanes  {1} notes  {2}",
+                    projection.LaneCount,
+                    projection.Notes.Count,
+                    _playfield.SpriteSourceLabel);
+                PlayfieldStatus.ToolTip = suggestion.RequiresConfirmation
+                    ? projection.StatusLabel + "\n" + suggestion.Explanation
+                    : projection.StatusLabel;
+            }
+            else if (_chartFormat == ChartFormat.TrailerRespectV)
+            {
+                // A RESPECT V chart: the Generic branch has already placed every note in the
+                // game's own 502-wide lane geometry; the Respect view draws that, in the game's
+                // gear where the extraction is on hand.
+                _playfield.Unbind();
+                HostPlayfield(_respectPlayfield);
+                _respectPlayfield.Bind(projection);
+                _activePlayfield = _respectPlayfield;
+
+                PlayfieldStatus.Text = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} lanes  {1} notes  {2}",
+                    projection.LaneCount,
+                    projection.Notes.Count,
+                    _respectPlayfield.GearSourceLabel);
+                PlayfieldStatus.ToolTip = projection.StatusLabel;
+            }
+            else
+            {
+                // Neither playfield speaks this chart's game. There is nothing to pretend with:
+                // the panel reports it and hides, rather than showing the wrong game's gear.
+                _playfield.Unbind();
+                _respectPlayfield.Unbind();
+                _activePlayfield = null;
+                HostPlayfield(_playfield);
+                PlayfieldStatus.Text = "no gameplay preview for this format";
                 PlayfieldStatus.ToolTip = suggestion.Explanation;
                 return;
             }
 
-            PlayfieldStatus.Text = string.Format(
-                CultureInfo.InvariantCulture,
-                "{0} lanes  {1} notes  {2}",
-                projection.LaneCount,
-                projection.Notes.Count,
-                _playfield.SpriteSourceLabel);
-            PlayfieldStatus.ToolTip = suggestion.RequiresConfirmation
-                ? projection.StatusLabel + "\n" + suggestion.Explanation
-                : projection.StatusLabel;
+            _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
 
-            _playfield.Sync(_viewModel.PlayheadVirtualTick);
-
-            // First TECHNIKA chart of the session opens the panel once, for the same reason a
+            // First playable chart of the session opens the panel once, for the same reason a
             // discovered BGA does: the preview is useless if you have to know to go and find it.
             bool mayOpen = _settings == null || _settings.Bga.AutoOpenPlayfieldForTechnika;
             if (mayOpen && !_playfieldPanelChosen && PlayfieldToggle.IsChecked != true)
             {
                 PlayfieldToggle.IsChecked = true;
                 OnTogglePlayfield(this, null);
+            }
+        }
+
+        /// <summary>Swaps which view the playfield panel hosts, if it is not there already.</summary>
+        private void HostPlayfield(UIElement view)
+        {
+            if (!ReferenceEquals(PlayfieldHost.Child, view))
+            {
+                PlayfieldHost.Child = view;
             }
         }
 

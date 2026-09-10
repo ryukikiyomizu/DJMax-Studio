@@ -34,6 +34,14 @@ namespace DJMaxEditor.Studio.Settings
         public double AuditionVolume { get; set; } = 1.0;
 
         /// <summary>
+        /// Sound a note's keysound the moment it is clicked - on select with the pointer, and on
+        /// the Addition tool's click-through-select - using the same isolated channel and gain as
+        /// a sample-list audition. On by default: hearing what you just touched is why the sample
+        /// list got double-click auditioning at all, only faster.
+        /// </summary>
+        public bool PlayKeysoundOnClick { get; set; } = true;
+
+        /// <summary>
         /// Mirrors <c>NAudioKeysoundPlayer.AllowOverlappingRetrigger</c>, whose XML doc carries the
         /// measurements behind the default. True lets a retriggered keysound ring out; false gives
         /// one voice per channel back, at the cost of the truncation clicks counted there.
@@ -69,6 +77,7 @@ namespace DJMaxEditor.Studio.Settings
                 AllowOverlappingRetrigger = AllowOverlappingRetrigger,
                 KeysoundCacheBudgetMb = KeysoundCacheBudgetMb,
                 LoadKeysoundsOnOpen = LoadKeysoundsOnOpen,
+                PlayKeysoundOnClick = PlayKeysoundOnClick,
             };
         }
 
@@ -80,6 +89,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "audio.overlappingRetrigger", AllowOverlappingRetrigger);
             StudioSettings.Line(text, "audio.cacheBudgetMb", KeysoundCacheBudgetMb);
             StudioSettings.Line(text, "audio.loadKeysoundsOnOpen", LoadKeysoundsOnOpen);
+            StudioSettings.Line(text, "audio.playKeysoundOnClick", PlayKeysoundOnClick);
         }
     }
 
@@ -96,11 +106,26 @@ namespace DJMaxEditor.Studio.Settings
         public double TrackWidthScale { get; set; } = 1.0;
 
         /// <summary>
-        /// Pixels per tick - the left dock's "Note height" slider.
-        /// <see cref="VerticalTimelineViewModel.BasePixelsPerTick"/> is this value, so the shipped
-        /// default is a zoom factor of exactly 1.0.
+        /// Pixels per virtual tick - how fast the chart moves along the time axis, the left
+        /// dock's "Note speed" slider. <see cref="VerticalTimelineViewModel.BasePixelsPerTick"/>
+        /// is this value, so the shipped default is a zoom factor of exactly 1.0.
+        ///
+        /// <para>
+        /// Replaces the old <c>NoteHeight</c> value, which held the same number under the wrong
+        /// name: the slider read "note height" but drove the time zoom, so a user after thicker
+        /// notes got a faster chart instead. Section version 1 files carry <c>NoteHeight</c>;
+        /// the deserializer simply drops the unknown key (see <see cref="StudioSettingsStore"/>),
+        /// landing on this default - the same value the old file would have held in practice.
+        /// </para>
         /// </summary>
-        public double NoteHeight { get; set; } = 0.55;
+        public double NoteSpeed { get; set; } = 0.55;
+
+        /// <summary>
+        /// How thick a note head draws, as a multiplier of the floor height - the left dock's
+        /// "Note height" slider, now honest about it. Independent of <see cref="NoteSpeed"/> on
+        /// purpose, so changing the look of a note cannot change the chart's motion.
+        /// </summary>
+        public double NoteThickness { get; set; } = 1.0;
 
         /// <summary>Let the viewport pick the lane width. Cleared by touching the width slider.</summary>
         public bool AutoFitColumns { get; set; } = true;
@@ -136,8 +161,8 @@ namespace DJMaxEditor.Studio.Settings
         public int BeatDenominator { get; set; } = 4;
 
         /// <summary>
-        /// Multiplier for one zoom step - the toolbar buttons and Ctrl+wheel. 1.25 is what both
-        /// were hard-coded to.
+        /// Multiplier for one zoom step - the toolbar buttons and Alt+wheel. 1.25 was the old
+        /// hard-coded step for both.
         /// </summary>
         public double ZoomStep { get; set; } = 1.25;
 
@@ -150,7 +175,12 @@ namespace DJMaxEditor.Studio.Settings
                 1.0);
             // The same range the XAML slider declares. The floor is not zero on purpose: a zero
             // pixels-per-tick collapses every note onto one row and there is no gesture back.
-            NoteHeight = StudioSettings.Clamp(NoteHeight, 0.05, 4.0, 0.55);
+            NoteSpeed = StudioSettings.Clamp(NoteSpeed, 0.05, 4.0, 0.55);
+            NoteThickness = StudioSettings.Clamp(
+                NoteThickness,
+                VerticalTimelineViewModel.MinNoteThickness,
+                VerticalTimelineViewModel.MaxNoteThickness,
+                1.0);
             ZoomStep = StudioSettings.Clamp(ZoomStep, 1.05, 2.5, 1.25);
 
             // A denominator no list entry carries would leave the combo with nothing selected, and
@@ -170,7 +200,8 @@ namespace DJMaxEditor.Studio.Settings
             return new TimelineSettings
             {
                 TrackWidthScale = TrackWidthScale,
-                NoteHeight = NoteHeight,
+                NoteSpeed = NoteSpeed,
+                NoteThickness = NoteThickness,
                 AutoFitColumns = AutoFitColumns,
                 FollowPlayback = FollowPlayback,
                 ShowNoteLabels = ShowNoteLabels,
@@ -186,7 +217,8 @@ namespace DJMaxEditor.Studio.Settings
         internal void Describe(StringBuilder text)
         {
             StudioSettings.Line(text, "timeline.trackWidth", TrackWidthScale);
-            StudioSettings.Line(text, "timeline.noteHeight", NoteHeight);
+            StudioSettings.Line(text, "timeline.noteSpeed", NoteSpeed);
+            StudioSettings.Line(text, "timeline.noteThickness", NoteThickness);
             StudioSettings.Line(text, "timeline.autoFitColumns", AutoFitColumns);
             StudioSettings.Line(text, "timeline.followPlayback", FollowPlayback);
             StudioSettings.Line(text, "timeline.showNoteLabels", ShowNoteLabels);
@@ -332,8 +364,18 @@ namespace DJMaxEditor.Studio.Settings
         /// </summary>
         public bool ShowPerformanceReadout { get; set; } = true;
 
+        /// <summary>
+        /// Height of the BGA panel's row in the right dock, in DIPs, as last left by dragging its
+        /// splitter. 186 is what the fixed layout shipped with (26 px header + 160 px preview),
+        /// so an untouched settings file lays out exactly like before the row grew a handle.
+        /// </summary>
+        public double BgaPanelHeight { get; set; } = 186.0;
+
         internal void Clamp()
         {
+            // Below ~96 the video letterboxes into a sliver; above 640 it can starve the
+            // inspector on a minimum-height window.
+            BgaPanelHeight = StudioSettings.Clamp(BgaPanelHeight, 96.0, 640.0, 186.0);
         }
 
         internal WorkspaceSettings Clone()
@@ -344,6 +386,7 @@ namespace DJMaxEditor.Studio.Settings
                 ShowRightDock = ShowRightDock,
                 ShowVolumeLane = ShowVolumeLane,
                 ShowPerformanceReadout = ShowPerformanceReadout,
+                BgaPanelHeight = BgaPanelHeight,
             };
         }
 
@@ -353,6 +396,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "workspace.rightDock", ShowRightDock);
             StudioSettings.Line(text, "workspace.volumeLane", ShowVolumeLane);
             StudioSettings.Line(text, "workspace.perfReadout", ShowPerformanceReadout);
+            StudioSettings.Line(text, "workspace.bgaHeight", BgaPanelHeight);
         }
     }
 

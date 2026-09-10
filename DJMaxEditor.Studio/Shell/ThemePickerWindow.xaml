@@ -139,7 +139,7 @@
                                Style="{StaticResource Text.Readout}"
                                Foreground="{StaticResource Brush.TextMuted}"
                                TextWrapping="Wrap"
-                               Text="Click a theme to use it right away; your choice is remembered. The TECHNIKA playfield keeps the arcade's own colours." />
+                               Text="Click a theme to use it right away; your choice is remembered. The gameplay playfields keep their own arcade looks - TECHNIKA colourways, the RESPECT V gear." />
 
                     <Button Grid.Column="1" Style="{StaticResource Button.Solid}"
                             VerticalAlignment="Center" IsDefault="True"

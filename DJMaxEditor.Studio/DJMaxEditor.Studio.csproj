@@ -236,4 +236,17 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup Label="RESPECT V gear art (local, not redistributed)">
+    <!--
+      The RESPECT V gear (glass backdrop, header plate, bottom deck, edge rails) extracted from
+      the owner's Shino-Tokuu shared-assets set - see docs\arcade-assets.md and
+      scripts\fetch-arcade-assets.ps1. Same arrangement as the TECHNIKA folder above: nothing
+      is committed, the wildcard matching nothing is not an error, and without art the
+      RespectPlayfieldView re-derives the same shapes as flat plates.
+    -->
+    <Content Include="LocalAssets\RespectV\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

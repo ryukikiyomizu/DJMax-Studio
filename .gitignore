@@ -9,7 +9,9 @@ tools
 /PERFORMANCE_VERTICAL_TIMELINE_WORKLOG.md
 /video-128.png
 /Shared/Resources/*.psd
-/DJMaxEditor.Studio/LocalAssets/Technika2/
+# All studio-local arcade art (Technika2 note sets, RespectV gear) is staged by
+# scripts/fetch-arcade-assets.ps1 and never committed; see docs/arcade-assets.md.
+/DJMaxEditor.Studio/LocalAssets/
 Thumbs.db
 /libs/NVorbis
 /*.suo

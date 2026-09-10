@@ -377,8 +377,8 @@ not a theme *system* yet: no folders, no JSON, no scripting, no compiled plugins
   behavioural flag, no WPF objects, so it can be constructed, compared and listed without a
   Dispatcher. Fallback inheritance is expressed as C# property initialisers rather than a
   `_fallback` folder: every property defaults to the Studio value, so a theme lists only what it
-  changes. Two built-ins: `studio` (the shipped ptSequencer-derived canvas, byte-for-byte the
-  palette that was hardcoded) and `iidx`.
+  changes. Three built-ins: `studio` (the shipped ptSequencer-derived canvas, byte-for-byte the
+  palette that was hardcoded), `iidx`, and `respectv`.
 - The IIDX palette is the second built-in and the proof the seam is real. It needed no new lane
   model, because the layout already carries the roles: `VerticalTrackLayout`'s BMS plan numbers its
   keys 1-7 and stripes them primary/alternate on exactly IIDX's parity (odd key → `RegularPrimary`,
@@ -399,6 +399,21 @@ not a theme *system* yet: no folders, no JSON, no scripting, no compiled plugins
   row applies immediately, so the chart behind the dialog is the preview. It keeps the legacy
   `ThemePickerForm`'s contract — the dialog mirrors the shell's state through a delegate rather
   than owning it, and re-reads that delegate after an apply instead of assuming the click took.
+- The `respectv` built-in: the RESPECT V reading of the canvas — deep-space field, ice-white
+  primary keys, azure alternating keys, the pink side acts, lane chips all set. The note hues
+  are sampled from the owner's Shino-Tokuu extraction (`NoteSteam_000` atlas), not invented.
+- Layout answers the palette at the width axis too: `VerticalTrackLayout.BmsScratchWidth` is
+  1.5× the key width (beatoraja's BMS convention), so an SC/BMS chart reads like the game's —
+  the turntable column announces itself by width rather than by a taller block.
+- §4's per-format default is also in: adopting a chart suggests a theme by its container
+  (`iidx` for BMS/BMSON, `respectv` for RESPECT V trailers, `studio` for TECHNIKA PTFF) until
+  the user has picked one this session, and a suggestion they never confirmed is not written
+  back over their settings at shutdown.
+- The companion to user art for the preview side is `docs/arcade-assets.md`: TECHNIKA keeps
+  its numbered Shino-Toku sets (glyphs plus the CoolBomb burst, whose folder tree the loader
+  now also accepts unwrapped), and the RESPECT V playfield (`RespectPlayfieldView`) dresses the
+  package-derived lane geometry in the Shino-Tokuu base gear — glass, header plate, bottom deck
+  and rails — with the same re-derived fallback when the extraction is not staged.
 
 **What is deliberately not themed**
 
@@ -416,8 +431,9 @@ not a theme *system* yet: no folders, no JSON, no scripting, no compiled plugins
   per-id cache, so the loader's job is "parse, merge over the defaults, hand the result to
   `ForTheme`" — plus a `ClearCache()` (already present) for reload, and validation of hex strings
   before anything reaches `ColorConverter`.
-- Auto-selecting a default theme from the detected `ChartFormat` (§4's table). Detection already
-  exists; only the lookup is new.
+- The RESPECT note atlases' slicing table (`Config Tables/note_skin` in Shino-Tokuu). Until
+  that is imported, `RespectPlayfieldView` draws notes as vector bars in the sampled hues; the
+  gear sprites it *does* stage don't need a slice map because they are whole-frame parts.
 - The legacy WinForms surfaces. `TimelineRenderTheme`, `VerticalRenderTheme` and the Gen-1
   renderer themes still carry their own palettes; a data-driven loader is the one part of §3's
   Option A that would reach both hosts through one code path.

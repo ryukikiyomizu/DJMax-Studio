@@ -162,6 +162,12 @@ namespace DJMaxEditor.Controls.Vertical
             get { return OriginTick + ((Height - Coordinates.RulerHeight) / Coordinates.PixelsPerTick); }
         }
 
+        /// <param name="noteThickness">
+        /// Scale applied to <see cref="MinimumItemHeight"/> only - the shell's "note height"
+        /// preference. Kept out of the tick-to-pixel map on purpose: it changes how tall a note
+        /// head looks, never how far apart two ticks sit, so a note's timing read cannot be
+        /// distorted by its own styling.
+        /// </param>
         public static VerticalTimelineFrame Build(
             VerticalTimelineProjection projection,
             VerticalCoordinateSystem coordinates,
@@ -169,10 +175,17 @@ namespace DJMaxEditor.Controls.Vertical
             double originNativeX,
             int width,
             int height,
-            int playheadTick)
+            int playheadTick,
+            double noteThickness = 1.0)
         {
             if (projection == null) throw new ArgumentNullException("projection");
             if (coordinates == null) throw new ArgumentNullException("coordinates");
+
+            if (double.IsNaN(noteThickness) || double.IsInfinity(noteThickness) || noteThickness <= 0)
+            {
+                noteThickness = 1.0;
+            }
+            double minimumItemHeight = MinimumItemHeight * noteThickness;
 
             int safeWidth = Math.Max(1, width);
             int safeHeight = Math.Max(1, height);
@@ -209,7 +222,7 @@ namespace DJMaxEditor.Controls.Vertical
                     VerticalColumn column = projection.Layout.Columns[item.RowIndex];
                     double startY = coordinates.TickToY(item.StartTick, originTick);
                     double endY = coordinates.TickToY(item.EndTick, originTick);
-                    double itemHeight = Math.Max(MinimumItemHeight, Math.Abs(endY - startY));
+                    double itemHeight = Math.Max(minimumItemHeight, Math.Abs(endY - startY));
                     // The note head is always at StartTick, so upward time puts it at the
                     // *bottom* edge of the bar and the sustain grows above it. Taking a plain
                     // Min here would instead anchor a zero-duration tap's 3px bar below its
