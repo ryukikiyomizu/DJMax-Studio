@@ -64,6 +64,29 @@ namespace DJMaxEditor.Studio.Timeline
         private const double MinimumLabelHeight = 9.0;
 
         /// <summary>
+        /// Lane thickness, in DIPs, below which note art stops being art. The glyphs are authored
+        /// against a 90 px frame, so a 9 px lane is a tenth-scale bitmap: the head's ring closes to
+        /// a smudge and the difference between a repeat and a hold - the thing the art exists to
+        /// show - is gone. A flat rectangle is both cheaper and more honest at that size.
+        /// </summary>
+        private const double MinimumNoteArtThickness = 12.0;
+
+        /// <summary>
+        /// The frame every timeline glyph is drawn from, as a phase into a ten-frame strip: the
+        /// last one.
+        ///
+        /// <para>
+        /// The playfield animates these strips against the music. A timeline does not have a beat to
+        /// animate against, so it needs one still frame, and the last is the one to pick: measured,
+        /// <c>long_note_line</c> is brightest and tallest at column 9 and <c>long_note_end</c> frame
+        /// 9 carries the matching 16..74 cross-section, so choosing it is what makes a run's body
+        /// and its cap meet without a seam. One phase for every piece of every note, so head, body,
+        /// cap and stem can never index different frames of the same animation.
+        /// </para>
+        /// </summary>
+        private const double StillPhase = 0.95;
+
+        /// <summary>
         /// Chrome thicknesses for the horizontal orientation, swapped relative to the vertical
         /// defaults because the transpose swaps which gutter you see them as: the surface's
         /// header gutter is drawn as the time ruler across the top (so it wants the ruler's 22 px)
@@ -114,6 +137,12 @@ namespace DJMaxEditor.Studio.Timeline
             RenderOptions.SetEdgeMode(_band, EdgeMode.Aliased);
             RenderOptions.SetEdgeMode(_chrome, EdgeMode.Aliased);
 
+            // Note art is authored against a 90 px frame and drawn into a lane a fraction of that,
+            // so every glyph on the band is a downscale. Fant rather than the default bilinear:
+            // bilinear at better than 2:1 reduction drops whole source rows, which is what turns a
+            // repeat note's dotted ring into an uneven scatter of dots.
+            RenderOptions.SetBitmapScalingMode(_band, BitmapScalingMode.HighQuality);
+
             ClipToBounds = true;
             SnapsToDevicePixels = true;
             Focusable = true;
@@ -128,6 +157,19 @@ namespace DJMaxEditor.Studio.Timeline
 
         /// <summary>Raised on right-click, carrying whatever was under the pointer.</summary>
         public event EventHandler<VerticalHitResult> ContextRequested;
+
+        /// <summary>
+        /// Raised at the end of every render pass, after <see cref="Frame"/> has been rebuilt.
+        ///
+        /// <para>
+        /// The column scrollbar exists for this: how much of the layout fits is only known once a
+        /// frame has been built for the size the canvas actually got, because that is when the
+        /// viewport width, the fitted column scale and the clamped offset are all settled. A
+        /// scrollbar synced any earlier - from a resize, or from the offset's setter - would be
+        /// describing the previous frame.
+        /// </para>
+        /// </summary>
+        public event EventHandler FrameBuilt;
 
         public ToolMode Tool { get; set; }
 
@@ -175,6 +217,21 @@ namespace DJMaxEditor.Studio.Timeline
         /// zoom the labels are the single most expensive thing on the canvas, and the playtest
         /// specifically flagged them as the cause of rough playback.</summary>
         public bool ShowNoteLabels { get; set; }
+
+        /// <summary>
+        /// Draw each note as the arcade's own art - head, run body, end cap - instead of a flat
+        /// rectangle. On by default: it is how the legacy WinForms timeline reads a chart and how
+        /// TechMania's editor reads one, and a coloured box tells you a note is there without
+        /// telling you what it is.
+        ///
+        /// <para>
+        /// The rectangle is not gone. It is what a note falls back to when the art has nothing for
+        /// it - anything the TECHNIKA attribute table does not name, a lane too thin for a glyph to
+        /// survive, a chart in a mode whose attributes mean something else entirely - so every event
+        /// in the chart is still visible and still clickable in exactly the place it was.
+        /// </para>
+        /// </summary>
+        public bool ShowNoteAssets { get; set; } = true;
 
         public VerticalTimelineViewModel ViewModel
         {
@@ -306,6 +363,7 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 _frame = null;
                 DrawEmpty(width, height);
+                RaiseFrameBuilt();
                 return;
             }
 
@@ -339,6 +397,16 @@ namespace DJMaxEditor.Studio.Timeline
                 _chromeDirty = false;
             }
             DrawOverlay();
+            RaiseFrameBuilt();
+        }
+
+        private void RaiseFrameBuilt()
+        {
+            EventHandler handler = FrameBuilt;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
         }
 
         private void EnsureTextCaches()
@@ -629,6 +697,8 @@ namespace DJMaxEditor.Studio.Timeline
         {
             System.Collections.ObjectModel.ReadOnlyCollection<VerticalPlacedItem> items = frame.Items;
             bool labels = ShowNoteLabels;
+            TimelineNoteSprites art = ArtFor(frame);
+            double dir = frame.Coordinates.TimeDirection == VerticalTimeDirection.Upward ? -1.0 : 1.0;
 
             for (int i = 0; i < items.Count; i++)
             {
@@ -645,7 +715,17 @@ namespace DJMaxEditor.Studio.Timeline
                 double h = Math.Max(1, Math.Round(placed.Height) - 1);
                 Rect rect = new Rect(x, y, w, h);
 
-                dc.DrawRectangle(brushes.Fill, brushes.Edge, rect);
+                if (!DrawNoteArt(dc, art, placed, dir))
+                {
+                    dc.DrawRectangle(brushes.Fill, brushes.Edge, rect);
+                }
+                else if (selected)
+                {
+                    // The art carries no selection colour of its own, so selection is an outline
+                    // around the note's cell. Outline rather than a fill: a filled box over a glyph
+                    // hides the thing the user selected.
+                    dc.DrawRectangle(null, _theme.SelectionEdge, rect);
+                }
 
                 if (!labels)
                 {
@@ -692,6 +772,130 @@ namespace DJMaxEditor.Studio.Timeline
                 return source.Instrument.Name;
             }
             return null;
+        }
+
+        /// <summary>
+        /// The note art to draw this frame with, or null to draw rectangles.
+        ///
+        /// <para>
+        /// Gated on the layout being TECHNIKA's, not merely on the toggle. The art is indexed by
+        /// <c>EventData.Attribute</c> through <see cref="TechnikaNoteClassifier"/>, and attribute 12
+        /// is a hold in a TECHNIKA chart and something else entirely in a Portable one - so a 4B
+        /// chart drawn through this table would be confidently mislabelled rather than merely plain.
+        /// The lane colours have the same exposure and the same excuse; the difference is that a
+        /// wrong colour is a wrong hint and a wrong glyph is a wrong fact.
+        /// </para>
+        /// </summary>
+        private TimelineNoteSprites ArtFor(VerticalTimelineFrame frame)
+        {
+            if (!ShowNoteAssets || !VerticalTrackLayout.IsTechnikaMode(frame.Layout.Mode))
+            {
+                return null;
+            }
+            return TimelineNoteSprites.Default;
+        }
+
+        /// <summary>
+        /// Draws one note as arcade art, and reports whether it did - false is the caller's signal
+        /// to fall back to the rectangle.
+        ///
+        /// <para>
+        /// Everything is drawn through one local frame whose +X is increasing time and whose +Y runs
+        /// across the lane, which is the frame the art is authored in: the arcade scrolls
+        /// horizontally, so a cap 25 px wide and 90 tall is narrow along travel and fills the lane
+        /// across it. That single matrix is what makes one drawing serve four cases. The surface's
+        /// own reflection - see <see cref="TimelineSurfaceMap"/> - turns the local frame back into
+        /// the authored orientation when the canvas is transposed and into a 90-degree turn of it
+        /// when it is not, and <paramref name="dir"/> flips it for upward time. No branch here knows
+        /// which of the four it is in.
+        /// </para>
+        /// </summary>
+        private bool DrawNoteArt(
+            DrawingContext dc, TimelineNoteSprites sprites, VerticalPlacedItem placed, double dir)
+        {
+            if (sprites == null || !IsPlayable(placed.Column) ||
+                placed.Width < MinimumNoteArtThickness)
+            {
+                return false;
+            }
+
+            TimelineNoteArt art = sprites.For(
+                TechnikaNoteClassifier.Classify(placed.Item.SourceEvent));
+            if (art == null)
+            {
+                return false;
+            }
+
+            // Scaled against the lane rather than fitted to it, so the arcade's own proportions
+            // survive: longnote is authored at 116 in a 90 frame and is meant to overhang.
+            double unit = placed.Width / TimelineNoteSprites.ReferenceFrameSize;
+
+            // The onset edge. Upward time puts later ticks higher, so a note's head is at the
+            // bottom of its cell there and at the top of it the other way round.
+            double onset = dir < 0 ? placed.Bottom : placed.Top;
+            dc.PushTransform(new MatrixTransform(new Matrix(
+                0, dir, 1, 0, placed.Left + (placed.Width / 2.0), onset)));
+
+            if (art.HasTrail)
+            {
+                double length = placed.Height;
+                double capWidth = Math.Min(length, art.Cap.FrameWidth * unit);
+                double body = length - capWidth;
+                if (body > 0)
+                {
+                    // The body sheet where the family has one, a cut through the cap where it does
+                    // not - the drag curve is authored as a cap and nothing else.
+                    ImageSource run = art.Body == null
+                        ? art.Cap.Stem(StillPhase)
+                        : art.Body.Frame(StillPhase);
+                    dc.DrawImage(run, Centred(0, body, art.Cap.FrameSize * unit));
+                }
+                dc.DrawImage(art.Cap.Frame(StillPhase),
+                    Centred(body, capWidth, art.Cap.FrameSize * unit));
+            }
+
+            // Head last: it is authored to sit over the near end of its own run, and the legacy
+            // renderer draws it in that order for the same reason.
+            double headWidth = art.Head.FrameWidth * unit;
+            dc.DrawImage(art.Head.Frame(StillPhase),
+                Centred(-headWidth / 2.0, headWidth, art.Head.FrameSize * unit));
+
+            dc.Pop();
+            return true;
+        }
+
+        /// <summary>
+        /// A rectangle in the note's local frame: <paramref name="along"/> and
+        /// <paramref name="length"/> along time, <paramref name="across"/> centred on the lane.
+        /// </summary>
+        private static Rect Centred(double along, double length, double across)
+        {
+            return new Rect(along, -across / 2.0, length, across);
+        }
+
+        /// <summary>
+        /// Whether a column is a lane a player reads. Note art is for those only - the same rule
+        /// the theme applies to colour, and for a sharper reason: a keysound track carries long
+        /// events whose duration is a sample length, and drawing one as a drag curve would claim
+        /// the chart asks the player to hold something it does not.
+        /// </summary>
+        private static bool IsPlayable(VerticalColumn column)
+        {
+            if (column == null)
+            {
+                return false;
+            }
+            switch (column.Kind)
+            {
+                case VerticalColumnKind.Button:
+                case VerticalColumnKind.SideLeft:
+                case VerticalColumnKind.SideRight:
+                case VerticalColumnKind.ShoulderLeft:
+                case VerticalColumnKind.ShoulderRight:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         // -----------------------------------------------------------------------------------

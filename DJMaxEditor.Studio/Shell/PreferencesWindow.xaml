@@ -1,0 +1,665 @@
+<shell:StudioWindow x:Class="DJMaxEditor.Studio.Shell.PreferencesWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:shell="clr-namespace:DJMaxEditor.Studio.Shell"
+                    xmlns:sh="clr-namespace:System.Windows;assembly=PresentationFramework"
+                    Title="Preferences"
+                    Width="820" Height="660"
+                    MinWidth="700" MinHeight="470"
+                    ShowInTaskbar="False"
+                    WindowStartupLocation="CenterOwner"
+                    PreviewKeyDown="OnPreviewKeyDown"
+                    Background="{StaticResource Brush.Abyss}"
+                    Foreground="{StaticResource Brush.TextPrimary}"
+                    FontFamily="{StaticResource Font.Ui}"
+                    FontSize="{StaticResource Font.Size.Body}">
+
+    <!--
+        A navigator on the left, one page at a time on the right, a footer that says where the file
+        is. Not a TabControl: only the control types with an implicit style in Theme/Controls.xaml
+        and Theme/Widgets.xaml are safe here, and TabControl/TabItem are not among them - an
+        unstyled one falls through to Aero2 and paints light-grey chrome that no setter can
+        recolour. A ListBox plus Visibility-toggled pages is the same interaction with types the
+        theme actually covers.
+
+        Every control writes straight through to the live settings object (OnAnyChanged ->
+        CommitFromControls) rather than waiting for an OK button. There is no Cancel for the same
+        reason the shell has no modal apply step: the changes are all cheap and all visible, so
+        seeing them happen is better feedback than a dialog that promises them.
+
+        Row and column sizes are literals because Metric.* are sys:Double and WPF will not convert
+        a Double resource to a GridLength.
+    -->
+    <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="32" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="46" />
+            </Grid.RowDefinitions>
+
+            <!-- ============================ title bar ============================ -->
+            <Border Grid.Row="0" Background="{StaticResource Brush.Raised}"
+                    BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
+                          Data="{StaticResource Icon.Settings}"
+                          Stroke="{StaticResource Brush.Accent}"
+                          Margin="10,0,8,0" VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1" Text="PREFERENCES"
+                               FontFamily="{StaticResource Font.UiDisplay}"
+                               FontSize="{StaticResource Font.Size.Small}"
+                               Foreground="{StaticResource Brush.TextSecondary}"
+                               VerticalAlignment="Center" />
+
+                    <Button Grid.Column="2" Style="{StaticResource Button.CaptionClose}"
+                            Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
+                            ToolTip="Close (Esc)">
+                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ============================ body ============================ -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="184" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- section navigator -->
+                <ListBox Grid.Column="0" x:Name="NavList"
+                         Background="{StaticResource Brush.Surface}"
+                         BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,1,0"
+                         Padding="6,8,6,8"
+                         SelectionChanged="OnSectionChanged"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Headphones}" Margin="0,0,8,0" />
+                            <TextBlock Text="Audio" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Rows3}" Margin="0,0,8,0" />
+                            <TextBlock Text="Timeline" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Film}" Margin="0,0,8,0" />
+                            <TextBlock Text="BGA" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Layers}" Margin="0,0,8,0" />
+                            <TextBlock Text="Format" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.PanelLeft}" Margin="0,0,8,0" />
+                            <TextBlock Text="Workspace" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Info}" Margin="0,0,8,0" />
+                            <TextBlock Text="Diagnostics" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+
+                <Grid Grid.Column="1">
+                    <!-- ==================== Audio ==================== -->
+                    <ScrollViewer x:Name="AudioPage" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Audio"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,14" />
+
+                            <TextBlock Text="OUTPUT" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Buffer size"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="LatencySlider"
+                                        Minimum="10" Maximum="250" Value="60"
+                                        TickFrequency="5" IsSnapToTickEnabled="True"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="LatencyReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="What the driver is opened with. Keysound triggers are quantised to the sequencer tick, so a few ms are inaudible - but too small a buffer glitches as soon as a chart loads several hundred samples. Applies when the studio restarts." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="LEVELS" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Master volume"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="MasterVolumeSlider"
+                                        Minimum="0" Maximum="1" Value="1"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="MasterVolumeReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Multiplies every note and audition gain. A .pt's own track volumes can exceed unity, and this is the only way to pull the whole mix down without editing the chart." />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Audition volume"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="AuditionVolumeSlider"
+                                        Minimum="0" Maximum="1" Value="1"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="AuditionVolumeReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Gain for a keysound double-clicked in the sample list." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="KEYSOUNDS" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="LoadKeysoundsCheck" Margin="0,4,0,0"
+                                      Content="Decode the keysounds beside a chart when it opens"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Turn off to work on a chart whose audio is missing, or on a slow disk where the load is just noise." />
+
+                            <CheckBox x:Name="OverlapCheck" Margin="0,12,0,0"
+                                      Content="Let a retriggered keysound ring out"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="On, a note that fires while the same sample is still sounding gets its own voice. Off gives one voice per channel back, at the cost of a truncation click on every retrigger." />
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Decoded audio budget"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="CacheBudgetSlider"
+                                        Minimum="32" Maximum="4096" Value="512"
+                                        TickFrequency="32" IsSnapToTickEnabled="True"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="CacheBudgetReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="How much decoded PCM the mixer may hold. A big chart's samples decode to far more than they occupy on disk; past the budget the least recently used are dropped and re-decoded on demand. Applies when the studio restarts." />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Timeline ==================== -->
+                    <ScrollViewer x:Name="TimelinePage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Timeline"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Where the chart surface starts up. Every one of these is also a live control in the toolbar or the left dock - this page is what makes the studio open the way you left it." />
+
+                            <TextBlock Text="SCALE" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Track width"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="TrackWidthSlider"
+                                        Minimum="0.55" Maximum="2.0" Value="1.0"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="TrackWidthReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Note height"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="NoteHeightSlider"
+                                        Minimum="0.05" Maximum="4.0" Value="0.55"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="NoteHeightReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Pixels per tick. 0.55 is the surface's own base scale, so it is a zoom factor of exactly 1." />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Zoom step"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="ZoomStepSlider"
+                                        Minimum="1.05" Maximum="2.5" Value="1.25"
+                                        TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnSliderChanged" />
+                                <TextBlock Grid.Column="2" x:Name="ZoomStepReadout"
+                                           Style="{StaticResource Text.Readout}"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="How far one zoom button press, or one Ctrl+wheel notch, moves." />
+
+                            <CheckBox x:Name="AutoFitCheck" Margin="0,12,0,0"
+                                      Content="Let the viewport choose the lane width"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Cleared as soon as you touch the width slider, here or in the dock." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="GRID" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Snap notes to"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="GridCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Draw beat lines at"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="BeatCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Beat lines are drawn only - they never snap anything. Both are saved as the division itself, not as a position in the list, so a future build that adds a division cannot change what your saved choice means." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="DRAWING" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="NoteArtCheck" Margin="0,4,0,0"
+                                      Content="Draw notes as arcade art"
+                                      Click="OnToggleChanged" />
+                            <CheckBox x:Name="NoteLabelsCheck" Margin="0,10,0,0"
+                                      Content="Write keysound names inside notes"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Off by default because it costs frame time on a dense chart." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="AXES" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="GameplayDirectionCheck" Margin="0,4,0,0"
+                                      Content="Read time the way the game does"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Notes approach the judgement line: upward while the axis runs down the screen, rightward once it is transposed. Off is score order instead - bar 1 at the top." />
+
+                            <CheckBox x:Name="HorizontalCheck" Margin="0,12,0,0"
+                                      Content="Lay the time axis across the screen"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="The DAW reading: time left to right, lanes stacked down. The volume lane follows the axis and re-docks under the canvas." />
+
+                            <CheckBox x:Name="FollowPlaybackCheck" Margin="0,12,0,0"
+                                      Content="Scroll to keep the playhead on screen"
+                                      Click="OnToggleChanged" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== BGA ==================== -->
+                    <ScrollViewer x:Name="BgaPage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="BGA"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="The preview announces itself by opening a panel, and a tool that rearranges its own layout when you open a file needs a way to be told not to. That is what the two switches below are for." />
+
+                            <TextBlock Text="DISCOVERY" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="DiscoverCheck" Margin="0,4,0,0"
+                                      Content="Look for a video beside an opened chart"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="This is what makes a Technika song folder work without a file dialog." />
+
+                            <CheckBox x:Name="AutoOpenPanelCheck" Margin="0,12,0,0"
+                                      Content="Open the BGA panel when a video attaches"
+                                      Click="OnToggleChanged" />
+                            <CheckBox x:Name="AutoOpenPlayfieldCheck" Margin="0,10,0,0"
+                                      Content="Open the playfield panel for a TECHNIKA chart"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Both only fire the first time; reopening a chart you have already closed the panel on leaves it closed." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="FFMPEG" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="FfmpegPathBox"
+                                         VerticalAlignment="Center"
+                                         TextChanged="OnTextChanged"
+                                         ToolTip="Leave empty to probe PATH and the usual install roots" />
+                                <Button Grid.Column="1" Style="{StaticResource Button.Solid}"
+                                        Margin="6,0,0,0" Click="OnBrowseFfmpeg" Content="Browse..." />
+                                <Button Grid.Column="2" Style="{StaticResource Button.Solid}"
+                                        Margin="6,0,0,0" Click="OnClearFfmpeg" Content="Clear" />
+                            </Grid>
+                            <TextBlock x:Name="FfmpegStateText" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}" />
+                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Only Bink and Smacker previews need it - those are the two container formats nothing on Windows will decode on its own, so a Technika preview cannot be played any other way. MP4 and WMV play without it. Point this at an ffmpeg.exe if yours is not on PATH, which is the usual case for a portable build." />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Format ==================== -->
+                    <ScrollViewer x:Name="FormatPage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Format"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,14" />
+
+                            <TextBlock Text="LANE LAYOUT" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Open charts as"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="LayoutCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Auto is the honest answer and should stay selected: the layout is a property of the chart, and the detector reads the source format before it looks at the track shape - which is what stops a seven-key BMS chart, whose notes land on tracks 0-8 and nowhere else, from being drawn as TECHNIKA's four touch lanes plus scan markers. Pinning a layout here overrides that for every chart you open." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="FILES" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="RememberFolderCheck" Margin="0,4,0,0"
+                                      Content="Reopen the file dialogs where the last one was"
+                                      Click="OnToggleChanged" />
+                            <TextBlock x:Name="LastFolderText" Margin="20,4,0,0" TextWrapping="Wrap"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}" />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <!-- There is deliberately no switch in this block. The decryption prompt
+                                 is a consent gate, not a convenience: it is the point at which the
+                                 user says yes, every single time. Offering a disabled checkbox here
+                                 would imply it is a preference that happens to be locked, which is
+                                 the wrong idea; saying so in words is the honest version. -->
+                            <TextBlock Text="ENCRYPTED CHARTS" Style="{StaticResource Text.Section}" />
+                            <Border Background="{StaticResource Brush.Inset}"
+                                    BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1"
+                                    CornerRadius="3" Padding="12,10" Margin="0,2,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
+                                          Data="{StaticResource Icon.Lock}"
+                                          Stroke="{StaticResource Brush.Warn}"
+                                          VerticalAlignment="Top" Margin="0,1,10,0" />
+                                    <TextBlock Grid.Column="1" TextWrapping="Wrap"
+                                               FontSize="{StaticResource Font.Size.Small}"
+                                               Foreground="{StaticResource Brush.TextSecondary}"
+                                               Text="Opening an encrypted TECHNIKA chart asks first, and there is no setting here to stop it asking. That prompt is not a convenience - it is where you say yes to decrypting the file, and a switch that answered it once for every future chart would be answering on your behalf." />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Workspace ==================== -->
+                    <ScrollViewer x:Name="WorkspacePage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Workspace"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Which panels the studio opens with. The toolbar toggles the same three live; this is only what it starts from." />
+
+                            <TextBlock Text="PANELS" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="LeftDockCheck" Margin="0,4,0,0"
+                                      Content="Left dock - view options and the sample list"
+                                      Click="OnToggleChanged" />
+                            <CheckBox x:Name="RightDockCheck" Margin="0,10,0,0"
+                                      Content="Right dock - BGA preview and the note inspector"
+                                      Click="OnToggleChanged" />
+                            <CheckBox x:Name="VolumeLaneCheck" Margin="0,10,0,0"
+                                      Content="Volume lane beside the chart"
+                                      Click="OnToggleChanged" />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="READOUTS" Style="{StaticResource Text.Section}" />
+                            <CheckBox x:Name="PerfReadoutCheck" Margin="0,4,0,0"
+                                      Content="Frame time under the inspector"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="On by default, and deliberately so: a tool whose whole complaint history is about frame time has no business hiding its own." />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Diagnostics ==================== -->
+                    <ScrollViewer x:Name="AboutPage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Diagnostics"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,14" />
+
+                            <TextBlock Text="SETTINGS FILE" Style="{StaticResource Text.Section}" />
+                            <TextBox x:Name="SettingsPathBox" IsReadOnly="True"
+                                     Margin="0,2,0,0" />
+                            <TextBlock x:Name="SettingsStateText" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}" />
+                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Plain JSON, safe to hand-edit and safe to delete - a missing, truncated or broken file is read as defaults and logged, never as an error dialog on startup. Anything out of range is pulled back into range on load rather than rejected." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="DIAGNOSTIC LOG" Style="{StaticResource Text.Section}" />
+                            <TextBox x:Name="LogPathBox" IsReadOnly="True" Margin="0,2,0,0" />
+                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Local only. It records what failed and where - file names, formats, exception text - and nothing is ever sent anywhere." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="BUILD" Style="{StaticResource Text.Section}" />
+                            <TextBlock x:Name="VersionText" Margin="0,2,0,0"
+                                       Style="{StaticResource Text.Readout}"
+                                       HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+
+            <!-- ============================ footer ============================ -->
+            <Border Grid.Row="2" Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0">
+                <Grid Margin="12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" Style="{StaticResource Button.Solid}"
+                            VerticalAlignment="Center" Click="OnRestoreDefaults"
+                            ToolTip="Put every setting on every page back to the shipped value">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Trash2}" Margin="0,0,6,0" />
+                            <TextBlock Text="Restore defaults" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <TextBlock Grid.Column="1" x:Name="FooterStatus"
+                               Style="{StaticResource Text.Readout}"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Center" Margin="12,0" />
+
+                    <Button Grid.Column="2" Style="{StaticResource Button.Solid}"
+                            VerticalAlignment="Center" IsDefault="True"
+                            Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
+                            Content="Close" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</shell:StudioWindow>

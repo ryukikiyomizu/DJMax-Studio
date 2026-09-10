@@ -41,16 +41,45 @@ namespace DJMaxEditor.Studio.Video
 
         private int _ticksPerMeasure;
 
+        private int _videoStartVirtualTick;
+        private double _videoStartMs;
+
         public BgaClockMap()
         {
             Clear();
         }
 
         /// <summary>
-        /// Shifts the whole mapping, for a BGA whose first frame does not land on bar 1. Positive
-        /// values delay the video.
+        /// Nudges the mapping on top of whatever the chart itself says, for a video whose first frame
+        /// does not land on its own start marker. Positive values delay the video.
         /// </summary>
         public TimeSpan Offset { get; set; }
+
+        /// <summary>
+        /// The virtual tick the video's first frame belongs to: the chart's own
+        /// <see cref="EventAttribute.VideoStart"/> marker, or 0 when it carries none.
+        ///
+        /// <para>
+        /// A TECHNIKA chart does not start its video at the top of the timeline. It authors one
+        /// attribute-100 marker - <c>EventAttribute.VideoStart</c>, commented in the enum as the
+        /// "T2/T3 video track start" - and the video is cued there, so the frame belonging to a tick
+        /// before it is no frame at all. Reading the playhead's absolute time and handing it to the
+        /// decoder, which is what this did, plays the video early by exactly the marker's position:
+        /// the whole BGA runs ahead of the chart for as long as the chart lasts.
+        /// </para>
+        ///
+        /// <para>
+        /// The marker is found by attribute rather than by track, and the earliest one wins. Across
+        /// the 444-chart TECHNIKA 2 corpus every attribute-100 event is authored on track 17, one per
+        /// chart - but the track band that carries it is not part of any preset, and a rule keyed to
+        /// the attribute is the one the enum actually documents. A chart with no marker leaves this at
+        /// 0, which is the behaviour every caller had before.
+        /// </para>
+        /// </summary>
+        public int VideoStartVirtualTick
+        {
+            get { return _videoStartVirtualTick; }
+        }
 
         /// <summary>
         /// Virtual ticks in one measure. <see cref="PlayerData.TickPerMinute"/> is badly named - it
@@ -115,6 +144,36 @@ namespace DJMaxEditor.Studio.Video
                 double startMs = last.StartMs + ((tick - last.StartVirtualTick) * last.MsPerVirtualTick);
                 _segments.Add(new Segment(tick, MsPerVirtualTick(tempo), startMs));
             }
+
+            // After the segments, because the marker's wall time is read through them.
+            _videoStartVirtualTick = EarliestVideoStart(events);
+            _videoStartMs = MsForVirtualTick(_videoStartVirtualTick);
+        }
+
+        /// <summary>
+        /// The earliest <see cref="EventAttribute.VideoStart"/> marker's virtual tick, or 0 when the
+        /// chart has none. See <see cref="VideoStartVirtualTick"/> for why the attribute and not the
+        /// track is the discriminator.
+        /// </summary>
+        private static int EarliestVideoStart(EventData[] events)
+        {
+            int earliest = -1;
+            for (int i = 0; i < events.Length; i++)
+            {
+                EventData candidate = events[i];
+                if (candidate == null || candidate.EventType != EventType.Note ||
+                    candidate.Attribute != (byte)EventAttribute.VideoStart)
+                {
+                    continue;
+                }
+
+                int tick = Math.Max(0, candidate.VirtualTick);
+                if (earliest < 0 || tick < earliest)
+                {
+                    earliest = tick;
+                }
+            }
+            return earliest < 0 ? 0 : earliest;
         }
 
         public void Clear()
@@ -122,11 +181,14 @@ namespace DJMaxEditor.Studio.Video
             _segments.Clear();
             _segments.Add(new Segment(0, MsPerVirtualTick(DefaultTempo), 0.0));
             _ticksPerMeasure = 192 * EventData.VirtualTickSize;
+            _videoStartVirtualTick = 0;
+            _videoStartMs = 0.0;
         }
 
         /// <summary>
-        /// Wall time of <paramref name="virtualTick"/>, including <see cref="Offset"/>. May be
-        /// negative when a negative offset is set; the source clamps.
+        /// Wall time of <paramref name="virtualTick"/> in the video's own clock: measured from
+        /// <see cref="VideoStartVirtualTick"/>, and including <see cref="Offset"/>. Negative before
+        /// the chart's start marker, or when a negative offset is set; the source clamps.
         /// </summary>
         public TimeSpan TimeForVirtualTick(int virtualTick)
         {
@@ -135,10 +197,16 @@ namespace DJMaxEditor.Studio.Video
                 virtualTick = 0;
             }
 
+            return TimeSpan.FromMilliseconds(MsForVirtualTick(virtualTick) - _videoStartMs) + Offset;
+        }
+
+        /// <summary>Chart time of a virtual tick, from the top of the timeline and before any
+        /// offset - the raw tempo-map reading the video clock is measured against.</summary>
+        private double MsForVirtualTick(int virtualTick)
+        {
             Segment segment = _segments[IndexForTick(virtualTick)];
-            double ms = segment.StartMs +
+            return segment.StartMs +
                 ((virtualTick - segment.StartVirtualTick) * segment.MsPerVirtualTick);
-            return TimeSpan.FromMilliseconds(ms) + Offset;
         }
 
         /// <summary>Same, for a native (non-virtual) tick as <see cref="Player"/> counts them.</summary>
@@ -149,11 +217,12 @@ namespace DJMaxEditor.Studio.Video
 
         /// <summary>
         /// The inverse, for nudging <see cref="Offset"/> against a frame the user picked out of the
-        /// video rather than out of the chart.
+        /// video rather than out of the chart. Takes a position in the video's own clock, so a time of
+        /// zero comes back as <see cref="VideoStartVirtualTick"/> rather than as tick 0.
         /// </summary>
         public int VirtualTickForTime(TimeSpan time)
         {
-            double ms = (time - Offset).TotalMilliseconds;
+            double ms = (time - Offset).TotalMilliseconds + _videoStartMs;
             if (ms <= 0.0)
             {
                 return 0;

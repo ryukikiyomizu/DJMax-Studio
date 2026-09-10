@@ -48,14 +48,25 @@ namespace DJMaxEditor.Preview
         /// <para>
         /// A TECHNIKA note's stored duration is the length of its <em>keysound</em>, not the length
         /// of a hold - <em>every</em> note in a chart carries one, so a chart of 131 notes reports
-        /// 131 non-zero durations. Gating a trail on duration alone therefore puts a stub behind
-        /// all of them. Whether a note is held is a property of its kind, which is what the
-        /// projector already classifies from the note attribute.
+        /// 131 non-zero durations. Gating a trail on a duration merely being non-zero therefore
+        /// puts a stub behind all of them. Whether a note is held is a property of its kind, which
+        /// is what the projector already classifies from the note attribute.
+        /// </para>
+        ///
+        /// <para>
+        /// <see cref="GameplayPreviewNoteKind.Drag"/> belongs here even so, and used not to. It is
+        /// attribute 0 having already passed the same <c>Duration &gt; 6</c> gate the legacy editor
+        /// uses everywhere it distinguishes a long note from a tap, so it is not the keysound
+        /// artefact the paragraph above is about: across the 445-chart TECHNIKA 2 corpus only 1505
+        /// of 95400 attribute-0 notes clear the gate, and the legacy TECHNIKA renderer draws every
+        /// one of them as <c>longnote</c> over a <c>longnoteline</c> body. Excluding it was what
+        /// left the green-yellow slide note drawn as a plain magenta tap.
         /// </para>
         /// </summary>
         public static bool HasHoldTrail(GameplayPreviewNoteKind kind)
         {
             return kind == GameplayPreviewNoteKind.Hold ||
+                kind == GameplayPreviewNoteKind.Drag ||
                 kind == GameplayPreviewNoteKind.RepeatHold ||
                 kind == GameplayPreviewNoteKind.RepeatHeadHold;
         }
@@ -227,6 +238,7 @@ namespace DJMaxEditor.Preview
             int laneCount,
             ushort ticksPerMeasure,
             int beatsPerScan,
+            double tempo,
             IList<ProjectedGameplayNote> notes,
             IList<string> diagnostics)
         {
@@ -235,6 +247,7 @@ namespace DJMaxEditor.Preview
             LaneCount = laneCount;
             _ticksPerMeasure = ticksPerMeasure;
             _beatsPerScan = beatsPerScan;
+            ScanSeconds = tempo > 0.0 ? (beatsPerScan * 60.0) / tempo : 0.0;
             Notes = new List<ProjectedGameplayNote>(notes).AsReadOnly();
             Diagnostics = new List<string>(diagnostics).AsReadOnly();
         }
@@ -244,6 +257,21 @@ namespace DJMaxEditor.Preview
         public string StatusLabel { get; private set; }
 
         public int LaneCount { get; private set; }
+
+        /// <summary>
+        /// How long one scan lasts at the chart's header tempo, in seconds, or 0 when the chart
+        /// carries no usable tempo.
+        ///
+        /// <para>
+        /// Nominal, and deliberately so: the scan grid itself is counted in ticks, so a chart that
+        /// changes tempo mid-way has scans of different real lengths and no single number can be
+        /// right for all of them. This is here for the one thing a renderer cannot do without it -
+        /// playing an animation the arcade authored in seconds, such as the hit burst's 0.583 s, at
+        /// close to its authored speed - and every such use is an approximation that the tick grid
+        /// was already making.
+        /// </para>
+        /// </summary>
+        public double ScanSeconds { get; private set; }
 
         public IReadOnlyList<ProjectedGameplayNote> Notes { get; private set; }
 
@@ -571,6 +599,7 @@ namespace DJMaxEditor.Preview
                 laneCount,
                 model.TickPerMinute,
                 DefaultBeatsPerScan,
+                model.Tempo,
                 notes,
                 diagnostics);
         }
@@ -652,6 +681,7 @@ namespace DJMaxEditor.Preview
                 laneCount,
                 model.TickPerMinute,
                 DefaultBeatsPerScan,
+                model.Tempo,
                 notes,
                 diagnostics);
         }

@@ -190,6 +190,11 @@
                                       ToolTip="Show keysound names inside notes (costs frame time)">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Music4}" />
                         </ToggleButton>
+                        <ToggleButton x:Name="AssetsToggle" Style="{StaticResource Toggle.Tool}"
+                                      Click="OnToggleAssets" IsChecked="True"
+                                      ToolTip="Draw notes as arcade art instead of plain rectangles">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Image}" />
+                        </ToggleButton>
                         <ToggleButton x:Name="DirectionToggle" Style="{StaticResource Toggle.Tool}"
                                       Click="OnToggleDirection" IsChecked="True"
                                       ToolTip="Time runs upward, the way the game scrolls">
@@ -237,6 +242,15 @@
                                       Click="OnTogglePlayfield" ToolTip="Show the TECHNIKA gameplay playfield">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Rows3}" />
                         </ToggleButton>
+
+                        <Separator />
+
+                        <!-- Last in the bar and behind its own separator: everything to the left of
+                             it acts on this chart, this one acts on the editor. -->
+                        <Button x:Name="PreferencesButton" Style="{StaticResource Button.Tool}"
+                                Click="OnOpenPreferences" ToolTip="Preferences (Ctrl+,)">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Settings}" />
+                        </Button>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -357,9 +371,26 @@
                     </Grid.RowDefinitions>
 
                     <!-- The chart canvas is added here from code-behind: it is an internal type,
-                         and it needs its own event wiring anyway. -->
-                    <Border x:Name="CanvasHost" Grid.Row="0" Grid.Column="0"
-                            Background="{StaticResource Brush.Abyss}" ClipToBounds="True" />
+                         and it needs its own event wiring anyway.
+                         The column scrollbar shares the cell rather than taking a row of the grid
+                         above, so it stays glued to the canvas whichever axis the volume lane docks
+                         on. Which edge it sits on is the orientation's business as well: lanes run
+                         across the bottom in the ptSequencer reading and down the side transposed
+                         (TimelineColumnScroll.ApplyOrientation -> PlaceColumnScroll). -->
+                    <Grid x:Name="CanvasCell" Grid.Row="0" Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="CanvasHost" Grid.Row="0" Grid.Column="0"
+                                Background="{StaticResource Brush.Abyss}" ClipToBounds="True" />
+                        <ScrollBar x:Name="ColumnScroll" Grid.Row="1" Grid.Column="0"
+                                   Orientation="Horizontal" Visibility="Collapsed" />
+                    </Grid>
 
                     <GridSplitter x:Name="VolumeSplitter" Grid.Row="0" Grid.Column="1"
                                   ResizeDirection="Columns"
@@ -519,8 +550,10 @@
                     </Grid>
 
                     <!-- Performance meter. V6 ships one; a tool whose entire complaint history is
-                         about frame time has no business hiding its own. -->
-                    <Border Grid.Row="3" Background="{StaticResource Brush.Raised}"
+                         about frame time has no business hiding its own. Named so Preferences can
+                         collapse the strip - the row is Auto, so hiding the border reclaims it. -->
+                    <Border x:Name="PerfReadoutPanel" Grid.Row="3"
+                            Background="{StaticResource Brush.Raised}"
                             BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0"
                             Padding="10,5">
                         <TextBlock x:Name="PerfReadout" Text="idle"

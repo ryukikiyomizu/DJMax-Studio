@@ -187,6 +187,33 @@
     <Resource Include="..\DJMaxEditor\Resources\TechmaniaNotes\*.png" Link="Preview\Notes\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup Label="Technika timeline note art">
+    <!--
+      The arcade note art the legacy WinForms editor draws on its own timeline, referenced in
+      place so both shells draw the identical glyph. This is a different set from the six
+      TechmaniaNotes above: those are the *preview's* fallback glyphs, these are the pieces the
+      legacy TechnikaThemeRenderer composes a timeline note out of - a head, a run body and an
+      end cap per note family.
+
+      A file list rather than a wildcard, unlike everything else here, because
+      DJMaxEditor\Resources also holds the docking indicator bitmaps, the toolbar icons and the
+      application icons. `*.png` would put a dozen unrelated images into the WPF resource table
+      of a shell that never asks for them.
+    -->
+    <Resource Include="..\DJMaxEditor\Resources\Note_Basic.png" Link="Timeline\Notes\Note_Basic.png" />
+    <Resource Include="..\DJMaxEditor\Resources\longnote.png" Link="Timeline\Notes\longnote.png" />
+    <Resource Include="..\DJMaxEditor\Resources\longnoteline.png" Link="Timeline\Notes\longnoteline.png" />
+    <Resource Include="..\DJMaxEditor\Resources\longnotehold.png" Link="Timeline\Notes\longnotehold.png" />
+    <Resource Include="..\DJMaxEditor\Resources\line_nor_end.png" Link="Timeline\Notes\line_nor_end.png" />
+    <Resource Include="..\DJMaxEditor\Resources\longholdgauge.png" Link="Timeline\Notes\longholdgauge.png" />
+    <Resource Include="..\DJMaxEditor\Resources\noterepeat.png" Link="Timeline\Notes\noterepeat.png" />
+    <Resource Include="..\DJMaxEditor\Resources\repeattail.png" Link="Timeline\Notes\repeattail.png" />
+    <Resource Include="..\DJMaxEditor\Resources\long_note_end.png" Link="Timeline\Notes\long_note_end.png" />
+    <Resource Include="..\DJMaxEditor\Resources\long_note_line.png" Link="Timeline\Notes\long_note_line.png" />
+    <Resource Include="..\DJMaxEditor\Resources\notepressstart.png" Link="Timeline\Notes\notepressstart.png" />
+    <Resource Include="..\DJMaxEditor\Resources\notepressnote.png" Link="Timeline\Notes\notepressnote.png" />
+  </ItemGroup>
+
   <ItemGroup Label="Technika arcade sprites (local, not redistributed)">
     <!--
       The owner's own extracted arcade note set, copied to the output folder so the renderer

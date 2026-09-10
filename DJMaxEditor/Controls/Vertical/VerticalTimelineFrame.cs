@@ -86,6 +86,14 @@ namespace DJMaxEditor.Controls.Vertical
         /// Device-pixel floor for an item's height so zero-duration taps stay
         /// visible and clickable at any zoom, matching ptSequencer's minimum bar.
         /// </summary>
+        /// <remarks>
+        /// One floor for every column, turntables included. A BMS scratch is told apart from a key by
+        /// the width of the column it sits in, which is the layout's business - see
+        /// <see cref="VerticalColumn.IsScratch"/>. It was briefly a taller bar here instead, and that
+        /// was the wrong axis twice over: a scratch that really is a long note has to draw its own
+        /// duration, and a height difference is invisible at the zoom a chart is edited at anyway,
+        /// because a BMS object already spans 36 virtual ticks and clears every floor.
+        /// </remarks>
         public const double MinimumItemHeight = 3.0;
 
         private readonly ReadOnlyCollection<VerticalPlacedItem> _items;

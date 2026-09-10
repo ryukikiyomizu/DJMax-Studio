@@ -19,6 +19,7 @@ using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Documents;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Preview;
+using DJMaxEditor.Studio.Settings;
 using DJMaxEditor.Studio.Timeline;
 using DJMaxEditor.Studio.Tracks;
 using DJMaxEditor.Studio.Video;
@@ -69,6 +70,27 @@ namespace DJMaxEditor.Studio.Shell
         private Player _player;
         private EditorDocumentContext _document;
         private TrackPresetLibrary _presets;
+        private TimelineColumnScroll _columnScroll;
+
+        /// <summary>
+        /// Where the studio's own preferences live, and the object every apply site reads.
+        ///
+        /// <para>
+        /// Loaded first thing in the constructor because two of the values in it - the output latency
+        /// and the keysound cache budget - are arguments to the audio backend's constructor rather
+        /// than properties on it, so <see cref="InitialiseAudio"/> has to already know them. The rest
+        /// are pushed into the controls by <see cref="ApplySettings"/> once the XAML has been parsed.
+        /// </para>
+        /// </summary>
+        private readonly StudioSettingsStore _settingsStore = new StudioSettingsStore();
+        private StudioSettings _settings;
+
+        /// <summary>
+        /// The open preferences window, if there is one. Non-modal and single-instance: it edits the
+        /// same <see cref="_settings"/> object this window holds, so a second copy would be two
+        /// views of one model racing each other, and modal would stop you seeing your own change.
+        /// </summary>
+        private PreferencesWindow _preferences;
 
         /// <summary>Set by the BGA file picker; the decoder attaches to it in <see cref="AttachBgaAsync"/>.</summary>
         private string _bgaPath;
@@ -112,6 +134,11 @@ namespace DJMaxEditor.Studio.Shell
 
         public MainWindow()
         {
+            // Before the XAML, let alone before the audio device: the latency and cache budget in
+            // here are constructor arguments further down, and a load that failed still hands back
+            // a fully normalised object, so nothing after this line has to consider a null.
+            _settings = _settingsStore.Load();
+
             InitializeComponent();
 
             _canvas.ViewModel = _viewModel;
@@ -126,6 +153,11 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.ContextRequested += OnCanvasContextRequested;
             _volumeLane.VolumeEdited += OnCanvasInteractionCompleted;
 
+            // Owns the bar from here on: it subscribes to the canvas's FrameBuilt itself, so the
+            // shell only has to say which edge the bar sits on.
+            _columnScroll = new TimelineColumnScroll(_canvas, ColumnScroll);
+            PlaceColumnScroll();
+
             // WPF already scales the whole visual tree, so the geometry must be told the scale is
             // 1.0 or every measurement gets the monitor DPI applied twice. Text is the exception -
             // TextCache is handed the real PixelsPerDip so glyphs are hinted for the right grid.
@@ -137,6 +169,7 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.Grid = GridDivision.Default;
             _canvas.Beats = BeatDisplay.Default;
             _canvas.ShowNoteLabels = false;
+            _canvas.ShowNoteAssets = AssetsToggle.IsChecked == true;
 
             // Derived rather than assigned, from the two toggles' declared states: vertical and
             // "gameplay order" is Upward. One code path decides it, so the buttons cannot start out
@@ -146,10 +179,16 @@ namespace DJMaxEditor.Studio.Shell
             InitialiseCombos();
             InitialiseAudio();
 
+            // Controls exist and the mixer is up, so the saved preferences can go into both. Run
+            // before _ready on purpose: ApplySettings suppresses the handlers itself and pushes
+            // straight through to the canvas and the view model, so nothing is applied twice and no
+            // handler sees a half-built window.
+            ApplySettings(_settings);
+
             _ready = true;
 
-            // The sliders' declared values are the defaults, so apply them once now that the
-            // handlers are allowed to run.
+            // The sliders now carry the saved values (or their declared defaults on a first launch),
+            // so applying them once here is what makes the two agree from the first frame.
             _viewModel.ColumnScale = TrackWidthSlider.Value;
             _viewModel.TrySetTimeZoom(
                 (float)(NoteHeightSlider.Value / VerticalTimelineViewModel.BasePixelsPerTick));
@@ -194,6 +233,13 @@ namespace DJMaxEditor.Studio.Shell
             // that Auto misread could not be corrected by hand.
             choices.Add(new PresetChoice(
                 VerticalTrackLayout.TechnikaMode, "TECHNIKA (4 lanes + scans)"));
+            // BMS is the same story one step further out: it is a channel schema, not a key count,
+            // and its columns come from the chart's own #mmmCC channels rather than from a preset -
+            // which is why the label says "channels" and not a lane count. Auto picks it from the
+            // source format, so this entry is for forcing it (and for saying out loud that the
+            // timeline can draw one).
+            choices.Add(new PresetChoice(
+                VerticalTrackLayout.BmsMode, "BMS (channels)"));
             PresetCombo.ItemsSource = choices;
             PresetCombo.SelectedIndex = 0;
 
@@ -224,12 +270,27 @@ namespace DJMaxEditor.Studio.Shell
             return TrackPresetLibrary.CreateFallback();
         }
 
+        /// <summary>
+        /// Brings up the mixer and the sequencer.
+        ///
+        /// <para>
+        /// The output latency and the keysound cache budget are read from the settings here and
+        /// nowhere else, because both are constructor arguments rather than properties: a device is
+        /// opened with a buffer size and a cache is created with a ceiling, and neither can be
+        /// re-negotiated afterwards without tearing down every loaded sample. That is why the
+        /// preferences window says those two take effect on restart instead of pretending otherwise.
+        /// </para>
+        /// </summary>
         private void InitialiseAudio()
         {
+            AudioSettings audio = _settings.Audio;
             try
             {
-                _audio = new NAudioKeysoundPlayer();
+                long cacheBytes = (long)audio.KeysoundCacheBudgetMb * 1024L * 1024L;
+                _audio = new NAudioKeysoundPlayer(
+                    new NAudioDeviceOutput(audio.OutputLatencyMs), true, cacheBytes);
                 _audio.Log = message => Logs.Write(message);
+                _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
             }
             catch (Exception ex)
             {
@@ -244,6 +305,295 @@ namespace DJMaxEditor.Studio.Shell
             _player = new Player();
             _player.OnEvent += OnPlayerEvent;
             _player.OnStatusChange += OnPlayerStatusChanged;
+        }
+
+        // ===================================================================================
+        // Preferences
+        // ===================================================================================
+
+        /// <summary>
+        /// Pushes every saved preference into the controls and the objects behind them.
+        ///
+        /// <para>
+        /// One apply path, called from the constructor and again on every edit the preferences window
+        /// makes, which is what stops "the setting works at startup but not when you change it" and
+        /// its mirror image from being possible. It suppresses the shell's own handlers for the
+        /// duration and writes through to the canvas and the view model itself: a slider assignment
+        /// that reached <see cref="OnTrackWidthChanged"/> would clear <c>AutoFitColumns</c> as a side
+        /// effect and undo the very setting two lines further down.
+        /// </para>
+        /// <para>
+        /// The toggle-backed settings only invoke their handler when the value actually changes. That
+        /// is not an optimisation - <see cref="OnToggleOrientation"/> re-docks the volume lane and
+        /// re-derives the time direction, and running it for a value that already matches would do
+        /// that work for nothing on every launch.
+        /// </para>
+        /// <para>
+        /// Two things deliberately do not happen here. The output latency and cache budget are
+        /// constructor arguments (see <see cref="InitialiseAudio"/>), and the master and audition
+        /// volumes are read at the gain sites rather than pushed, because a stored gain has to apply
+        /// to notes that have not been played yet.
+        /// </para>
+        /// </summary>
+        private void ApplySettings(StudioSettings settings)
+        {
+            if (settings == null)
+            {
+                return;
+            }
+            settings.Normalise();
+
+            bool wasReady = _ready;
+            _ready = false;
+            _suppressComboEvents = true;
+            try
+            {
+                ApplyAudioSettings(settings.Audio);
+                ApplyTimelineSettings(settings.Timeline);
+                ApplyBgaSettings(settings.Bga);
+                ApplyFormatSettings(settings.Format);
+                ApplyWorkspaceSettings(settings.Workspace);
+            }
+            finally
+            {
+                _suppressComboEvents = false;
+                _ready = wasReady;
+            }
+
+            _canvas.InvalidateAll();
+            _volumeLane.InvalidateVisual();
+            RefreshStatus();
+        }
+
+        private void ApplyAudioSettings(AudioSettings audio)
+        {
+            if (audio == null || _audio == null)
+            {
+                return;
+            }
+            // The only audio setting that can change under a running mixer: it decides whether a
+            // retriggered channel layers or cuts, which is a decision the graph makes per note.
+            _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
+        }
+
+        private void ApplyTimelineSettings(TimelineSettings timeline)
+        {
+            if (timeline == null)
+            {
+                return;
+            }
+
+            TrackWidthSlider.Value = timeline.TrackWidthScale;
+            TrackWidthReadout.Text =
+                timeline.TrackWidthScale.ToString("0.00", CultureInfo.InvariantCulture) + "x";
+            _viewModel.ColumnScale = timeline.TrackWidthScale;
+
+            NoteHeightSlider.Value = timeline.NoteHeight;
+            NoteHeightReadout.Text = timeline.NoteHeight.ToString("0.00", CultureInfo.InvariantCulture);
+            _viewModel.TrySetTimeZoom(
+                (float)(timeline.NoteHeight / VerticalTimelineViewModel.BasePixelsPerTick));
+
+            // After the width, never before: assigning ColumnScale is what the auto-fit flag is
+            // about, so the flag has to be the last word on it.
+            _viewModel.AutoFitColumns = timeline.AutoFitColumns;
+            _viewModel.FollowPlayback = timeline.FollowPlayback;
+
+            LabelsToggle.IsChecked = timeline.ShowNoteLabels;
+            _canvas.ShowNoteLabels = timeline.ShowNoteLabels;
+            AssetsToggle.IsChecked = timeline.ShowNoteArt;
+            _canvas.ShowNoteAssets = timeline.ShowNoteArt;
+
+            GridDivision division = GridDivision.FromDenominator(timeline.GridDenominator);
+            if (division != null)
+            {
+                GridCombo.SelectedItem = division;
+                _canvas.Grid = division;
+            }
+
+            BeatDisplay beats = BeatDisplay.FromDenominator(timeline.BeatDenominator);
+            if (beats != null)
+            {
+                BeatCombo.SelectedItem = beats;
+                _canvas.Beats = beats;
+            }
+
+            if ((OrientationToggle.IsChecked == true) != timeline.HorizontalOrientation)
+            {
+                OrientationToggle.IsChecked = timeline.HorizontalOrientation;
+                OnToggleOrientation(this, null);
+            }
+
+            // Last of the two, because OnToggleOrientation re-derives the direction from both.
+            if ((DirectionToggle.IsChecked == true) != timeline.GameplayTimeDirection)
+            {
+                DirectionToggle.IsChecked = timeline.GameplayTimeDirection;
+                ApplyTimeDirection();
+            }
+        }
+
+        private void ApplyBgaSettings(BgaSettings bga)
+        {
+            if (bga == null)
+            {
+                return;
+            }
+            // The resolver memoises its probe, so this is also what clears a wrong path: assigning it
+            // invalidates the cached answer and the next preview probes again.
+            BgaSourceResolver.ExplicitFfmpegPath = bga.FfmpegPath;
+        }
+
+        private void ApplyFormatSettings(FormatSettings format)
+        {
+            if (format == null)
+            {
+                return;
+            }
+
+            List<PresetChoice> choices = PresetCombo.ItemsSource as List<PresetChoice>;
+            if (choices == null)
+            {
+                return;
+            }
+
+            // Matched on the mode rather than an index: the list gains entries as layouts are added
+            // (TECHNIKA and BMS both arrived after this combo existed), so a stored index would
+            // silently start meaning a different layout.
+            foreach (PresetChoice choice in choices)
+            {
+                if (choice.KeyCount == format.DefaultLayoutMode)
+                {
+                    PresetCombo.SelectedItem = choice;
+                    _viewModel.ModeOverride = choice.KeyCount;
+                    return;
+                }
+            }
+
+            PresetCombo.SelectedIndex = 0;
+            _viewModel.ModeOverride = 0;
+        }
+
+        private void ApplyWorkspaceSettings(WorkspaceSettings workspace)
+        {
+            if (workspace == null)
+            {
+                return;
+            }
+
+            if ((LeftDockToggle.IsChecked == true) != workspace.ShowLeftDock)
+            {
+                LeftDockToggle.IsChecked = workspace.ShowLeftDock;
+                OnToggleLeftDock(this, null);
+            }
+            if ((RightDockToggle.IsChecked == true) != workspace.ShowRightDock)
+            {
+                RightDockToggle.IsChecked = workspace.ShowRightDock;
+                OnToggleRightDock(this, null);
+            }
+            if ((VolumeLaneToggle.IsChecked == true) != workspace.ShowVolumeLane)
+            {
+                VolumeLaneToggle.IsChecked = workspace.ShowVolumeLane;
+                OnToggleVolumeLane(this, null);
+            }
+
+            PerfReadoutPanel.Visibility = workspace.ShowPerformanceReadout
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Opens the preferences window, or brings the open one forward.
+        ///
+        /// <para>
+        /// Non-modal and live: it edits the same settings object this window holds and raises
+        /// <c>SettingsChanged</c> on every edit, so a latency you cannot hear change is the only thing
+        /// in it that waits for a restart. Modal would have been easier and would also have meant
+        /// dragging the note-height slider with the timeline hidden behind the dialog.
+        /// </para>
+        /// </summary>
+        private void OnOpenPreferences(object sender, RoutedEventArgs e)
+        {
+            if (_preferences != null)
+            {
+                _preferences.Activate();
+                return;
+            }
+
+            _preferences = new PreferencesWindow(_settings, _settingsStore);
+            _preferences.Owner = this;
+            _preferences.SettingsChanged += OnPreferencesChanged;
+            _preferences.Closed += OnPreferencesClosed;
+            _preferences.Show();
+        }
+
+        private void OnPreferencesChanged(object sender, EventArgs e)
+        {
+            ApplySettings(_settings);
+        }
+
+        private void OnPreferencesClosed(object sender, EventArgs e)
+        {
+            PreferencesWindow window = sender as PreferencesWindow;
+            if (window != null)
+            {
+                window.SettingsChanged -= OnPreferencesChanged;
+                window.Closed -= OnPreferencesClosed;
+            }
+            _preferences = null;
+        }
+
+        /// <summary>
+        /// Writes the settings out, folding in the state the shell owns rather than the window.
+        ///
+        /// <para>
+        /// The dock toggles and the view toggles are the shell's controls, and a user who hides the
+        /// inspector by clicking the toolbar button means it just as much as one who unticks it in
+        /// preferences. So the toolbar's state is harvested here at close time - otherwise the two
+        /// ways of saying the same thing would disagree, and the one on the toolbar would be the one
+        /// that never stuck.
+        /// </para>
+        /// </summary>
+        private void SaveSettings()
+        {
+            if (_settings == null)
+            {
+                return;
+            }
+
+            try
+            {
+                TimelineSettings timeline = _settings.Timeline;
+                timeline.TrackWidthScale = TrackWidthSlider.Value;
+                timeline.NoteHeight = NoteHeightSlider.Value;
+                timeline.AutoFitColumns = _viewModel.AutoFitColumns;
+                timeline.ShowNoteLabels = LabelsToggle.IsChecked == true;
+                timeline.ShowNoteArt = AssetsToggle.IsChecked == true;
+                timeline.GameplayTimeDirection = DirectionToggle.IsChecked == true;
+                timeline.HorizontalOrientation = OrientationToggle.IsChecked == true;
+
+                GridDivision division = GridCombo.SelectedItem as GridDivision;
+                if (division != null)
+                {
+                    timeline.GridDenominator = division.Denominator;
+                }
+                BeatDisplay beats = BeatCombo.SelectedItem as BeatDisplay;
+                if (beats != null)
+                {
+                    timeline.BeatDenominator = beats.Denominator;
+                }
+
+                WorkspaceSettings workspace = _settings.Workspace;
+                workspace.ShowLeftDock = LeftDockToggle.IsChecked == true;
+                workspace.ShowRightDock = RightDockToggle.IsChecked == true;
+                workspace.ShowVolumeLane = VolumeLaneToggle.IsChecked == true;
+
+                _settingsStore.Save(_settings);
+            }
+            catch (Exception ex)
+            {
+                // Closing down is the worst moment for a dialog, and an unsaved preference is not
+                // worth one. The store logs its own failures; this catches the harvest above.
+                DiagnosticLog.Exception("settings.harvest", ex);
+            }
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -268,6 +618,15 @@ namespace DJMaxEditor.Studio.Shell
 
         private void OnClosed(object sender, EventArgs e)
         {
+            // First, and before the harvest below: the preferences window writes on its own close,
+            // and letting it do that after the shell has already saved would put a file on disk
+            // without the toolbar state in it.
+            if (_preferences != null)
+            {
+                _preferences.Close();
+            }
+            SaveSettings();
+
             StopPump();
 
             // Before the player goes: a worker mid-decode would otherwise finish into a disposed
@@ -458,6 +817,16 @@ namespace DJMaxEditor.Studio.Shell
 
             if (model.Instruments == null || _audio == null)
             {
+                return;
+            }
+
+            // A preference, not a performance knob: on a chart whose keysounds are missing or wrong
+            // the decode is thousands of failed file opens, and someone editing note positions on a
+            // borrowed chart has no use for the audio at all. Logged rather than put in the status
+            // strip because the adopt sets that to "Ready" a few lines after this returns.
+            if (_settings != null && !_settings.Audio.LoadKeysoundsOnOpen)
+            {
+                DiagnosticLog.Write("keysounds.skip", "LoadKeysoundsOnOpen is off");
                 return;
             }
 
@@ -767,7 +1136,7 @@ namespace DJMaxEditor.Studio.Shell
                 {
                     EventData sounding = restorable[i].Note;
                     ushort soundIndex = sounding.Instrument.InsNum;
-                    float gain = track.Volume * NoteVelocityGain(sounding.Vel);
+                    float gain = MasterGain * track.Volume * NoteVelocityGain(sounding.Vel);
                     if (!_audio.PlayNote(track.Idx, soundIndex, gain, sounding.Pan,
                             restorable[i].OffsetMilliseconds, 0.0))
                     {
@@ -958,8 +1327,9 @@ namespace DJMaxEditor.Studio.Shell
                     // Per-note volume is folded into the track gain rather than pushed through
                     // SetVolume: SetVolume takes a 0..1 float and PlaySound's own volume argument
                     // would overwrite it three lines later, which is why Vel round-tripped through
-                    // every file format for years and was never audible.
-                    float gain = track.Volume * NoteVelocityGain(eventData.Vel);
+                    // every file format for years and was never audible. The master preference goes
+                    // in the same product for the same reason.
+                    float gain = MasterGain * track.Volume * NoteVelocityGain(eventData.Vel);
 
                     // No hold length, ever: every keysound rings out to the end of its own file.
                     //
@@ -997,6 +1367,21 @@ namespace DJMaxEditor.Studio.Shell
                 return 1f;
             }
             return velocity / (float)ChartEditController.MaxNoteVolume;
+        }
+
+        /// <summary>
+        /// The master volume preference, as a multiplier on every note the sequencer fires.
+        ///
+        /// <para>
+        /// Read here rather than pushed into the mixer because it has to apply to notes that have not
+        /// been played yet, and because the alternative - a device-level gain - would also scale the
+        /// audition channel, which has a preference of its own precisely so it does not have to be
+        /// the same loudness as playback.
+        /// </para>
+        /// </summary>
+        private float MasterGain
+        {
+            get { return _settings == null ? 1f : (float)_settings.Audio.MasterVolume; }
         }
 
         private void OnPlayerStatusChanged(object sender)
@@ -1215,6 +1600,9 @@ namespace DJMaxEditor.Studio.Shell
                     case Key.N: OnNew(this, null); e.Handled = true; return;
                     case Key.O: OnOpen(this, null); e.Handled = true; return;
                     case Key.S: OnSave(this, null); e.Handled = true; return;
+
+                    // Ctrl+, is the settings shortcut in VS Code, Chrome and every JetBrains IDE.
+                    case Key.OemComma: OnOpenPreferences(this, null); e.Handled = true; return;
                 }
                 return;
             }
@@ -1314,11 +1702,67 @@ namespace DJMaxEditor.Studio.Shell
             Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog();
             dialog.Filter = _files.OpenFilter;
             dialog.Title = "Open chart";
+            ApplyLastFolder(dialog);
             if (dialog.ShowDialog(this) != true)
             {
                 return;
             }
+            RememberFolder(dialog.FileName);
             await OpenPathAsync(dialog.FileName);
+        }
+
+        /// <summary>
+        /// Starts a file dialog in the folder the last one ended in.
+        ///
+        /// <para>
+        /// Windows already does this per-process, which is exactly the problem: it forgets on exit,
+        /// and a chart folder is somewhere like
+        /// <c>...\Technika Projects\DM\extracted\&lt;song&gt;\</c> - deep enough that re-navigating to
+        /// it is the slowest part of opening a chart.
+        /// </para>
+        /// </summary>
+        private void ApplyLastFolder(Microsoft.Win32.FileDialog dialog)
+        {
+            if (_settings == null || !_settings.Format.RememberLastFolder)
+            {
+                return;
+            }
+
+            string folder = _settings.Format.LastFolder;
+            try
+            {
+                // Checked rather than trusted: the folder may have been on a drive that is no longer
+                // there, and a dialog handed a dead InitialDirectory silently ignores it anyway.
+                if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
+                {
+                    dialog.InitialDirectory = folder;
+                }
+            }
+            catch (Exception)
+            {
+                // An unmappable stored path reads as "no preference".
+            }
+        }
+
+        private void RememberFolder(string chosenFile)
+        {
+            if (_settings == null || !_settings.Format.RememberLastFolder)
+            {
+                return;
+            }
+
+            try
+            {
+                string folder = Path.GetDirectoryName(chosenFile);
+                if (!string.IsNullOrEmpty(folder))
+                {
+                    _settings.Format.LastFolder = folder;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Nothing to remember.
+            }
         }
 
         private async void OnSave(object sender, RoutedEventArgs e)
@@ -1333,10 +1777,12 @@ namespace DJMaxEditor.Studio.Shell
             dialog.Filter = _files.SaveFilter;
             dialog.Title = "Save chart as";
             dialog.FileName = Path.GetFileName(_document.SourcePath);
+            ApplyLastFolder(dialog);
             if (dialog.ShowDialog(this) != true)
             {
                 return;
             }
+            RememberFolder(dialog.FileName);
 
             DJMaxEditor.Files.ISaveFile handler = _files.SaveHandlerFor(dialog.FileName);
             if (handler == null)
@@ -1582,6 +2028,12 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.InvalidateBand();
         }
 
+        private void OnToggleAssets(object sender, RoutedEventArgs e)
+        {
+            _canvas.ShowNoteAssets = AssetsToggle.IsChecked == true;
+            _canvas.InvalidateBand();
+        }
+
         private void OnToggleDirection(object sender, RoutedEventArgs e)
         {
             // Upward is the gameplay reading: notes fall towards a judgement line at the bottom.
@@ -1640,6 +2092,7 @@ namespace DJMaxEditor.Studio.Shell
                 : "Time runs down the screen (ptSequencer layout)";
 
             DockVolumeLane(horizontal);
+            PlaceColumnScroll();
             ApplyTimeDirection();
 
             // No FitColumns here on purpose: the lanes now have to fit the other axis, and the
@@ -1652,14 +2105,24 @@ namespace DJMaxEditor.Studio.Shell
 
         private void OnZoomIn(object sender, RoutedEventArgs e)
         {
-            _viewModel.ZoomAt(_canvas.TimeAxisExtent / 2, 1.25);
+            _viewModel.ZoomAt(_canvas.TimeAxisExtent / 2, ZoomStep);
             RefreshStatus();
         }
 
         private void OnZoomOut(object sender, RoutedEventArgs e)
         {
-            _viewModel.ZoomAt(_canvas.TimeAxisExtent / 2, 1.0 / 1.25);
+            _viewModel.ZoomAt(_canvas.TimeAxisExtent / 2, 1.0 / ZoomStep);
             RefreshStatus();
+        }
+
+        /// <summary>
+        /// How much one zoom press multiplies the time scale by. A preference because the right
+        /// answer depends on the chart: 1.25 is four presses to double, which is right for placing
+        /// notes and far too slow for crossing a five-minute BGA-sync chart.
+        /// </summary>
+        private double ZoomStep
+        {
+            get { return _settings == null ? 1.25 : _settings.Timeline.ZoomStep; }
         }
 
         private void OnFitColumns(object sender, RoutedEventArgs e)
@@ -1757,7 +2220,7 @@ namespace DJMaxEditor.Studio.Shell
                 VolumeSplitterRow.Height = splitter;
                 VolumeLaneRow.Height = lane;
 
-                Grid.SetColumnSpan(CanvasHost, 3);
+                Grid.SetColumnSpan(CanvasCell, 3);
 
                 Grid.SetRow(VolumeSplitter, 1);
                 Grid.SetColumn(VolumeSplitter, 0);
@@ -1775,7 +2238,7 @@ namespace DJMaxEditor.Studio.Shell
                 VolumeSplitterColumn.Width = splitter;
                 VolumeLaneColumn.Width = lane;
 
-                Grid.SetColumnSpan(CanvasHost, 1);
+                Grid.SetColumnSpan(CanvasCell, 1);
 
                 Grid.SetRow(VolumeSplitter, 0);
                 Grid.SetColumn(VolumeSplitter, 1);
@@ -1786,6 +2249,27 @@ namespace DJMaxEditor.Studio.Shell
                 Grid.SetColumn(VolumeLaneHost, 2);
                 Grid.SetColumnSpan(VolumeLaneHost, 1);
             }
+        }
+
+        /// <summary>
+        /// Puts the column scrollbar on the edge the lanes run along: under the canvas while time
+        /// runs down the screen, beside it once time runs across.
+        ///
+        /// The bar always eats into the time axis, never the lane axis. That is what keeps it from
+        /// fighting the fit: the space it takes cannot change how many lanes are on screen, so
+        /// showing it can never be what makes it necessary or unnecessary.
+        /// </summary>
+        private void PlaceColumnScroll()
+        {
+            if (_columnScroll == null)
+            {
+                return;
+            }
+
+            bool horizontal = _canvas.Orientation == TimelineOrientation.Horizontal;
+            _columnScroll.ApplyOrientation(_canvas.Orientation);
+            Grid.SetRow(ColumnScroll, horizontal ? 0 : 1);
+            Grid.SetColumn(ColumnScroll, horizontal ? 1 : 0);
         }
 
         private void OnToggleBga(object sender, RoutedEventArgs e)
@@ -1883,7 +2367,8 @@ namespace DJMaxEditor.Studio.Shell
 
             // First TECHNIKA chart of the session opens the panel once, for the same reason a
             // discovered BGA does: the preview is useless if you have to know to go and find it.
-            if (!_playfieldPanelChosen && PlayfieldToggle.IsChecked != true)
+            bool mayOpen = _settings == null || _settings.Bga.AutoOpenPlayfieldForTechnika;
+            if (mayOpen && !_playfieldPanelChosen && PlayfieldToggle.IsChecked != true)
             {
                 PlayfieldToggle.IsChecked = true;
                 OnTogglePlayfield(this, null);
@@ -1902,8 +2387,10 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
             // Auditions go out on a channel the sequencer never uses, so previewing a keysound
-            // during playback cannot cut off a note that is sounding.
-            _audio.PlaySound(AuditionChannel, instrument.InsNum, 1f, 64);
+            // during playback cannot cut off a note that is sounding. Its own volume preference,
+            // separate from the master, because auditioning is a comparison and playback is a mix.
+            float gain = _settings == null ? 1f : (float)_settings.Audio.AuditionVolume;
+            _audio.PlaySound(AuditionChannel, instrument.InsNum, gain, 64);
         }
 
         /// <summary>A channel index above any track a chart can address, reserved for auditions.</summary>
@@ -2053,6 +2540,13 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
 
+            // Off is off: a folder full of previews is convenient right up until it is a folder you
+            // did not want the editor reading, and the discovery is the part that touches the disk.
+            if (_settings != null && !_settings.Bga.DiscoverBesideChart)
+            {
+                return;
+            }
+
             string found = BgaSourceResolver.FindForChart(chartPath);
             if (found == null)
             {
@@ -2063,8 +2557,10 @@ namespace DJMaxEditor.Studio.Shell
             DiagnosticLog.Write("bga.discover", found + " for " + Path.GetFileName(chartPath));
 
             // Opening the panel is how the feature announces itself: extract a song's preview and
-            // the next chart you open simply has it. Suppressed once the user has had their say.
-            if (!_bgaPanelChosen && BgaToggle.IsChecked != true)
+            // the next chart you open simply has it. Suppressed once the user has had their say -
+            // by clicking the toggle, or in advance by unticking it in preferences.
+            bool mayOpen = _settings == null || _settings.Bga.AutoOpenPanel;
+            if (mayOpen && !_bgaPanelChosen && BgaToggle.IsChecked != true)
             {
                 BgaToggle.IsChecked = true;
                 OnToggleBga(this, null);

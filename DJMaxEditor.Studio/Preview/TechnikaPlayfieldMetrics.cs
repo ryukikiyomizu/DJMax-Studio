@@ -338,6 +338,61 @@ namespace DJMaxEditor.Studio.Preview
         /// </summary>
         public const double MeasuredHitEffectSize = 350.0;
 
+        /// <summary>
+        /// The tap hit burst - the arcade's "cool bomb" - as its own animation says it is drawn.
+        /// Every number in this block and the ones that follow it is read off
+        /// <c>CoolBomb\&lt;set&gt;\cool\cool.vce</c>, whose header is 60 fps with a last key at tick 35
+        /// and whose one textured layer lists <c>cool_0000.png</c> through <c>cool_0022.png</c>.
+        ///
+        /// <para>
+        /// The burst is not a still played at one size. Its three keys are a 394x385 quad at full
+        /// alpha, a contraction to 306.6x369.7 at 86% alpha five ticks later, and a 602x347 quad at
+        /// zero alpha at the end - so it snaps in, pinches, then blows outward as it fades. Drawing
+        /// frame zero at one size for the whole effect is a flashbulb; this is a flash.
+        /// </para>
+        ///
+        /// <para>
+        /// Kept here rather than in the renderer because it is a measurement of the owner's own
+        /// files, which is what this table is for, and because a test can then assert the envelope
+        /// against the numbers above without going through a render.
+        /// </para>
+        /// </summary>
+        public const double CoolBombWidth = 394.0;
+
+        /// <summary>Height of the burst's first key. See <see cref="CoolBombWidth"/>.</summary>
+        public const double CoolBombHeight = 385.0;
+
+        /// <summary>Width of the burst's last key, where it has blown outward and gone.</summary>
+        public const double CoolBombEndWidth = 602.0;
+
+        /// <summary>Height of the burst's last key.</summary>
+        public const double CoolBombEndHeight = 347.0;
+
+        /// <summary>
+        /// Where the middle key sits in the effect, as a fraction of its length: tick 5 of 35. The
+        /// pinch is early and short, which is what makes it read as a hit rather than as a bloom.
+        /// </summary>
+        public const double CoolBombPinchProgress = 5.0 / 35.0;
+
+        /// <summary>Width at the pinch.</summary>
+        public const double CoolBombPinchWidth = 306.6;
+
+        /// <summary>Height at the pinch.</summary>
+        public const double CoolBombPinchHeight = 369.7;
+
+        /// <summary>
+        /// Alpha at the pinch, as a fraction: the key's own 218.6 of 255. The first key is opaque
+        /// and the last is fully transparent, so those two need no constant.
+        /// </summary>
+        public const double CoolBombPinchAlpha = 218.6 / 255.0;
+
+        /// <summary>
+        /// How long the burst runs, in seconds: 35 ticks of a 60 fps animation. The one quantity
+        /// here that is not a length, and the reason the projection has to say how long a scan is -
+        /// a renderer driven by musical position cannot otherwise honour it.
+        /// </summary>
+        public const double CoolBombSeconds = 35.0 / 60.0;
+
         // ---- HUD ------------------------------------------------------------------------------
 
         /// <summary>Groove gauge fill: a 434x20 quad at (422.5,24.5) from a 512x256 sheet.</summary>
@@ -465,6 +520,34 @@ namespace DJMaxEditor.Studio.Preview
                 return NoteFrameFourLine;
             }
             return MeanHalfHeight / (laneCount < 1 ? 1 : laneCount);
+        }
+
+        /// <summary>
+        /// Whether a canvas of <paramref name="size"/> arcade pixels is a whole note frame, i.e. one
+        /// of the two sizes the client authors a full-lane glyph at.
+        ///
+        /// <para>
+        /// The question this answers is which of two things a difference in canvas size means. An
+        /// extracted set carries both mixing modes' art mixed together - <c>notepressstart</c> and
+        /// <c>longnote</c> are 116 px cells while the tap beside them is 90 - and 116 against 90 is
+        /// not one glyph authored larger than another. It is the same glyph, one lane pitch tall, in
+        /// the two modes: see <see cref="NoteFrameThreeLine"/>, where the client's own re-authored
+        /// repeat counter pins 116 to 3-line and 90 to 4-line at the VCE quad. Read as an authored
+        /// size difference it draws a chain head 116/90 = 1.29x the note it leads, which is the
+        /// oversized head reported from a playtest.
+        /// </para>
+        ///
+        /// <para>
+        /// A canvas that is neither is a genuine authored size, and stays one. The chain node's 76 px
+        /// cell is no mode's pitch, so a chain node really is drawn smaller than the tap, and the 76
+        /// px line strips really are thinner than a lane - those proportions are the art and must
+        /// survive. Half a pixel of slack, because the sizes are read back off a PNG.
+        /// </para>
+        /// </summary>
+        public static bool IsNoteFrameSize(double size)
+        {
+            return Math.Abs(size - NoteFrameThreeLine) < 0.5 ||
+                Math.Abs(size - NoteFrameFourLine) < 0.5;
         }
 
         /// <summary>

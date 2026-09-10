@@ -50,17 +50,24 @@ namespace DJMaxEditor.Studio.Preview
             if (args.Length < 3)
             {
                 Console.Error.WriteLine(
-                    Switch + " <chart> <output-directory> [width]");
+                    Switch + " <chart> <output-directory> [width] [ticks=a,b,c]");
                 return 2;
             }
 
             string chartPath = args[1];
             string outputDirectory = args[2];
             int width = DefaultWidth;
-            if (args.Length > 3)
+            int[] requestedTicks = null;
+            for (int i = 3; i < args.Length; i++)
             {
+                if (args[i].StartsWith("ticks=", StringComparison.OrdinalIgnoreCase))
+                {
+                    requestedTicks = ParseTicks(args[i].Substring("ticks=".Length));
+                    continue;
+                }
+
                 int parsed;
-                if (int.TryParse(args[3], NumberStyles.Integer,
+                if (int.TryParse(args[i], NumberStyles.Integer,
                         CultureInfo.InvariantCulture, out parsed) && parsed >= 160)
                 {
                     width = parsed;
@@ -102,10 +109,44 @@ namespace DJMaxEditor.Studio.Preview
             }
 
             DescribeTopology(projection, report);
-            int[] ticks = ChooseTicks(projection, report);
+            int[] ticks = requestedTicks ?? ChooseTicks(projection, report);
+            if (requestedTicks != null)
+            {
+                report.Append("chosen ticks: (requested)");
+                for (int i = 0; i < ticks.Length; i++)
+                {
+                    report.Append(' ').Append(ticks[i]);
+                }
+                report.AppendLine();
+            }
             RenderFrames(projection, ticks, width, outputDirectory, report);
             Write(outputDirectory, report);
             return 0;
+        }
+
+        /// <summary>
+        /// A comma-separated tick list, for aiming a frame at a moment the automatic chooser cannot
+        /// reach. The chooser picks by how full a scan is and tops up one frame per uncovered kind at
+        /// that scan's mid-point, which is the right default but cannot land inside a short note's
+        /// duration on purpose - and "is the actively-held art selected while the sweep is inside a
+        /// hold" is only answerable from a frame that is inside one.
+        /// </summary>
+        private static int[] ParseTicks(string value)
+        {
+            string[] parts = value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var ticks = new List<int>();
+            for (int i = 0; i < parts.Length; i++)
+            {
+                int parsed;
+                if (int.TryParse(parts[i].Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out parsed) && parsed >= 0)
+                {
+                    ticks.Add(parsed);
+                }
+            }
+
+            ticks.Sort();
+            return ticks.Count == 0 ? null : ticks.ToArray();
         }
 
         /// <summary>
@@ -757,16 +798,20 @@ namespace DJMaxEditor.Studio.Preview
                     // The trail verdict is printed rather than left to the eye: every TECHNIKA note
                     // carries a keysound duration, so "does this note draw a trail" is the one
                     // question a screenshot of a dense frame cannot answer, and it is exactly the
-                    // thing that was wrong.
+                    // thing that was wrong. Both approach fields are printed because they are not
+                    // the same number and the renderer branches on the second one: progress is a
+                    // 0..1 ramp over the last half scan and is 0 once the sweep is past the head,
+                    // while the distance keeps counting and goes positive there - which is what
+                    // selects the actively-held trail art.
                     bool trail = note.DurationPulse > 0 &&
                         GameplayPreviewNoteKinds.HasHoldTrail(note.Kind);
 
                     report.AppendFormat(CultureInfo.InvariantCulture,
                         "    {0,-14} lane={1} scan={2,-3} x={3:F4} top={4,-5} {5,-7} " +
-                        "approach={6:F2} durPulse={7,-4} trail={8}",
+                        "approach={6:F2} dist={7,6:F2} durPulse={8,-4} trail={9}",
                         note.Kind, note.Lane, note.ScanIndex, note.X, note.IsTopHalf,
-                        note.State, note.ApproachProgress, note.DurationPulse,
-                        trail ? "yes" : "no").AppendLine();
+                        note.State, note.ApproachProgress, note.ApproachScanDistance,
+                        note.DurationPulse, trail ? "yes" : "no").AppendLine();
                 }
             }
         }

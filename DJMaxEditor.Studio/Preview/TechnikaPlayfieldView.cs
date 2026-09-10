@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using DJMaxEditor.Diagnostics;
@@ -37,12 +38,18 @@ namespace DJMaxEditor.Studio.Preview
     internal sealed class TechnikaPlayfieldView : FrameworkElement
     {
         /// <summary>
+        /// Beats in one scan: the projector's <c>DefaultBeatsPerScan</c>, and the unit the countdown
+        /// counts in. See <see cref="PulsesPerScan"/> for why it is duplicated here.
+        /// </summary>
+        private const double BeatsPerScan = 4.0;
+
+        /// <summary>
         /// Pulses in one scan: <c>PulsesPerBeat * DefaultBeatsPerScan</c> from the projector.
         /// Duplicated rather than exposed because it is the projector's private calibration, and
         /// widening its API to share one constant would be the worse trade. If the projector ever
         /// gains a per-chart scan length, this becomes a property read off the projection.
         /// </summary>
-        private const double PulsesPerScan = 240.0 * 4.0;
+        private const double PulsesPerScan = 240.0 * BeatsPerScan;
 
         /// <summary>
         /// Opacity of a note that belongs to the next scan and has not been handed over yet.
@@ -77,10 +84,28 @@ namespace DJMaxEditor.Studio.Preview
         /// </summary>
         private const double HandoverPhase = 0.875;
 
+        /// <summary>
+        /// Height of a countdown digit as a share of one half of the playfield. Policy, chosen large
+        /// enough to read at a glance over the field behind it without covering a whole half. Lives
+        /// here rather than in <see cref="TechnikaCountIn"/> because it is a fact about how this
+        /// renderer places the digit, not about the count.
+        /// </summary>
+        private const double CountdownHeightShare = 0.42;
+
         /// <summary>What <see cref="LinkFamily"/> answers: the two families the arcade joins, and neither.</summary>
         private const int NoFamily = 0;
         private const int ChainFamily = 1;
         private const int RepeatFamily = 2;
+
+        /// <summary>What <see cref="_runOf"/> holds for a note that belongs to no run.</summary>
+        private const int NoRun = -1;
+
+        /// <summary>
+        /// The lane a chain's run is keyed on. A chain crosses lanes - the projector's pass absorbs
+        /// whatever taps fall inside its span, in whichever lane they sit - so its identity cannot
+        /// include one, while a repeat series belongs to a single lane and must.
+        /// </summary>
+        private const int AnyLane = -1;
 
         /// <summary>
         /// The direction a run head's art is drawn pointing, in degrees clockwise from +x.
@@ -101,16 +126,6 @@ namespace DJMaxEditor.Studio.Preview
         private readonly TechnikaNoteSprites _sprites = TechnikaNoteSprites.Load();
 
         /// <summary>
-        /// Tiling brushes for the bars that join a run's notes, keyed by kind and by the height they
-        /// were built to fill. Kept because a single frame can carry several runs of one kind, and
-        /// keyed by height as well because the two halves of the playfield have different lane
-        /// heights - a one-slot cache would rebuild on every note. Emptied when a resize or a
-        /// different lane count makes every height in it stale.
-        /// </summary>
-        private readonly Dictionary<(GameplayPreviewNoteKind Kind, double Height), ImageBrush>
-            _lineBrushes = new Dictionary<(GameplayPreviewNoteKind, double), ImageBrush>();
-
-        /// <summary>
         /// Rotation in degrees for the note at the same index in the frame's note list: filled by
         /// the link pass, read by the note pass, zero for every note that is not a chain head.
         ///
@@ -123,6 +138,35 @@ namespace DJMaxEditor.Studio.Preview
         /// </summary>
         private double[] _headAngles = new double[0];
 
+        /// <summary>
+        /// Which run the note at the same index in the frame's note list belongs to, or
+        /// <see cref="NoRun"/> for one the arcade joins to nothing. Filled by
+        /// <see cref="GroupRuns"/>, read by both link passes.
+        ///
+        /// <para>
+        /// Gathering a run's members by identity rather than by position is the whole reason this
+        /// exists. <c>GameplayPreviewProjection</c> orders its notes by pulse and then by lane, so
+        /// the entry after a run's head is whatever else the chart plays at that moment - the other
+        /// lane's repeat, a chain passing through - and hardly ever the next member. Walking
+        /// neighbours instead, which is what this pass did, found a run of one on any chart where two
+        /// lanes are busy at once, and a run of one has no line: the bar disappeared exactly when the
+        /// chart was dense enough to need it. Single-lane fixtures cannot catch that, because in one
+        /// lane list order and run order are the same order.
+        /// </para>
+        /// </summary>
+        private int[] _runOf = new int[0];
+
+        /// <summary>
+        /// The runs <see cref="GroupRuns"/> still has open, and how much of the buffer is live. One
+        /// per family, lane, half and scan in flight at once - a handful at most - so it is searched
+        /// linearly rather than hashed.
+        /// </summary>
+        private OpenRun[] _openRuns = new OpenRun[8];
+        private int _openRunCount;
+
+        /// <summary>How many runs <see cref="GroupRuns"/> found in the frame being drawn.</summary>
+        private int _runCount;
+
         private bool _showGuides;
 
         private GameplayPreviewProjection _projection;
@@ -130,6 +174,9 @@ namespace DJMaxEditor.Studio.Preview
         private TechnikaPlayfieldFit _fit;
         private TextCache _labels;
         private double _labelDpi;
+        private TextCache _countdown;
+        private double _countdownEm = -1.0;
+        private double _countdownDpi;
         private int _chromeLaneCount = -1;
         private Size _chromeSize;
         private int _tracedScan = int.MinValue;
@@ -313,6 +360,7 @@ namespace DJMaxEditor.Studio.Preview
         {
             base.OnDpiChanged(oldDpi, newDpi);
             _labels = null;
+            _countdown = null;
             InvalidateVisual();
         }
 
@@ -324,14 +372,6 @@ namespace DJMaxEditor.Studio.Preview
         {
             int laneCount = _projection == null ? 0 : _projection.LaneCount;
             Size size = new Size(ActualWidth, ActualHeight);
-
-            // The run-line brushes are built to fill one exact height. A resize or a chart with a
-            // different lane count changes every one of those heights, so the brushes already held
-            // will never be asked for again; this is the one place both inputs are known.
-            if (size != _chromeSize || laneCount != _chromeLaneCount)
-            {
-                _lineBrushes.Clear();
-            }
 
             _chromeSize = size;
             _chromeLaneCount = laneCount;
@@ -553,7 +593,101 @@ namespace DJMaxEditor.Studio.Preview
                 {
                     DrawNote(dc, notes[i], _headAngles[i]);
                 }
+
+                // Last, so a burst reads as light in front of the field rather than something
+                // buried in it - and after the heads because the note it belongs to is already
+                // gone by the time it is at its brightest.
+                DrawHitEffects(dc, notes);
+
+                // Over everything, because a count-in is the one thing on screen that is not part of
+                // the chart.
+                DrawCountdown(dc);
             }
+        }
+
+        /// <summary>
+        /// The count-in before the chart starts: 3, 2, 1, one to a beat, centred on the boundary
+        /// between the halves.
+        ///
+        /// <para>
+        /// Which number and how bright belong to <see cref="TechnikaCountIn"/>, where they can be
+        /// walked without a render target; what is here is only where it goes and how large. Drawn as
+        /// text because there is no countdown art in the extracted set - the arcade's own count-in is
+        /// part of a stage intro this preview does not model.
+        /// </para>
+        ///
+        /// <para>
+        /// Counted in beats off the musical clock rather than in seconds off a wall clock, so
+        /// scrubbing the transport back into the count-in shows the count-in again, and so the digits
+        /// land on the beats an author hears. It measures from the first note in the whole chart, not
+        /// the first note of the current window: the point is to say when play begins, and that is a
+        /// fact about the chart. Silent from that note onwards, and silent for a chart with no notes.
+        /// </para>
+        /// </summary>
+        private void DrawCountdown(DrawingContext dc)
+        {
+            double firstScan;
+            if (!FirstNoteScan(out firstScan))
+            {
+                return;
+            }
+
+            TechnikaCountIn count =
+                TechnikaCountIn.At((firstScan - _frame.CurrentScan) * BeatsPerScan);
+            if (!count.IsVisible)
+            {
+                return;
+            }
+
+            double em = _fit.Length(
+                TechnikaPlayfieldMetrics.MeanHalfHeight * CountdownHeightShare);
+            EnsureCountdown(em);
+            FormattedText text =
+                _countdown.Get(count.Number.ToString(CultureInfo.InvariantCulture));
+            if (text == null)
+            {
+                return;
+            }
+
+            Point centre = new Point(
+                _fit.X(TechnikaPlayfieldMetrics.NativeWidth / 2.0),
+                _fit.Y(TechnikaPlayfieldMetrics.HalfBoundary));
+            dc.PushOpacity(count.Opacity);
+            dc.DrawText(text, new Point(
+                centre.X - (text.Width / 2.0), centre.Y - (text.Height / 2.0)));
+            dc.Pop();
+        }
+
+        /// <summary>
+        /// Scan position of the earliest note in the chart, or false when the chart has none. The
+        /// projector hands its notes over in pulse order, so this is the first one; taken as a double
+        /// scan because the countdown has to know where inside a beat the note falls.
+        /// </summary>
+        private bool FirstNoteScan(out double scan)
+        {
+            scan = 0.0;
+            IReadOnlyList<ProjectedGameplayNote> all = _projection.Notes;
+            if (all == null || all.Count == 0)
+            {
+                return false;
+            }
+            scan = all[0].Pulse / PulsesPerScan;
+            return true;
+        }
+
+        private void EnsureCountdown(double em)
+        {
+            double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            if (_countdown != null &&
+                Math.Abs(dpi - _countdownDpi) < 0.001 &&
+                Math.Abs(em - _countdownEm) < 0.5)
+            {
+                return;
+            }
+            _countdownDpi = dpi;
+            _countdownEm = em;
+            _countdown = new TextCache(
+                _theme.UiTypeface, Math.Max(1.0, em), _theme.TextPrimary, dpi);
         }
 
         /// <summary>
@@ -709,9 +843,11 @@ namespace DJMaxEditor.Studio.Preview
             Point center = _fit.Note(note.X, note.Y, note.IsTopHalf);
             TechnikaNoteBrushes brushes = _theme.NoteFor(note.Kind);
 
-            // The lane box is what a tap fills; every other glyph is authored against that same tap
-            // and is a different size on purpose. See TechnikaNoteSprites.ReferenceFrameSize - drawing
-            // them all into the lane box is what made the notes look like a set of mismatched skins.
+            // The lane box is what a whole note frame fills, at either mode's pitch; a glyph authored
+            // on a smaller canvas than that is smaller on purpose. See TechnikaNoteSprites.ScaleOf -
+            // squeezing every canvas into the lane box made the set look like mismatched skins, and
+            // reading a 3-line canvas in a 4-line set as "authored larger" drew a chain head 1.29x
+            // the note it leads.
             double headSize = Math.Max(4.0, size * _sprites.ScaleFor(note.Kind));
 
             bool prepare = note.State == GameplayPreviewNoteState.Prepare;
@@ -743,13 +879,6 @@ namespace DJMaxEditor.Studio.Preview
             }
             else
             {
-                // A long note wears the arcade's held glyph while the playhead is inside its span,
-                // which is the swap the arcade itself makes; without one in the loaded set the head
-                // simply carries on.
-                TechnikaNoteSprite drawn = HeldNow(note)
-                    ? (_sprites.Held ?? sprite)
-                    : sprite;
-
                 // A chain head is an arrow, so it is the one glyph whose orientation carries
                 // meaning: it says where the chain goes next, and a chain crosses lanes. Turning
                 // the image is the whole of that - the vector fallback below is a disc, which has
@@ -759,7 +888,7 @@ namespace DJMaxEditor.Studio.Preview
                 {
                     dc.PushTransform(new RotateTransform(angleDegrees, center.X, center.Y));
                 }
-                dc.DrawImage(drawn.Frame(_frame.CurrentScan * ShineLoopsPerScan), head);
+                dc.DrawImage(sprite.Frame(_frame.CurrentScan * ShineLoopsPerScan), head);
                 if (turned)
                 {
                     dc.Pop();
@@ -812,8 +941,7 @@ namespace DJMaxEditor.Studio.Preview
                 return;
             }
 
-            double reference = _sprites.ReferenceFrameSize;
-            double scale = reference > 0 && ring.FrameSize > 0 ? ring.FrameSize / reference : 1.0;
+            double scale = _sprites.ScaleOf(ring);
             double edge = size * scale;
             if (edge <= 0.0)
             {
@@ -852,34 +980,229 @@ namespace DJMaxEditor.Studio.Preview
         }
 
         /// <summary>
+        /// The burst the sweep leaves behind it, on every note it has just passed.
+        ///
+        /// <para>
+        /// A pass of its own rather than a branch inside <see cref="DrawNote"/>, because the burst
+        /// outlives the note: a tap is <c>Resolved</c> the instant the sweep clears it and
+        /// <see cref="DrawNote"/> rightly stops drawing it, while the flash it was struck with has
+        /// most of half a second still to run. Nothing here reads the note's state at all - the
+        /// clock decides, and the clock is <see cref="ProjectedGameplayNote.ApproachScanDistance"/>,
+        /// which is how long ago the sweep crossed the note measured in scans.
+        /// </para>
+        ///
+        /// <para>
+        /// Silent when the chart has no tempo, because then no number of scans is honestly
+        /// <see cref="TechnikaPlayfieldMetrics.CoolBombSeconds"/> long. A burst late in a scan is
+        /// also cut short by the projector's one-scan render window, which drops the note that owns
+        /// it at the scan flip; widening that window is a change to what every other pass measures,
+        /// so the truncation stands for now.
+        /// </para>
+        ///
+        /// <para>
+        /// Each kind is struck with its own burst, through <see cref="TechnikaHitEffectProfile"/>.
+        /// The arcade has a sequence per gesture - <c>CoolBomb\*\onePoint</c> and
+        /// <c>CoolBomb\*\hold</c> beside <c>cool</c> - and only <c>cool</c> is in the set on disk, so
+        /// what varies here is the shape of the one sequence and not the pictures in it. Read that
+        /// file for which of the numbers is measured and which is chosen.
+        /// </para>
+        /// </summary>
+        private void DrawHitEffects(DrawingContext dc, IReadOnlyList<ProjectedGameplayNote> notes)
+        {
+            double effectScans = TechnikaHitFlash.ScansFor(_projection.ScanSeconds);
+            double previewScale = TechnikaHitEffectProfile.PreviewScale(
+                Math.Max(1, _projection.LaneCount));
+            if (effectScans <= 0.0 || previewScale <= 0.0)
+            {
+                return;
+            }
+
+            TechnikaNoteSprite bomb = _sprites.CoolBomb;
+            for (int i = 0; i < notes.Count; i++)
+            {
+                DrawHitEffect(dc, notes[i], bomb, effectScans, previewScale);
+            }
+        }
+
+        private void DrawHitEffect(
+            DrawingContext dc,
+            ProjectedGameplayNote note,
+            TechnikaNoteSprite bomb,
+            double effectScans,
+            double previewScale)
+        {
+            // The profile's Life shortens the whole burst rather than cutting it off part-way, so a
+            // quicker flash still runs its own envelope end to end and still leaves the field clean.
+            TechnikaHitEffectProfile profile = TechnikaHitEffectProfile.For(note.Kind);
+            double life = effectScans * profile.Life;
+            if (life <= 0.0)
+            {
+                return;
+            }
+
+            TechnikaHitFlash flash = TechnikaHitFlash.At(note.ApproachScanDistance / life)
+                .Scaled(previewScale * profile.Scale, profile.Opacity);
+            if (!flash.IsVisible)
+            {
+                return;
+            }
+
+            double width = _fit.Length(flash.Width);
+            double height = _fit.Length(flash.Height);
+            if (width <= 0.0 || height <= 0.0)
+            {
+                return;
+            }
+
+            Point center = _fit.Note(note.X, note.Y, note.IsTopHalf);
+            Rect quad = new Rect(
+                center.X - (width / 2), center.Y - (height / 2), width, height);
+
+            // Kept to its own half. At the arcade's authored size the burst is taller than the half it
+            // fires in - 385 px against 348 - and this stopped a hit on the top row blooming onto the
+            // bottom one; at the preview's size it rarely reaches the boundary, but a lane at the
+            // edge of a half still can, and clipping costs nothing.
+            dc.PushClip(new RectangleGeometry(_fit.Half(note.IsTopHalf)));
+            dc.PushOpacity(flash.Opacity);
+            ImageSource frame = bomb == null ? null : bomb.Shot(flash.FrameProgress);
+            if (frame == null)
+            {
+                // No arcade art: a soft disc in the note's own colour, sized and faded by the same
+                // envelope. It says "struck here, just now" without pretending to be the art.
+                dc.DrawEllipse(_theme.NoteFor(note.Kind).Glow, null,
+                    center, width / 2, height / 2);
+            }
+            else
+            {
+                dc.DrawImage(frame, quad);
+            }
+            dc.Pop();
+            dc.Pop();
+        }
+
+        /// <summary>
         /// The bar the arcade runs through a chain or a repeat run.
         ///
         /// <para>
         /// A chain and a repeat run are several notes joined by one line, not one note carrying a
         /// duration - which is why <c>HasHoldTrail</c> excludes them, and why the line cannot be
         /// derived from any single note the way a hold's trail can. It is read off the run instead:
-        /// consecutive notes of one family in one scan and one half, a repeat series within a lane
-        /// and a chain across them, joined from each member to the next. Drawn before the heads, so
-        /// the line passes under them as it does in the arcade.
+        /// notes of one family in one scan and one half, a repeat series within a lane and a chain
+        /// across them, joined from each member to the next. Drawn before the heads, so the line
+        /// passes under them as it does in the arcade.
         /// </para>
         /// </summary>
         private void DrawGroupLinks(DrawingContext dc, IReadOnlyList<ProjectedGameplayNote> notes)
         {
             PrepareHeadAngles(notes.Count);
+            GroupRuns(notes);
 
-            int start = 0;
-            while (start < notes.Count)
+            for (int run = 0; run < _runCount; run++)
             {
-                int end = start;
-                if (LinkFamily(notes[start].Kind) != NoFamily)
+                DrawGroupLink(dc, notes, run);
+            }
+        }
+
+        /// <summary>
+        /// Puts every note of the frame into the run it belongs to: one family, one half, one scan,
+        /// and one lane as well for a repeat series. A second head of the same identity starts a line
+        /// of its own rather than extending the one before it, so two runs back to back in a lane are
+        /// two lines.
+        ///
+        /// <para>
+        /// Position in the note list is not part of the answer - see <see cref="_runOf"/> for what
+        /// that cost. A member arriving with no head open keeps its own run rather than being
+        /// discarded: on a chart the head may simply be behind the window, and half a run still has a
+        /// line through it.
+        /// </para>
+        /// </summary>
+        private void GroupRuns(IReadOnlyList<ProjectedGameplayNote> notes)
+        {
+            if (_runOf.Length < notes.Count)
+            {
+                _runOf = new int[Math.Max(notes.Count, 64)];
+            }
+            _openRunCount = 0;
+            _runCount = 0;
+
+            for (int i = 0; i < notes.Count; i++)
+            {
+                _runOf[i] = NoRun;
+
+                ProjectedGameplayNote note = notes[i];
+                int family = LinkFamily(note.Kind);
+                if (family == NoFamily)
                 {
-                    while (end + 1 < notes.Count && ContinuesRun(notes[start], notes[end + 1]))
-                    {
-                        end++;
-                    }
-                    DrawGroupLink(dc, notes, start, end);
+                    continue;
                 }
-                start = end + 1;
+
+                int lane = family == RepeatFamily ? note.Lane : AnyLane;
+                int slot = IndexOfOpenRun(family, lane, note.IsTopHalf, note.ScanIndex);
+                if (slot < 0 || IsRunHead(note.Kind))
+                {
+                    slot = StartRun(family, lane, note.IsTopHalf, note.ScanIndex);
+                }
+
+                _runOf[i] = _openRuns[slot].Run;
+            }
+        }
+
+        /// <summary>Starts a run for an identity, replacing whatever was open for it, and answers its
+        /// slot in <see cref="_openRuns"/>.</summary>
+        private int StartRun(int family, int lane, bool isTopHalf, int scanIndex)
+        {
+            int slot = IndexOfOpenRun(family, lane, isTopHalf, scanIndex);
+            if (slot < 0)
+            {
+                if (_openRunCount == _openRuns.Length)
+                {
+                    Array.Resize(ref _openRuns, _openRuns.Length * 2);
+                }
+                slot = _openRunCount++;
+            }
+
+            _openRuns[slot] = new OpenRun(family, lane, isTopHalf, scanIndex, _runCount++);
+            return slot;
+        }
+
+        private int IndexOfOpenRun(int family, int lane, bool isTopHalf, int scanIndex)
+        {
+            for (int i = 0; i < _openRunCount; i++)
+            {
+                if (_openRuns[i].Matches(family, lane, isTopHalf, scanIndex))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// The identity of a run being gathered - family, lane (<see cref="AnyLane"/> for a chain),
+        /// half and scan - and the run number its members are given.
+        /// </summary>
+        private struct OpenRun
+        {
+            public OpenRun(int family, int lane, bool isTopHalf, int scanIndex, int run)
+            {
+                _family = family;
+                _lane = lane;
+                _isTopHalf = isTopHalf;
+                _scanIndex = scanIndex;
+                Run = run;
+            }
+
+            private readonly int _family;
+            private readonly int _lane;
+            private readonly bool _isTopHalf;
+            private readonly int _scanIndex;
+
+            public readonly int Run;
+
+            public bool Matches(int family, int lane, bool isTopHalf, int scanIndex)
+            {
+                return _family == family && _lane == lane &&
+                    _isTopHalf == isTopHalf && _scanIndex == scanIndex;
             }
         }
 
@@ -903,14 +1226,13 @@ namespace DJMaxEditor.Studio.Preview
         /// has already been played while its tail notes are still on screen.
         /// </summary>
         private void DrawGroupLink(
-            DrawingContext dc, IReadOnlyList<ProjectedGameplayNote> notes, int start, int end)
+            DrawingContext dc, IReadOnlyList<ProjectedGameplayNote> notes, int run)
         {
             int first = -1;
             int last = -1;
-            for (int i = start; i <= end; i++)
+            for (int i = 0; i < notes.Count; i++)
             {
-                if (notes[i].State == GameplayPreviewNoteState.Inactive ||
-                    notes[i].State == GameplayPreviewNoteState.Resolved)
+                if (_runOf[i] != run || !IsDrawn(notes[i]))
                 {
                     continue;
                 }
@@ -935,7 +1257,7 @@ namespace DJMaxEditor.Studio.Preview
 
             if (LinkFamily(from.Kind) == ChainFamily)
             {
-                DrawChainLink(dc, notes, start, end, first, size);
+                DrawChainLink(dc, notes, run, first, size);
             }
             else
             {
@@ -954,6 +1276,14 @@ namespace DJMaxEditor.Studio.Preview
             }
         }
 
+        /// <summary>Whether the note pass draws this note at all. A line joined to one it skips would
+        /// hang off a head that has already been played.</summary>
+        private static bool IsDrawn(ProjectedGameplayNote note)
+        {
+            return note.State != GameplayPreviewNoteState.Inactive &&
+                note.State != GameplayPreviewNoteState.Resolved;
+        }
+
         /// <summary>
         /// A chain, joined member to member, and its head turned to face the second member.
         ///
@@ -968,21 +1298,19 @@ namespace DJMaxEditor.Studio.Preview
         private void DrawChainLink(
             DrawingContext dc,
             IReadOnlyList<ProjectedGameplayNote> notes,
-            int start,
-            int end,
+            int run,
             int head,
             double size)
         {
             int previous = -1;
-            for (int i = start; i <= end; i++)
+            for (int i = 0; i < notes.Count; i++)
             {
-                ProjectedGameplayNote note = notes[i];
-                if (note.State == GameplayPreviewNoteState.Inactive ||
-                    note.State == GameplayPreviewNoteState.Resolved)
+                if (_runOf[i] != run || !IsDrawn(notes[i]))
                 {
                     continue;
                 }
 
+                ProjectedGameplayNote note = notes[i];
                 if (previous >= 0)
                 {
                     Point a = Centre(notes[previous]);
@@ -1001,10 +1329,10 @@ namespace DJMaxEditor.Studio.Preview
         }
 
         /// <summary>
-        /// One straight piece of a run's line: the art tiled from <paramref name="origin"/> along
-        /// <paramref name="length"/>, turned by <paramref name="degrees"/> and centred on the line
-        /// it joins. Both families draw through this - a repeat run passes its whole horizontal
-        /// span, a chain passes each of its segments.
+        /// One straight piece of a run's line: the art stretched from <paramref name="origin"/> along
+        /// <paramref name="length"/>, turned by <paramref name="degrees"/> and centred on the line it
+        /// joins. Both families draw through this - a repeat run passes its whole horizontal span, a
+        /// chain passes each of its segments.
         /// </summary>
         private void DrawRunBar(
             DrawingContext dc,
@@ -1021,17 +1349,16 @@ namespace DJMaxEditor.Studio.Preview
 
             TechnikaNoteSprite line = _sprites.Line(kind);
 
-            // The line is authored against the head it joins - 76 px of art around a 90 px note -
-            // so it is scaled by the ratio the two sprites declare, exactly as the approach glow is.
-            // Without art at all a themed bar joins the same two points at lower fidelity.
-            double height = line == null
-                ? size * 0.18
-                : size * LineScale(_sprites.For(kind), line);
+            // The line is authored against the tap the whole set is measured from - 76 px of art for
+            // a 90 px note - so it is scaled the same way a head and a hold's body are. Against the
+            // head it joins instead, which is what this did, a chain's line came out 22% short: its
+            // head is a 116 px frame, so 76/116 rather than 76/90. Without art at all a themed bar
+            // joins the same two points at lower fidelity.
+            double height = line == null ? size * 0.18 : size * _sprites.ScaleOf(line);
 
-            // Rotate about the bar's own start rather than drawing a rotated rectangle: the tiling
-            // brush below is axis-aligned by construction, so the art has to be laid out along +x
-            // and then turned onto the segment. Composed in call order - centre the bar on the
-            // line, turn it, then put it at the segment's start.
+            // Rotate about the bar's own start rather than drawing a rotated rectangle: the art is
+            // authored along +x, so it is laid out there and then turned onto the segment. Composed
+            // in call order - centre the bar on the line, turn it, then put it at the segment's start.
             Matrix placement = new Matrix();
             placement.Translate(0, -height / 2.0);
             placement.Rotate(degrees);
@@ -1044,24 +1371,19 @@ namespace DJMaxEditor.Studio.Preview
             }
             else
             {
-                // Tiled, not stretched. `noterepeatline` is a row of ten pips rather than a solid
-                // bar, so stretching it to the run's length changes the spacing between pips with
-                // the length of the run - two repeat runs of different lengths would be drawn in
-                // visibly different art. Tiling keeps the pitch the sprite was authored with, and
-                // the tile phase starts at this bar's own origin, which is what lets the brush stay
-                // frozen and shared.
-                dc.DrawRectangle(LineBrush(kind, line, height), null, new Rect(0, 0, length, height));
+                // One column of the art stretched down the whole run, which is how a hold's body is
+                // drawn too - see DrawTrail. Both line strips are built as a cap and not as a tile:
+                // per column of `noterepeatline`'s 30 px frame the alpha runs 4780, 4824, 4786 and
+                // then tapers monotonically to nothing by x11, with x12..x29 empty, which is the same
+                // construction as `longnoteline`'s known cap. Tiling that frame drew a run as a row
+                // of fading blobs - the "not a straight line" a playtest reported for the repeat - so
+                // the flat near end is the cross-section and the soft far end is where the art stops.
+                // Stem's cut is 2 of those 30 columns and lands inside the flat core; on the chain's
+                // 1x76 columns it is the whole frame and this is a plain stretch.
+                dc.DrawImage(line.Stem(_frame.CurrentScan * ShineLoopsPerScan),
+                    new Rect(0, 0, length, height));
             }
             dc.Pop();
-        }
-
-        /// <summary>How much bigger a run's line art is than the head it joins, per the sprites' own
-        /// dimensions. A constant here would be wrong for any other note set.</summary>
-        private static double LineScale(TechnikaNoteSprite head, TechnikaNoteSprite line)
-        {
-            return head != null && head.FrameSize > 0 && line != null && line.FrameSize > 0
-                ? line.FrameSize / head.FrameSize
-                : 1.0;
         }
 
         private Point Centre(ProjectedGameplayNote note)
@@ -1083,58 +1405,6 @@ namespace DJMaxEditor.Studio.Preview
             return Math.Sqrt((dx * dx) + (dy * dy));
         }
 
-        /// <summary>
-        /// A brush that repeats a run's line art along the run at the pitch it was authored with,
-        /// filling a box <paramref name="height"/> tall.
-        ///
-        /// <para>
-        /// The tile is one frame's own aspect taken at the height it is being drawn, so a pip stays
-        /// as round as the artist drew it whatever the lane height works out to. The viewport is in
-        /// absolute units and exactly as tall as the box it fills, which is what keeps the repeat
-        /// horizontal - a viewport shorter than the box would tile downwards as well and stack a
-        /// second row of pips inside the bar.
-        /// </para>
-        ///
-        /// <para>
-        /// An animated line is rebuilt every draw rather than cached, because a frozen brush holds
-        /// the one frame it was built from. None of the arcade's line art is a strip, so that is a
-        /// guard against a future note set rather than a cost paid now.
-        /// </para>
-        /// </summary>
-        private ImageBrush LineBrush(
-            GameplayPreviewNoteKind kind, TechnikaNoteSprite line, double height)
-        {
-            ImageSource frame = line.Frame(_frame.CurrentScan * ShineLoopsPerScan);
-            double aspect = line.FrameSize > 0 ? line.FrameWidth / line.FrameSize : 1.0;
-            double tile = Math.Max(1.0, height * aspect);
-
-            if (line.FrameCount > 1)
-            {
-                return TiledBrush(frame, tile, height);
-            }
-
-            ImageBrush cached;
-            if (_lineBrushes.TryGetValue((kind, height), out cached))
-            {
-                return cached;
-            }
-
-            ImageBrush brush = TiledBrush(frame, tile, height);
-            _lineBrushes[(kind, height)] = brush;
-            return brush;
-        }
-
-        private static ImageBrush TiledBrush(ImageSource frame, double tile, double height)
-        {
-            ImageBrush brush = new ImageBrush(frame);
-            brush.TileMode = TileMode.Tile;
-            brush.Stretch = Stretch.Fill;
-            brush.ViewportUnits = BrushMappingMode.Absolute;
-            brush.Viewport = new Rect(0, 0, tile, height);
-            brush.Freeze();
-            return brush;
-        }
-
         /// <summary><see cref="NoFamily"/> for a kind the arcade does not join, otherwise which of
         /// the two families the kind belongs to.</summary>
         private static int LinkFamily(GameplayPreviewNoteKind kind)
@@ -1154,6 +1424,11 @@ namespace DJMaxEditor.Studio.Preview
             }
         }
 
+        /// <summary>
+        /// The heads the arcade turns: a run's first note, which its line is measured from and which
+        /// <see cref="DrawChainLink"/> may turn towards the member it joins. A second one of these
+        /// closes the run before it rather than extending it.
+        /// </summary>
         private static bool IsRunHead(GameplayPreviewNoteKind kind)
         {
             return kind == GameplayPreviewNoteKind.ChainHead ||
@@ -1162,41 +1437,31 @@ namespace DJMaxEditor.Studio.Preview
         }
 
         /// <summary>
-        /// Whether a note belongs to the run another note started. A second head closes the run
-        /// rather than extending it, so two runs back to back in one lane are two lines.
+        /// The body a held note stretches behind its head, closed at the far end by the cap the
+        /// arcade animates there.
+        ///
+        /// <para>
+        /// This was a flat themed rectangle, which is what "the lines are wrong" was about. The
+        /// arcade authors each hold family as a cap plus a one-pixel-wide body sheet of ten frames -
+        /// <c>longholdgauge</c> into <c>line_nor_end</c> for attribute 12, <c>long_note_line</c> into
+        /// <c>long_note_end</c> for a repeat carrying a duration - and the two are one animation:
+        /// column 9 of the body and frame 9 of the cap share a cross-section. The drag curve is the
+        /// exception, authored as a cap alone, so its body is still the cut through it the legacy
+        /// renderer takes.
+        /// </para>
+        ///
+        /// <para>
+        /// While the sweep is inside the note the arcade swaps in the lit "in" variant of both pieces.
+        /// A hold under the line is the one thing on this field that is being played rather than
+        /// waiting, and that is the whole of what the preview can honestly say about it.
+        /// </para>
+        ///
+        /// <para>
+        /// Laid out along +x from the head and mirrored on the lower half, where the sweep runs the
+        /// other way: the cap has a flat side and a round one, so drawing it unmirrored down there
+        /// would point it back into the note.
+        /// </para>
         /// </summary>
-        private static bool ContinuesRun(ProjectedGameplayNote first, ProjectedGameplayNote next)
-        {
-            int family = LinkFamily(first.Kind);
-            return LinkFamily(next.Kind) == family &&
-                !IsRunHead(next.Kind) &&
-                // A repeat series belongs to one lane - the projector tracks it per lane - but a
-                // chain does not: its pass runs one open flag over the whole chart and turns
-                // whatever taps fall inside the span into nodes, in whichever lane they sit.
-                // Requiring one lane of a chain is what left every real chain unjoined, because a
-                // chain that stays in its lane is the exception rather than the rule.
-                (family == ChainFamily || next.Lane == first.Lane) &&
-                next.IsTopHalf == first.IsTopHalf &&
-                next.ScanIndex == first.ScanIndex;
-        }
-
-        /// <summary>
-        /// True while the playhead is inside a long note's own span - the window the arcade swaps its
-        /// head glyph for the held one over. Read from the frame's musical position, like everything
-        /// else these notes animate from.
-        /// </summary>
-        private bool HeldNow(ProjectedGameplayNote note)
-        {
-            if (note.DurationPulse <= 0 ||
-                !GameplayPreviewNoteKinds.HasHoldTrail(note.Kind))
-            {
-                return false;
-            }
-
-            double pulse = _frame.CurrentScan * PulsesPerScan;
-            return pulse >= note.Pulse && pulse <= note.Pulse + note.DurationPulse;
-        }
-
         private void DrawTrail(
             DrawingContext dc,
             ProjectedGameplayNote note,
@@ -1222,10 +1487,53 @@ namespace DJMaxEditor.Studio.Preview
                 return;
             }
 
-            double thickness = size * 0.42;
-            double left = note.IsTopHalf ? center.X : center.X - length;
-            Rect trail = new Rect(left, center.Y - (thickness / 2), length, thickness);
-            dc.DrawRectangle(brushes.Trail, null, trail);
+            // Past its head and not yet resolved: the sweep is somewhere inside this note's duration,
+            // which is exactly when a player would have it held. The projector already keeps a held
+            // note Active until its tail rather than its head, so the two tests together bracket the
+            // body without this having to re-derive where the line is.
+            bool ongoing = note.State == GameplayPreviewNoteState.Active &&
+                note.ApproachScanDistance > 0;
+
+            TechnikaNoteSprite cap = _sprites.TrailCap(note.Kind, ongoing);
+            if (cap == null)
+            {
+                // No art in the loaded set - the packaged glyphs have no cap - so a themed bar spans
+                // the same duration at lower fidelity, which is what this drew for every kind before.
+                double flat = size * 0.42;
+                double from = note.IsTopHalf ? center.X : center.X - length;
+                dc.DrawRectangle(
+                    brushes.Trail, null, new Rect(from, center.Y - (flat / 2), length, flat));
+                return;
+            }
+
+            // Height against the tap the whole set is authored around, exactly as a head is: the
+            // arcade draws attribute 0's body 76 px tall inside a 90 px lane box and attribute 12's
+            // at the full 90, and that difference is visible.
+            double height = size * _sprites.ScaleOf(cap);
+            double aspect = cap.FrameSize > 0 ? cap.FrameWidth / cap.FrameSize : 1.0;
+            double capWidth = Math.Min(length, height * aspect);
+            double body = length - capWidth;
+            double phase = _frame.CurrentScan * ShineLoopsPerScan;
+
+            Matrix placement = new Matrix();
+            placement.Translate(0, -height / 2.0);
+            if (!note.IsTopHalf)
+            {
+                placement.Scale(-1.0, 1.0);
+            }
+            placement.Translate(center.X, center.Y);
+
+            dc.PushTransform(new MatrixTransform(placement));
+            if (body > 0)
+            {
+                // Stretched, not tiled: a body frame is one column of pixels, so every tile of it
+                // would be the same and the pitch has nothing to say.
+                TechnikaNoteSprite sheet = _sprites.TrailBody(note.Kind, ongoing);
+                ImageSource run = sheet == null ? cap.Stem(phase) : sheet.Frame(phase);
+                dc.DrawImage(run, new Rect(0, 0, body, height));
+            }
+            dc.DrawImage(cap.Frame(phase), new Rect(body, 0, capWidth, height));
+            dc.Pop();
         }
 
         private void EnsureLabels()

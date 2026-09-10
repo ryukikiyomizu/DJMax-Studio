@@ -149,14 +149,6 @@ namespace DJMaxEditor.Files.bms
                 return instruments[id];
             };
 
-            if (bgmSequences.Count > 0)
-            {
-                var bgm = AddTrack(player, metadata, "BMS BGM", "01");
-                bgm.AddEvents(bgmSequences
-                    .SelectMany(sequence => EnumerateObjects(new[] { sequence }, measureStarts))
-                    .Select(item => NewNote(item.VirtualTick, instrumentFor(item.ObjectId))));
-            }
-
             var playableChannels = mergedSequences.Values
                 .Select(x => CanonicalPlayableChannel(x.Channel))
                 .Where(x => x != null)
@@ -170,6 +162,13 @@ namespace DJMaxEditor.Files.bms
                 AddNormalLane(track, channel, mergedSequences.Values, measureStarts, instrumentFor, lnObj);
                 AddLongLane(track, channel, mergedSequences.Values, measureStarts, instrumentFor);
             }
+
+            // Accompaniment after the lanes. A busy chart has more BGM voices than it has keys, so
+            // putting them first would bury the gameplay tracks under thirty keysound rows in every
+            // surface that draws tracks in index order - the horizontal timeline, the track list, the
+            // note picker. Column order on the vertical surface is set by the channel map instead, so
+            // this only moves the *track* numbering, and it moves it to agree with the columns.
+            AddBgmTracks(player, metadata, bgmSequences, measureStarts, instrumentFor);
 
             var tempoEvents = ReadTempoEvents(mergedSequences.Values, measureStarts, bpmDefinitions).ToArray();
             if (tempoEvents.Length > 0)
@@ -432,6 +431,56 @@ namespace DJMaxEditor.Files.bms
                 VirtualTick = virtualTick,
                 Tempo = (float)bpm
             };
+        }
+
+        /// <summary>
+        /// Turns the chart's channel-01 lines into one track per simultaneous voice.
+        ///
+        /// <para>
+        /// Channel 01 is additive: a measure that plays four keysounds at once writes four separate
+        /// <c>#mmm01:</c> lines, and every BMS editor shows those as four side-by-side BGM columns.
+        /// Flattening them into a single track - which is what this used to do - loses that shape:
+        /// the timeline could only draw one BGM lane with every voice stacked inside it, so a chart
+        /// with a dozen accompaniment layers looked like a chart with one.
+        /// </para>
+        /// <para>
+        /// The slot a line lands in is its ordinal among that measure's own 01 lines, in file order,
+        /// which is the same rule the editors use. Slots are independent per measure, so voice 3 of
+        /// measure 7 has nothing to do with voice 3 of measure 8 - it is a column of the score, not
+        /// an instrument. Export is unaffected either way: the writer emits one line per channel-01
+        /// object regardless of which track holds it.
+        /// </para>
+        /// </summary>
+        private static void AddBgmTracks(
+            PlayerData player,
+            BmsMetadata metadata,
+            List<Sequence> bgmSequences,
+            int[] measureStarts,
+            Func<int, InstrumentData> instrumentFor)
+        {
+            if (bgmSequences.Count == 0) return;
+
+            var slotsPerMeasure = new Dictionary<int, int>();
+            var bySlot = new List<List<Sequence>>();
+            foreach (Sequence sequence in bgmSequences)
+            {
+                int used;
+                slotsPerMeasure.TryGetValue(sequence.Measure, out used);
+                slotsPerMeasure[sequence.Measure] = used + 1;
+                while (bySlot.Count <= used) bySlot.Add(new List<Sequence>());
+                bySlot[used].Add(sequence);
+            }
+
+            bool numbered = bySlot.Count > 1;
+            for (int slot = 0; slot < bySlot.Count; slot++)
+            {
+                string name = numbered
+                    ? "BMS BGM " + (slot + 1).ToString(CultureInfo.InvariantCulture)
+                    : "BMS BGM";
+                var track = AddTrack(player, metadata, name, "01");
+                track.AddEvents(EnumerateObjects(bySlot[slot], measureStarts)
+                    .Select(item => NewNote(item.VirtualTick, instrumentFor(item.ObjectId))));
+            }
         }
 
         private static TrackData AddTrack(PlayerData player, BmsMetadata metadata, string name, string channel)

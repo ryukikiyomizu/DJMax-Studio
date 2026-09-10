@@ -53,6 +53,32 @@ namespace DJMaxEditor.Studio.Video
 
         private static string _ffmpegProbed;
         private static bool _ffmpegProbeDone;
+        private static string _ffmpegOverride;
+
+        /// <summary>
+        /// An explicit <c>ffmpeg.exe</c> to use instead of probing, or null/empty to probe.
+        ///
+        /// Set from the preferences window, and needed because the probe below covers PATH and the
+        /// two install roots the common Windows builds use - which is everything except the case a
+        /// portable copy of this editor is most likely to be in, where ffmpeg is in some folder only
+        /// the user knows about. Assigning this clears the cached probe result, so a path corrected
+        /// in preferences takes effect on the next preview rather than after a restart.
+        /// </summary>
+        public static string ExplicitFfmpegPath
+        {
+            get { return _ffmpegOverride; }
+            set
+            {
+                string cleaned = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+                if (string.Equals(cleaned, _ffmpegOverride, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+                _ffmpegOverride = cleaned;
+                _ffmpegProbeDone = false;
+                _ffmpegProbed = null;
+            }
+        }
 
         /// <summary>
         /// Whether <paramref name="path"/> has to go through FFmpeg before anything can play it.
@@ -179,7 +205,10 @@ namespace DJMaxEditor.Studio.Video
             if (ffmpeg == null)
             {
                 error = Path.GetExtension(path).TrimStart('.').ToUpperInvariant() +
-                    " video needs FFmpeg, which was not found on PATH";
+                    " video needs FFmpeg, " +
+                    (string.IsNullOrEmpty(_ffmpegOverride)
+                        ? "which was not found on PATH - set its path in Preferences > BGA"
+                        : "and there is no file at the path set in Preferences > BGA");
                 return false;
             }
 
@@ -350,8 +379,9 @@ namespace DJMaxEditor.Studio.Video
         /// <summary>
         /// Locates an ffmpeg executable, probed once per session.
         /// <para>
-        /// PATH first, then the two locations the common Windows builds land in, then beside our own
-        /// executable so a portable copy can be dropped in.
+        /// <see cref="ExplicitFfmpegPath"/> first when it is set, otherwise PATH, then the two
+        /// locations the common Windows builds land in, then beside our own executable so a portable
+        /// copy can be dropped in.
         /// </para>
         /// </summary>
         internal static string FindFfmpeg()
@@ -368,6 +398,22 @@ namespace DJMaxEditor.Studio.Video
 
         private static string ProbeFfmpeg()
         {
+            // The explicit path wins outright, and a wrong one is not quietly papered over by the
+            // probe: if the user named a file, a preview that fails should say so about that file
+            // rather than silently succeed through some other ffmpeg on PATH.
+            string explicitPath = _ffmpegOverride;
+            if (!string.IsNullOrEmpty(explicitPath))
+            {
+                try
+                {
+                    return File.Exists(explicitPath) ? explicitPath : null;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+
             List<string> candidates = new List<string>();
 
             string pathVariable = Environment.GetEnvironmentVariable("PATH");

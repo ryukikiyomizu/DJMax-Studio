@@ -182,8 +182,10 @@ namespace DJMaxEditor.Controls.Vertical
         public bool IsPlaybackActive { get; set; }
 
         /// <summary>
-        /// 0 = detect the layout from note placement; 4/5/6/8 forces a button preset and
-        /// <see cref="VerticalTrackLayout.TechnikaMode"/> forces the TECHNIKA lane layout.
+        /// 0 = detect the layout from the chart; 4/5/6/8 forces a button preset,
+        /// <see cref="VerticalTrackLayout.TechnikaMode"/> forces the TECHNIKA lane layout, and
+        /// <see cref="VerticalTrackLayout.BmsMode"/> forces the BMS channel layout. Anything else
+        /// falls back to detection rather than throwing, so a stale override cannot wedge the view.
         /// </summary>
         public int ModeOverride
         {

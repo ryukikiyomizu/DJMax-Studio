@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 
 namespace DJMaxEditor.Controls.Vertical
 {
@@ -71,16 +72,56 @@ namespace DJMaxEditor.Controls.Vertical
             int width,
             int bold,
             int nativeLeft)
+            : this(index, kind, style, name, null, sourceTrackId, width, bold, nativeLeft)
+        {
+        }
+
+        /// <summary>
+        /// As the other constructor, but with an explicit <paramref name="shortName"/> for a column
+        /// whose header label cannot be derived from its kind. The BMS layout needs it: its
+        /// turntable is a <see cref="VerticalColumnKind.SideLeft"/> column that has to read "SC",
+        /// and its timing column is a <see cref="VerticalColumnKind.BgaSync"/> one that reads "BPM".
+        /// </summary>
+        public VerticalColumn(
+            int index,
+            VerticalColumnKind kind,
+            VerticalColumnStyle style,
+            string name,
+            string shortName,
+            int sourceTrackId,
+            int width,
+            int bold,
+            int nativeLeft)
+            : this(index, kind, style, name, shortName, sourceTrackId, width, bold, nativeLeft, false)
+        {
+        }
+
+        /// <summary>
+        /// As above, and marks the column as a turntable. Only the BMS layout sets it, and only for
+        /// its scratch lanes; see <see cref="IsScratch"/> for what reads it.
+        /// </summary>
+        public VerticalColumn(
+            int index,
+            VerticalColumnKind kind,
+            VerticalColumnStyle style,
+            string name,
+            string shortName,
+            int sourceTrackId,
+            int width,
+            int bold,
+            int nativeLeft,
+            bool isScratch)
         {
             Index = index;
             Kind = kind;
             Style = style;
             Name = name;
-            ShortName = DeriveShortName(kind, name);
+            ShortName = string.IsNullOrEmpty(shortName) ? DeriveShortName(kind, name) : shortName;
             SourceTrackId = sourceTrackId;
             Width = width;
             Bold = bold;
             NativeLeft = nativeLeft;
+            IsScratch = isScratch;
         }
 
         /// <summary>Ordinal position, matching the ptSequencer TrackK index.</summary>
@@ -99,6 +140,22 @@ namespace DJMaxEditor.Controls.Vertical
         public string ShortName { get; private set; }
 
         /// <summary>
+        /// Whether this column is a BMS turntable.
+        ///
+        /// <para>
+        /// A turntable reuses <see cref="VerticalColumnKind.SideLeft"/>/<see cref="VerticalColumnKind.SideRight"/>
+        /// so the playable-lane rules already cover it, which means the kind cannot tell it apart from
+        /// a DJMax SIDE lane. <c>DisplayName</c> reads this to put the "+SC" in "BMS 7K+SC". What makes
+        /// a scratch look like one is the column's own <see cref="Width"/> - the same branch that sets
+        /// this flag draws it wider than a key - rather than anything the frame does to an item: a
+        /// scratch is a flick of the whole hand and reads wrong drawn as the same lane as a keypress,
+        /// but one that really is a long note still has to draw its own length, so the difference lives
+        /// on the axis that is not time.
+        /// </para>
+        /// </summary>
+        public bool IsScratch { get; private set; }
+
+        /// <summary>
         /// Source (song) track id this column draws: SIDE L = 2, buttons = 3-8,
         /// SIDE R = 9, L1 = 10, R1 = 11, BGA SYNC = 1, MR = 22, BG 1-18 = 23-40,
         /// leading unused = 0. On the TECHNIKA layout the lanes are 0-3 and the scan
@@ -109,6 +166,7 @@ namespace DJMaxEditor.Controls.Vertical
         /// <summary>
         /// ptSequencer native column width: 60 for gameplay/side/shoulder columns,
         /// 30 for utility/background/MR/BGA columns, 18 for the leading unused column.
+        /// A BMS turntable is the one column that is none of those: 78, a key plus a spacer.
         /// </summary>
         public int Width { get; private set; }
 
@@ -168,7 +226,8 @@ namespace DJMaxEditor.Controls.Vertical
 
     /// <summary>
     /// Pure, WinForms-free description of the ptSequencer-style vertical editor
-    /// columns for a 4B/5B/6B/8B chart, or of the TECHNIKA lane layout. Both the V1 editor
+    /// columns for a 4B/5B/6B/8B chart, of the TECHNIKA lane layout, or of a classic BMS chart's own
+    /// channels. Both the V1 editor
     /// and the V2 timeline drive their vertical surfaces from this single shared layout so
     /// their column order, widths, and source-track mapping cannot drift apart.
     /// </summary>
@@ -179,6 +238,15 @@ namespace DJMaxEditor.Controls.Vertical
         private const int UtilityWidth = 30;
         private const int LeadingWidth = 18;
         private const int BackgroundCount = 18;
+
+        /// <summary>
+        /// A BMS turntable is drawn one spacer wider than a key. On a cabinet it is a platter under
+        /// the whole hand rather than a key under one finger, and the strip has to say which lane
+        /// that is without being read. Width and not height: a scratch that really is a long note has
+        /// to keep drawing its own duration, so the difference has to live on the axis that is not
+        /// time.
+        /// </summary>
+        private const int BmsScratchWidth = GameplayWidth + LeadingWidth;
 
         // Source (song) track ids, matching the DPC presets exactly.
         private const int TrackUnused = 0;
@@ -202,13 +270,39 @@ namespace DJMaxEditor.Controls.Vertical
         // A column that draws no source track at all (the TECHNIKA spacer).
         private const int TrackNone = -1;
 
+        // Classic BMS channels the layout places by name. Lane digits inside the two playable
+        // families are read by BmsKeyNumber; 6 is the turntable and 7 the (rare) foot pedal.
+        private const string BmsBgmChannel = "01";
+        private const string BmsTempoChannel = "08";
+        private const string BmsTempoRawChannel = "03";
+        private const int BmsScratchLane = 6;
+        private const int BmsPedalLane = 7;
+
+        // Sort keys for BMS playing order: first player's side, second player's side, then the
+        // non-playable columns. Only the relative order matters.
+        private const int BmsFirstSideOrder = 100;
+        private const int BmsSecondSideOrder = 200;
+        private const int BmsSecondScratchOrder = 290;
+        private const int BmsBgmOrder = 900;
+        private const int BmsTempoOrder = 910;
+        private const int BmsUnknownOrder = 950;
+
         private readonly ReadOnlyCollection<VerticalColumn> _columns;
         private readonly Dictionary<int, VerticalColumn> _bySourceTrack;
 
         private VerticalTrackLayout(int mode, IList<VerticalColumn> columns)
+            : this(mode, columns, null)
+        {
+        }
+
+        /// <summary>
+        /// <paramref name="displayName"/> overrides the derived name for a layout whose shape is not
+        /// a button count - the BMS layout reads its key/scratch columns back out to say "BMS 7K+SC".
+        /// </summary>
+        private VerticalTrackLayout(int mode, IList<VerticalColumn> columns, string displayName)
         {
             Mode = mode;
-            DisplayName = IsTechnikaMode(mode) ? "TECHNIKA" : mode + "B";
+            DisplayName = displayName ?? (IsTechnikaMode(mode) ? "TECHNIKA" : mode + "B");
             _columns = new ReadOnlyCollection<VerticalColumn>(columns);
             _bySourceTrack = new Dictionary<int, VerticalColumn>();
             int total = 0;
@@ -242,11 +336,15 @@ namespace DJMaxEditor.Controls.Vertical
 
         /// <summary>
         /// 4, 5, 6, or 8 — the button-count mode this layout describes, or
-        /// <see cref="TechnikaMode"/> for the TECHNIKA lane layout.
+        /// <see cref="TechnikaMode"/> for the TECHNIKA lane layout, or <see cref="BmsMode"/> for a
+        /// BMS one.
         /// </summary>
         public int Mode { get; private set; }
 
-        /// <summary>Layout name for UI and diagnostics: "4B".."8B", or "TECHNIKA".</summary>
+        /// <summary>
+        /// Layout name for UI and diagnostics: "4B".."8B", "TECHNIKA", or the BMS shape the chart's
+        /// channels describe ("BMS 7K+SC", "BMS 9K", "BMS DP 14K").
+        /// </summary>
         public string DisplayName { get; private set; }
 
         public ReadOnlyCollection<VerticalColumn> Columns { get { return _columns; } }
@@ -276,6 +374,18 @@ namespace DJMaxEditor.Controls.Vertical
         public const int TechnikaMode = -1;
 
         /// <summary>
+        /// Sentinel <see cref="Mode"/> for the classic-BMS layout: keys and turntable read off the
+        /// chart's own <c>#mmmCC</c> channels instead of a fixed preset.
+        /// </summary>
+        /// <remarks>
+        /// A second negative sentinel rather than a key count, for the same reason TECHNIKA got one -
+        /// "BMS" is a channel schema, not a button count, and a .bms can be 5K, 7K+SC, 9-button PMS
+        /// or 14K DP without changing format. The layout itself is built per chart by
+        /// <see cref="ForBms"/>, so the sentinel only says "read the channels", never how many.
+        /// </remarks>
+        public const int BmsMode = -2;
+
+        /// <summary>
         /// True for the four ptSequencer button presets. TECHNIKA is deliberately not one of
         /// them: callers that mean "which DPC preset is this" (the Respect theme renderers, the
         /// key-count presets) must keep answering no for it.
@@ -290,14 +400,19 @@ namespace DJMaxEditor.Controls.Vertical
             return mode == TechnikaMode;
         }
 
+        public static bool IsBmsMode(int mode)
+        {
+            return mode == BmsMode;
+        }
+
         /// <summary>
         /// True for every layout <see cref="ForMode(int)"/> can build: the four button presets
-        /// plus TECHNIKA. This is the test for "can the vertical surface show this", which is a
-        /// wider question than "is this a DPC preset".
+        /// plus TECHNIKA and BMS. This is the test for "can the vertical surface show this", which
+        /// is a wider question than "is this a DPC preset".
         /// </summary>
         public static bool IsSupportedLayout(int mode)
         {
-            return IsSupportedMode(mode) || IsTechnikaMode(mode);
+            return IsSupportedMode(mode) || IsTechnikaMode(mode) || IsBmsMode(mode);
         }
 
         /// <summary>The bare ptSequencer preset (or TECHNIKA layout) for <paramref name="mode"/>.</summary>
@@ -326,10 +441,20 @@ namespace DJMaxEditor.Controls.Vertical
                 return TechnikaLayout(extraSourceTracks);
             }
 
+            // BMS columns come from the chart's channels, which a bare mode does not carry. Callers
+            // that only have a mode - PreferredWidthForMode sizing the dock, for one - still need an
+            // answer, so they get the shape of a stock 7K+SC chart as read by BmsChartSerializer
+            // (BGM on track 0, lanes 11-19 on 1-8, tempo last). VerticalTimelineProjection never
+            // takes this path: it always builds from the opened chart's own TrackChannels.
+            if (IsBmsMode(mode))
+            {
+                return ForBms(DefaultBmsTrackChannels(), extraSourceTracks);
+            }
+
             if (!IsSupportedMode(mode))
             {
                 throw new ArgumentOutOfRangeException(
-                    "mode", mode, "Vertical layout supports only 4B/5B/6B/8B and TECHNIKA.");
+                    "mode", mode, "Vertical layout supports only 4B/5B/6B/8B, TECHNIKA and BMS.");
             }
 
             int buttonCount = mode == 8 ? 6 : mode;
@@ -443,6 +568,358 @@ namespace DJMaxEditor.Controls.Vertical
 
             return new VerticalTrackLayout(TechnikaMode, columns);
         }
+
+        /// <summary>
+        /// The layout for a classic BMS chart: an 18px spacer, one gameplay column per playable
+        /// channel in playing order (turntable, keys 1..n, the second player's side if the chart has
+        /// one), then the BGM and timing columns, then anything authored on a track with no channel.
+        /// </summary>
+        /// <remarks>
+        /// Channel-driven rather than preset-driven because BMS has no single preset: 11-15 with
+        /// 18/19 is seven keys, 16 is the turntable, 11-15 with 22-25 is a nine-button PMS chart, and
+        /// 21-29 is a second player's side. Reading the chart's own channels is also the only way to
+        /// place the turntable: <c>BmsChartSerializer</c> orders its lane tracks by base36 channel
+        /// value, which drops scratch (16) between keys 5 and 6, while the game and every BMS editor
+        /// draw it outside key 1.
+        ///
+        /// The reused kinds are deliberate. A turntable is a <see cref="VerticalColumnKind.SideLeft"/>
+        /// column - a 60px non-button gameplay lane on the outside, with its own shading, which the
+        /// note-art and volume-lane rules already count as playable - and the second player's is the
+        /// <see cref="VerticalColumnKind.SideRight"/> mirror. Keysound BGM is
+        /// <see cref="VerticalColumnKind.Background"/>, and timing is
+        /// <see cref="VerticalColumnKind.BgaSync"/>, the utility marker kind, which is the behaviour
+        /// BPM changes want: no note art and no volume lane. Explicit short names keep the header
+        /// strip honest ("SC", "BPM") where the derived ones would read "SL" and "BGA".
+        /// </remarks>
+        public static VerticalTrackLayout ForBms(
+            IEnumerable<KeyValuePair<int, string>> trackChannels,
+            IEnumerable<int> extraSourceTracks)
+        {
+            bool pms;
+            List<BmsColumnPlan> plans = PlanBmsColumns(trackChannels, out pms);
+
+            var columns = new List<VerticalColumn>();
+            int index = 0;
+            int left = 0;
+
+            // Leading spacer, claiming no source track. BMS track ids start at 0 and mean whatever
+            // the channel map says, so a spacer that swallowed track 0 would hide a lane.
+            Add(columns, ref index, ref left, VerticalColumnKind.LeadingUnused,
+                VerticalColumnStyle.Utility, "nothing1", TrackNone, LeadingWidth, 1);
+
+            foreach (BmsColumnPlan plan in plans)
+            {
+                columns.Add(new VerticalColumn(index, plan.Kind, plan.Style, plan.Name,
+                    plan.ShortName, plan.SourceTrackId, plan.Width, plan.Bold, left,
+                    plan.IsScratch));
+                index++;
+                left += plan.Width;
+            }
+
+            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks);
+
+            return new VerticalTrackLayout(BmsMode, columns, BmsDisplayName(plans, pms));
+        }
+
+        /// <summary>
+        /// Turns a track-to-channel map into planned columns in playing order, dropping entries with
+        /// a negative track id, an unreadable channel, or a track already planned.
+        /// </summary>
+        private static List<BmsColumnPlan> PlanBmsColumns(
+            IEnumerable<KeyValuePair<int, string>> trackChannels, out bool pms)
+        {
+            pms = false;
+            var plans = new List<BmsColumnPlan>();
+            if (trackChannels == null)
+            {
+                return plans;
+            }
+
+            var pairs = new List<KeyValuePair<int, string>>();
+            var channels = new List<string>();
+            var seen = new HashSet<int>();
+            foreach (KeyValuePair<int, string> pair in trackChannels)
+            {
+                string channel = NormalizeBmsChannel(pair.Value);
+                if (pair.Key < 0 || channel == null || !seen.Add(pair.Key))
+                {
+                    continue;
+                }
+                pairs.Add(new KeyValuePair<int, string>(pair.Key, channel));
+                channels.Add(channel);
+            }
+
+            pms = IsPmsShaped(channels);
+            foreach (KeyValuePair<int, string> pair in pairs)
+            {
+                plans.Add(PlanBmsColumn(pair.Key, pair.Value, pms));
+            }
+
+            // List.Sort is unstable, so ties carry the chart's own track order explicitly rather
+            // than whatever the sort happens to do with them.
+            for (int i = 0; i < plans.Count; i++)
+            {
+                plans[i].Sequence = i;
+            }
+            plans.Sort(delegate(BmsColumnPlan a, BmsColumnPlan b)
+            {
+                return a.Order != b.Order ? a.Order - b.Order : a.Sequence - b.Sequence;
+            });
+            NumberBmsBgmColumns(plans);
+            return plans;
+        }
+
+        /// <summary>
+        /// Numbers the BGM columns "BGM 1".."BGM n" once there is more than one of them.
+        /// </summary>
+        /// <remarks>
+        /// Applied after planning rather than inside it because the label depends on how many there
+        /// are: a chart with one accompaniment voice reads "BGM", the same as it always did, and only
+        /// a chart with several needs telling apart. The short names follow the "B12" convention the
+        /// DJMax background columns already use, so a header strip too narrow for "BGM 3" still says
+        /// which voice it is.
+        /// </remarks>
+        private static void NumberBmsBgmColumns(List<BmsColumnPlan> plans)
+        {
+            int total = 0;
+            for (int i = 0; i < plans.Count; i++)
+            {
+                if (plans[i].Order == BmsBgmOrder) total++;
+            }
+            if (total < 2) return;
+
+            int slot = 0;
+            for (int i = 0; i < plans.Count; i++)
+            {
+                if (plans[i].Order != BmsBgmOrder) continue;
+                slot++;
+                string ordinal = slot.ToString(CultureInfo.InvariantCulture);
+                plans[i].Name = "BGM " + ordinal;
+                plans[i].ShortName = "B" + ordinal;
+            }
+        }
+
+        /// <summary>Plans one column from its BMS channel.</summary>
+        private static BmsColumnPlan PlanBmsColumn(int sourceTrackId, string channel, bool pms)
+        {
+            var plan = new BmsColumnPlan();
+            plan.SourceTrackId = sourceTrackId;
+            plan.Width = UtilityWidth;
+            plan.Style = VerticalColumnStyle.Utility;
+            plan.Name = "CH " + channel;
+            plan.ShortName = channel;
+
+            if (channel == BmsBgmChannel)
+            {
+                plan.Order = BmsBgmOrder;
+                plan.Kind = VerticalColumnKind.Background;
+                plan.Name = "BGM";
+                plan.ShortName = "BGM";
+                plan.Bold = 1;
+                return plan;
+            }
+
+            if (channel == BmsTempoChannel || channel == BmsTempoRawChannel)
+            {
+                plan.Order = BmsTempoOrder;
+                plan.Kind = VerticalColumnKind.BgaSync;
+                plan.Name = "BPM";
+                plan.ShortName = "BPM";
+                plan.Bold = 1;
+                return plan;
+            }
+
+            bool second = channel[0] == '2';
+            int lane = Base36Value(channel[1]);
+            if ((channel[0] != '1' && !second) || lane < 1)
+            {
+                // Not a playable channel at all. The reader keeps those as PreservedDataLines rather
+                // than tracks, so this only fires for a hand-built map - it still gets a column.
+                plan.Order = BmsUnknownOrder + (Base36Value(channel[0]) * 36) + Math.Max(0, lane);
+                plan.Kind = VerticalColumnKind.Overflow;
+                return plan;
+            }
+
+            plan.Width = GameplayWidth;
+            plan.SecondSide = second && !pms;
+            int side = second ? BmsSecondSideOrder : BmsFirstSideOrder;
+            // In PMS the second channel family is still the same player's right hand, so it must not
+            // be labelled as a second player.
+            string prefix = plan.SecondSide ? "2P " : string.Empty;
+
+            int key = BmsKeyNumber(lane, pms, second);
+            if (key > 0)
+            {
+                plan.Order = side + 10 + key;
+                plan.Kind = VerticalColumnKind.Button;
+                plan.Style = (key % 2) == 1
+                    ? VerticalColumnStyle.RegularPrimary
+                    : VerticalColumnStyle.RegularAlternate;
+                plan.Name = prefix + "KEY " + key.ToString(CultureInfo.InvariantCulture);
+                plan.ShortName = key.ToString(CultureInfo.InvariantCulture);
+                plan.Bold = key == 1 ? 1 : 0;
+                plan.IsKey = true;
+                return plan;
+            }
+
+            if (!pms && lane == BmsScratchLane)
+            {
+                // Outside key 1 on the first player's side and outside key 7 on the second's, which
+                // is where the two turntables sit on a DP cabinet.
+                plan.Order = second ? BmsSecondScratchOrder : BmsFirstSideOrder;
+                plan.Kind = second ? VerticalColumnKind.SideRight : VerticalColumnKind.SideLeft;
+                plan.Style = VerticalColumnStyle.SideOrMr;
+                plan.Name = prefix + "SCRATCH";
+                plan.ShortName = "SC";
+                plan.Bold = 1;
+                plan.Width = BmsScratchWidth;
+                plan.IsScratch = true;
+                return plan;
+            }
+
+            if (!pms && lane == BmsPedalLane)
+            {
+                plan.Order = side + 50;
+                plan.Kind = second ? VerticalColumnKind.ShoulderRight : VerticalColumnKind.ShoulderLeft;
+                plan.Style = VerticalColumnStyle.Shoulder;
+                plan.Name = prefix + "PEDAL";
+                plan.ShortName = "FP";
+                plan.Bold = 1;
+                return plan;
+            }
+
+            // A playable channel outside the schemas above - the 1A/2B extension lanes. It is a lane,
+            // so it gets a lane, labelled by the channel that authored it.
+            plan.Order = side + 60 + lane;
+            plan.Kind = VerticalColumnKind.Button;
+            plan.Style = VerticalColumnStyle.RegularAlternate;
+            return plan;
+        }
+
+        /// <summary>
+        /// The key number a lane digit carries, or 0 when the lane is not a key (turntable, pedal,
+        /// or an extension channel).
+        /// </summary>
+        private static int BmsKeyNumber(int lane, bool pms, bool secondFamily)
+        {
+            if (pms)
+            {
+                // Nine-button PMS: keys 1-5 on 11-15, keys 6-9 on 22-25.
+                if (!secondFamily)
+                {
+                    return lane >= 1 && lane <= 5 ? lane : 0;
+                }
+                return lane >= 2 && lane <= 5 ? lane + 4 : 0;
+            }
+
+            if (lane >= 1 && lane <= 5) return lane;
+            if (lane == 8) return 6;
+            if (lane == 9) return 7;
+            return 0;
+        }
+
+        /// <summary>
+        /// Whether a channel set is a nine-button PMS chart rather than a chart with a second player's
+        /// side: the second channel family carries only lanes 2-5, and the first has neither a
+        /// turntable nor the 18/19 keys a seven-key chart would use.
+        /// </summary>
+        private static bool IsPmsShaped(IList<string> channels)
+        {
+            bool secondFamilyKey = false;
+            foreach (string channel in channels)
+            {
+                if (channel[0] == '2')
+                {
+                    int lane = Base36Value(channel[1]);
+                    if (lane < 2 || lane > 5) return false;
+                    secondFamilyKey = true;
+                }
+                else if (channel == "16" || channel == "17" || channel == "18" || channel == "19")
+                {
+                    return false;
+                }
+            }
+            return secondFamilyKey;
+        }
+
+        /// <summary>Layout name from what the plan actually contains: "BMS 7K+SC", "BMS 9K", "BMS DP 14K".</summary>
+        private static string BmsDisplayName(IList<BmsColumnPlan> plans, bool pms)
+        {
+            int keys = 0;
+            bool scratch = false;
+            bool secondSide = false;
+            foreach (BmsColumnPlan plan in plans)
+            {
+                if (plan.IsKey) keys++;
+                if (plan.IsScratch) scratch = true;
+                if (plan.SecondSide) secondSide = true;
+            }
+
+            if (keys == 0) return "BMS";
+            string count = keys.ToString(CultureInfo.InvariantCulture) + "K";
+            if (pms) return "BMS " + count;
+            if (secondSide) return "BMS DP " + count;
+            return "BMS " + count + (scratch ? "+SC" : string.Empty);
+        }
+
+        /// <summary>
+        /// Two characters, upper case, with the long-note families folded onto the lanes they extend.
+        /// Returns null for anything that is not a channel id.
+        /// </summary>
+        private static string NormalizeBmsChannel(string channel)
+        {
+            if (channel == null) return null;
+            string text = channel.Trim().ToUpperInvariant();
+            if (text.Length != 2) return null;
+
+            // BmsChartSerializer already folds 5x/6x into 1x/2x when it names a track, because both
+            // families address the same lane; folding again keeps a hand-built map honest.
+            if (text[0] == '5') return "1" + text[1];
+            if (text[0] == '6') return "2" + text[1];
+            return text;
+        }
+
+        private static int Base36Value(char value)
+        {
+            if (value >= '0' && value <= '9') return value - '0';
+            char upper = char.ToUpperInvariant(value);
+            return upper >= 'A' && upper <= 'Z' ? 10 + (upper - 'A') : -1;
+        }
+
+        /// <summary>
+        /// The map <c>BmsChartSerializer</c> produces for a stock 7K+SC chart, used only when a caller
+        /// asks for the BMS layout by mode and so has no chart to read channels from.
+        /// </summary>
+        private static List<KeyValuePair<int, string>> DefaultBmsTrackChannels()
+        {
+            string[] lanes = { "11", "12", "13", "14", "15", "16", "18", "19" };
+            var map = new List<KeyValuePair<int, string>>();
+            map.Add(new KeyValuePair<int, string>(0, BmsBgmChannel));
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                map.Add(new KeyValuePair<int, string>(i + 1, lanes[i]));
+            }
+            map.Add(new KeyValuePair<int, string>(lanes.Length + 1, BmsTempoChannel));
+            return map;
+        }
+
+        /// <summary>One planned BMS column: what to draw, and where it sorts in playing order.</summary>
+        private sealed class BmsColumnPlan
+        {
+            public int SourceTrackId;
+            public int Order;
+            public int Sequence;
+            public VerticalColumnKind Kind;
+            public VerticalColumnStyle Style;
+            public string Name;
+            public string ShortName;
+            public int Width;
+            public int Bold;
+            public bool IsKey;
+            public bool IsScratch;
+            public bool SecondSide;
+        }
+
 
         /// <summary>
         /// Appends one utility-width column per unmapped source track, ascending, ignoring

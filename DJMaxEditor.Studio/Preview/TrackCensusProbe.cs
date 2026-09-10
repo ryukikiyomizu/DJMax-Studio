@@ -69,6 +69,9 @@ namespace DJMaxEditor.Studio.Preview
             var perTrackDuo = new int[TrackSlots];
             var perTrackCharts = new int[TrackSlots];
             var perTrackAttributes = new SortedDictionary<int, int>[TrackSlots];
+            var videoStarts = new List<int>();
+            var videoStartTracks = new SortedDictionary<int, int>();
+            int withoutVideoStart = 0;
             int opened = 0;
             int duoCharts = 0;
 
@@ -103,6 +106,15 @@ namespace DJMaxEditor.Studio.Preview
                 Census one = Measure(model, attributes, drawableAbove,
                     duo ? perTrackDuo : perTrack, perTrackCharts, perTrackAttributes);
                 totals.Add(one);
+                if (one.VideoStartVirtualTick >= 0)
+                {
+                    videoStarts.Add(one.VideoStartVirtualTick);
+                    Bump(videoStartTracks, one.VideoStartTrack);
+                }
+                else
+                {
+                    withoutVideoStart++;
+                }
                 report.AppendFormat(CultureInfo.InvariantCulture,
                     "  {0,6} {1,5} {2,6}/{3,-6} {4,3}  {5}",
                     one.LaneNotes, one.EndOfScanNotes, one.AboveNotes, one.AboveDrawable,
@@ -112,6 +124,7 @@ namespace DJMaxEditor.Studio.Preview
             Summarise(report, totals, attributes, drawableAbove, opened, charts.Count);
             PerTrack(report, perTrack, perTrackDuo, perTrackCharts, opened - duoCharts, duoCharts);
             PerTrackAttributes(report, perTrackAttributes);
+            VideoStarts(report, videoStarts, videoStartTracks, withoutVideoStart);
             File.WriteAllText(outputPath, report.ToString());
             Console.Out.Write(Tail(report.ToString()));
             return opened > 0 ? 0 : 3;
@@ -130,6 +143,15 @@ namespace DJMaxEditor.Studio.Preview
             public int ChartsWithAbove;
             public int ChartsWithDrawableAbove;
             public int HighestTrack = -1;
+
+            /// <summary>
+            /// Earliest <see cref="EventAttribute.VideoStart"/> marker in the chart, and the track
+            /// it sits on; -1 for neither when the chart carries none. This is the tick the BGA is
+            /// supposed to begin at, so a corpus-wide look at it is what says whether pinning the
+            /// video to tick 0 is wrong in practice or only in principle.
+            /// </summary>
+            public int VideoStartVirtualTick = -1;
+            public int VideoStartTrack = -1;
 
             public void Add(Census other)
             {
@@ -193,6 +215,14 @@ namespace DJMaxEditor.Studio.Preview
                             perTrackAttributes[idx] = new SortedDictionary<int, int>();
                         }
                         Bump(perTrackAttributes[idx], note.Attribute);
+                    }
+
+                    if (note.Attribute == (byte)EventAttribute.VideoStart &&
+                        (census.VideoStartVirtualTick < 0 ||
+                            note.VirtualTick < census.VideoStartVirtualTick))
+                    {
+                        census.VideoStartVirtualTick = note.VirtualTick;
+                        census.VideoStartTrack = idx;
                     }
 
                     if (idx <= 3)
@@ -302,21 +332,24 @@ namespace DJMaxEditor.Studio.Preview
         }
 
         /// <summary>
-        /// Attributes per track index above the lane band.
+        /// Attributes per track index, every populated track.
         ///
         /// <para>
         /// The per-index counts say which tracks are populated; this says what is on them, which is
         /// what tells a spare authoring slot from a band with a job. Tracks 16 and 17 are the reason
         /// it exists: they carry only a couple of events each yet appear in every chart in the
         /// corpus, so their attributes are the only way to see whether that is structure or noise.
+        /// The lane band is listed too, so a claim about which tracks an attribute lives on can be
+        /// checked rather than assumed - <see cref="EventAttribute.VideoStart"/> being the case in
+        /// point, since where the BGA's start marker is authored decides how it is found.
         /// </para>
         /// </summary>
         private static void PerTrackAttributes(
             StringBuilder report, SortedDictionary<int, int>[] perTrackAttributes)
         {
             report.AppendLine();
-            report.AppendLine("== ATTRIBUTES PER TRACK INDEX, TRACKS 8+ ==  (attribute:count)");
-            for (int i = 8; i < TrackSlots; i++)
+            report.AppendLine("== ATTRIBUTES PER TRACK INDEX ==  (attribute:count)");
+            for (int i = 0; i < TrackSlots; i++)
             {
                 SortedDictionary<int, int> found = perTrackAttributes[i];
                 if (found == null || found.Count == 0)
@@ -332,6 +365,51 @@ namespace DJMaxEditor.Studio.Preview
                 }
                 report.AppendLine();
             }
+        }
+
+        /// <summary>
+        /// Where each chart's BGA start marker sits, in virtual ticks.
+        ///
+        /// <para>
+        /// One number decides whether the shell's BGA clock is wrong: if every marker were at tick 0
+        /// then pinning the video to the top of the timeline would be right by accident. The spread
+        /// and the count at 0 are printed rather than a mean, because what matters is whether any
+        /// chart puts it elsewhere, not by how much on average.
+        /// </para>
+        /// </summary>
+        private static void VideoStarts(
+            StringBuilder report, List<int> starts,
+            SortedDictionary<int, int> tracks, int without)
+        {
+            report.AppendLine();
+            report.AppendLine("== BGA START MARKERS (attribute " +
+                (int)EventAttribute.VideoStart + ") ==");
+            report.AppendFormat(CultureInfo.InvariantCulture,
+                "charts with a marker {0}, without {1}", starts.Count, without).AppendLine();
+            if (starts.Count == 0)
+            {
+                return;
+            }
+
+            starts.Sort();
+            int atZero = 0;
+            for (int i = 0; i < starts.Count; i++)
+            {
+                if (starts[i] == 0)
+                {
+                    atZero++;
+                }
+            }
+
+            report.AppendFormat(CultureInfo.InvariantCulture,
+                "virtual tick: min {0}, median {1}, max {2}; at tick 0: {3}",
+                starts[0], starts[starts.Count / 2], starts[starts.Count - 1], atZero).AppendLine();
+            report.Append("authored on track: ");
+            foreach (KeyValuePair<int, int> pair in tracks)
+            {
+                report.AppendFormat(CultureInfo.InvariantCulture, "{0}:{1}  ", pair.Key, pair.Value);
+            }
+            report.AppendLine();
         }
 
         private static void Bump<T>(IDictionary<T, int> counts, T key)

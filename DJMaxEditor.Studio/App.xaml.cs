@@ -53,6 +53,16 @@ namespace DJMaxEditor.Studio
                 return;
             }
 
+            // The editing surface gets the same treatment as the playfield, because the timeline
+            // now composes the same arcade sheets and "the note art is wrong" needs a picture.
+            if (e.Args != null && e.Args.Length > 0 &&
+                string.Equals(e.Args[0], Timeline.TimelineProbe.Switch, StringComparison.Ordinal))
+            {
+                int code = Timeline.TimelineProbe.Run(e.Args);
+                Shutdown(code);
+                return;
+            }
+
             // The same idea for the audio path: render the keysound mix to a WAV and measure it,
             // because a scheduler that sounds wrong sounds wrong in the samples and nowhere else.
             if (e.Args != null && e.Args.Length > 0 &&
