@@ -51,6 +51,28 @@ jobs:
         if: success()
         run: dotnet build DJMaxEditor.sln -c Release --nologo -flp:"logfile=build-release.log;verbosity=normal"
 
+      - name: Publish Studio (win-x64, framework-dependent)
+        if: success()
+        run: >
+          dotnet publish DJMaxEditor.Studio/DJMaxEditor.Studio.csproj
+          -c Release -r win-x64 --self-contained false
+          -o publish/studio
+
+      - name: Package build artifact
+        if: success()
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/studio/* -DestinationPath DJMaxStudio-PR.zip -Force
+          Write-Host "Packaged $((Get-Item DJMaxStudio-PR.zip).Length) bytes"
+
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DJMaxStudio-win-x64
+          path: DJMaxStudio-PR.zip
+          retention-days: 30
+
       - name: Emit build errors as annotations
         if: failure()
         shell: pwsh
