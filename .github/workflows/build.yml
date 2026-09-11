@@ -271,7 +271,9 @@ jobs:
               ],
               ""packedDragNotes"": [
                 { ""packedNote"": ""Drag|2160|3|d.ogg"",
-                  ""packedNodes"": [ ""0|0|0|0|120|0.25"", ""480|0|-120|-0.25|0|0"" ] }
+                  ""packedNodes"": [ ""0|0|0|0|120|0.25"", ""480|0|-120|-0.25|0|0"" ] },
+                { ""packedNote"": ""E|Drag|2640|3|100|0|1|d2.ogg"",
+                  ""packedNodes"": [ ""0|0|0|0|0|0"", ""120|-0.5|0|0|0|0"", ""360|0|0|0|0|0"" ] }
               ]
             }]
           }";
@@ -363,8 +365,18 @@ jobs:
                 rt1[4].Attribute == 11 && rt1[4].Duration == 60,
                 "repeat hold timings survive the round trip");
           var rt3 = roundTech.Tracks.GetTrackAtIndex(3).Events.ToList();
-          Check(rt3.Count == 1 && rt3[0].Tick == 432 && rt3[0].Duration == 96,
-                "drag timing survives the round trip");
+          Check(rt3.Count == 2 && rt3[0].Tick == 432 && rt3[0].Duration == 96,
+                "bezier drag timing survives the round trip");
+          // Extended B-spline drag: field 6 of E|Drag is the curve type, never an
+          // end-of-scan flag; the 3-node B-spline length is (p[n-2] + 5*p[n-1]) / 6
+          // = (120 + 5*360) / 6 = 320 pulses.
+          Check(rt3[1].Tick == 528 && rt3[1].Duration == 64,
+                "B-spline drag head and interpolated duration survive");
+          int markerTotal = 0;
+          for (int mk = 4; mk <= 7; mk++)
+              markerTotal += roundTech.Tracks.GetTrackAtIndex((uint)mk).Events.Count();
+          Check(markerTotal == 1,
+                "a B-spline drag's curve type never becomes an end-of-scan marker");
           var rtEos = roundTech.Tracks.GetTrackAtIndex(4).Events.ToList();
           Check(rtEos.Count == 1 && rtEos[0].Attribute == 100 && rtEos[0].Tick == 384,
                 "end-of-scan marker survives the round trip");

@@ -325,7 +325,7 @@ namespace DJMaxEditor.Files.Tech
                         continue;
                     }
                     PackedNote note;
-                    if (!TryUnpack(entry.GetString(), false, out note))
+                    if (!TryUnpack(entry.GetString(), false, false, out note))
                     {
                         skipped++;
                         continue;
@@ -355,7 +355,7 @@ namespace DJMaxEditor.Files.Tech
                         continue;
                     }
                     PackedNote note;
-                    if (!TryUnpack(entry.GetString(), true, out note))
+                    if (!TryUnpack(entry.GetString(), true, false, out note))
                     {
                         skipped++;
                         continue;
@@ -386,7 +386,7 @@ namespace DJMaxEditor.Files.Tech
                     }
                     string packedHead = StringProperty(entry, "packedNote");
                     PackedNote note;
-                    if (packedHead == null || !TryUnpack(packedHead, false, out note))
+                    if (packedHead == null || !TryUnpack(packedHead, false, true, out note))
                     {
                         skipped++;
                         continue;
@@ -620,7 +620,7 @@ namespace DJMaxEditor.Files.Tech
         /// <c>HoldNote.Unpack</c>. The keysound portion may itself contain '|', which is why the
         /// split count is limited.
         /// </summary>
-        private static bool TryUnpack(string packed, bool hold, out PackedNote note)
+        private static bool TryUnpack(string packed, bool hold, bool drag, out PackedNote note)
         {
             note = null;
             if (string.IsNullOrEmpty(packed))
@@ -668,7 +668,9 @@ namespace DJMaxEditor.Files.Tech
                 {
                     return false;
                 }
-                endOfScan = parts[6 + offset] == "1";
+                // A drag's 7th extended field is the curve type (0 Bezier, 1 B-spline), not
+                // an end-of-scan flag - TECHMANIA forces endOfScan false on every drag.
+                endOfScan = !drag && parts[6 + offset] == "1";
                 keysound = parts[7 + offset];
             }
             else
