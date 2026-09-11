@@ -804,6 +804,17 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
+        /// The point a connector must start and finish on for one placed note: the lane centre
+        /// across lanes, and the onset edge along time - the exact point DrawNoteArt centres the
+        /// head glyph on, so the bar meets the middle of the note rather than its cell's middle.
+        /// </summary>
+        private static Point NoteAnchor(VerticalPlacedItem placed, double dir)
+        {
+            double onset = dir < 0 ? placed.Bottom : placed.Top;
+            return new Point(placed.Left + (placed.Width / 2.0), onset);
+        }
+
+        /// <summary>
         /// The arcade's family connectors, painted under the heads: a yellow line from a chain
         /// head through its joints to its closing node, and a purple line along a repeat series
         /// from its head to its close. The heads alone do not carry this information - absorbed
@@ -861,6 +872,12 @@ namespace DJMaxEditor.Studio.Timeline
             using (StreamGeometryContext chain = chainGeometry.Open())
             using (StreamGeometryContext repeat = repeatGeometry.Open())
             {
+                // Onset edge for the time coordinate, exactly where DrawNoteArt centres the
+                // head glyph - the cell centre sits half a head-thickness away from it, which
+                // was the connector visibly missing every note (most obvious on long heads).
+                double linkDir = frame.Coordinates.TimeDirection ==
+                    VerticalTimeDirection.Upward ? -1.0 : 1.0;
+
                 foreach (TechnikaSeriesRun run in _series.Runs)
                 {
                     StreamGeometryContext target = run.IsChain ? chain : repeat;
@@ -873,9 +890,7 @@ namespace DJMaxEditor.Studio.Timeline
                         {
                             continue;
                         }
-                        Point centre = new Point(
-                            placed.Left + (placed.Width / 2.0),
-                            placed.Top + (placed.Height / 2.0));
+                        Point centre = NoteAnchor(placed, linkDir);
                         if (run.IsChain)
                         {
                             // A chain crosses lanes, so every visible member is a vertex and
@@ -1517,6 +1532,27 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             Point point = Surface(e);
+            bool additive = (Keyboard.Modifiers &
+                (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+            if (SurfacePress(point, additive))
+            {
+                CaptureMouse();
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// The body of a left press, in surface coordinates. Shared with the headless probe so
+        /// it can drive the exact gesture the mouse drives. Answers true when the press began
+        /// an owned drag (the caller captures the pointer); false for presses outside the body
+        /// (the tick ruler seeks instead).
+        /// </summary>
+        internal bool SurfacePress(Point point, bool additive)
+        {
+            if (_frame == null)
+            {
+                return false;
+            }
 
             // The tick ruler is a seek strip. Round-3 item 3 asked for exactly this: click the
             // ruler to jump the playhead.
@@ -1526,22 +1562,19 @@ namespace DJMaxEditor.Studio.Timeline
                 {
                     InvalidateOverlay();
                 }
-                e.Handled = true;
-                return;
+                return true;
             }
 
             if (point.Y < _frame.Coordinates.RulerHeight)
             {
-                return;
+                return false;
             }
 
             _dragOrigin = point;
             _dragging = true;
-            CaptureMouse();
 
-            bool additive = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
             HandleToolPress(point, additive);
-            e.Handled = true;
+            return true;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -1570,7 +1603,21 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             _hoverPoint = point;
+            SurfaceDrag(point);
 
+            if (Tool == ToolMode.Addition)
+            {
+                DrawOverlay();
+            }
+        }
+
+        /// <summary>
+        /// The Select-tool part of a drag in progress, in surface coordinates: the note-move
+        /// gesture when a note was armed, the selection marquee otherwise. Shared with the
+        /// headless probe.
+        /// </summary>
+        internal void SurfaceDrag(Point point)
+        {
             if (_dragging && Tool == ToolMode.Select)
             {
                 if (_moveArmed)
@@ -1580,23 +1627,18 @@ namespace DJMaxEditor.Studio.Timeline
                 }
                 _marquee = new Rect(_dragOrigin, point);
                 DrawOverlay();
-                return;
-            }
-
-            if (Tool == ToolMode.Addition)
-            {
-                DrawOverlay();
             }
         }
 
-        protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
-        {
-            base.OnMouseLeftButtonUp(e);
-            if (IsMouseCaptured)
-            {
-                ReleaseMouseCapture();
-            }
+        /// <summary>Whether a press armed the note-move gesture. Test hook for the probe.</summary>
+        internal bool IsNoteMoveArmed { get { return _moveArmed; } }
 
+        /// <summary>Whether the armed move crossed the threshold and began applying. Probe hook.</summary>
+        internal bool IsNoteMoveActive { get { return _moveActive; } }
+
+        /// <summary>The release of an owned left-press drag, in surface space-free form.</summary>
+        internal void SurfaceRelease()
+        {
             // A move gesture owns this press: no marquee selection is committed.
             bool moved = _moveActive;
             CancelMove();
@@ -1609,6 +1651,17 @@ namespace DJMaxEditor.Studio.Timeline
 
             _dragging = false;
             DrawOverlay();
+        }
+
+        protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonUp(e);
+            if (IsMouseCaptured)
+            {
+                ReleaseMouseCapture();
+            }
+
+            SurfaceRelease();
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)

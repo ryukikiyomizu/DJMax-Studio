@@ -298,12 +298,14 @@ namespace DJMaxEditor.Controls.Vertical
                 : Layout.ColumnAtNativeX(nativeX);
             int tick = Coordinates.YToTick(y, OriginTick);
 
+            bool onsetAtBottom =
+                Coordinates.TimeDirection == VerticalTimeDirection.Upward;
             VerticalPlacedItem hit = null;
             if (y >= Coordinates.RulerHeight)
             {
                 for (int i = _items.Count - 1; i >= 0; i--)
                 {
-                    if (_items[i].Contains(x, y))
+                    if (HitContainsNote(_items[i], x, y, onsetAtBottom))
                     {
                         hit = _items[i];
                         break;
@@ -312,6 +314,39 @@ namespace DJMaxEditor.Controls.Vertical
             }
 
             return new VerticalHitResult(column, tick, hit);
+        }
+
+        /// <summary>
+        /// Whether a pointer lands on a note for interaction purposes. The placement rect is
+        /// the note's *timing* band - at normal zoom only a sliver along the time axis - while
+        /// the drawn head glyph is roughly as tall as the lane is wide (a square arcade sheet
+        /// scaled to the lane) and half of it overhangs the onset edge. Testing the sliver alone
+        /// made the visible middle of every head unclickable, so a note could not be pressed or
+        /// dragged even though it was clearly under the pointer. The hit band grows along time
+        /// by half a lane width past the onset edge, which is the glyph's own extent; the lane
+        /// axis and marquee geometry keep using the exact placement rect.
+        /// </summary>
+        private static bool HitContainsNote(
+            VerticalPlacedItem placed, double x, double y, bool onsetAtBottom)
+        {
+            if (x < placed.Left || x >= placed.Right)
+            {
+                return false;
+            }
+
+            if (y >= placed.Top && y < placed.Bottom)
+            {
+                return true;
+            }
+
+            // Only the onset side overhangs: downward time puts the onset at the cell top,
+            // upward time at the bottom.
+            double overhang = placed.Width * 0.5;
+            if (onsetAtBottom)
+            {
+                return y >= placed.Bottom && y < placed.Bottom + overhang;
+            }
+            return y >= placed.Top - overhang && y < placed.Top;
         }
     }
 }
