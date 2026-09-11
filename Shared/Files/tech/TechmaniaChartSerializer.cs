@@ -71,6 +71,18 @@ namespace DJMaxEditor.Files.Tech
         /// is not valid JSON, or contains no importable pattern/notes.</exception>
         public static PlayerData Parse(byte[] data)
         {
+            return Parse(data, 0);
+        }
+
+        /// <summary>
+        /// Parses a track.tech document, opening the pattern (difficulty) at
+        /// <paramref name="patternIndex"/> in the container's patterns array. Every other
+        /// pattern is retained verbatim for save-back regardless of which slot opens; an
+        /// out-of-range index is clamped to the first or last available pattern. This is
+        /// the seam a future difficulty chooser calls - today the opener always passes 0.
+        /// </summary>
+        public static PlayerData Parse(byte[] data, int patternIndex)
+        {
             if (data == null || data.Length == 0)
             {
                 throw new ChartLoadException(ChartLoadError.MalformedHeader,
@@ -91,11 +103,69 @@ namespace DJMaxEditor.Files.Tech
 
             using (document)
             {
-                return ParseDocument(document.RootElement);
+                return ParseDocument(document.RootElement, patternIndex);
             }
         }
 
-        private static PlayerData ParseDocument(JsonElement root)
+        /// <summary>
+        /// Lists the difficulty patterns in a track.tech container without importing one,
+        /// for a pattern chooser. Order matches the container's patterns array; each entry's
+        /// index can be passed to <see cref="Parse(byte[], int)"/>.
+        /// </summary>
+        public static IList<TechPatternInfo> ListPatterns(byte[] data)
+        {
+            if (data == null || data.Length == 0)
+            {
+                throw new ChartLoadException(ChartLoadError.MalformedHeader,
+                    "The TECHMANIA track file is empty.");
+            }
+
+            JsonDocument document;
+            try
+            {
+                int start = data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF ? 3 : 0;
+                document = JsonDocument.Parse(data.AsMemory(start, data.Length - start));
+            }
+            catch (JsonException ex)
+            {
+                throw new ChartLoadException(ChartLoadError.MalformedHeader,
+                    "The TECHMANIA track file is not valid JSON: " + ex.Message);
+            }
+
+            using (document)
+            {
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    throw new ChartLoadException(ChartLoadError.MalformedHeader,
+                        "A TECHMANIA track file must contain a JSON object at its root.");
+                }
+                JsonElement patterns;
+                if (!root.TryGetProperty("patterns", out patterns) ||
+                    patterns.ValueKind != JsonValueKind.Array)
+                {
+                    throw new ChartLoadException(ChartLoadError.MalformedHeader,
+                        "The TECHMANIA track contains no patterns.");
+                }
+
+                var result = new List<TechPatternInfo>();
+                int index = 0;
+                foreach (JsonElement pattern in patterns.EnumerateArray())
+                {
+                    JsonElement meta = ElementProperty(pattern, "patternMetadata");
+                    int lanes = Math.Max(2, IntProperty(meta, "playableLanes", LaneCount));
+                    result.Add(new TechPatternInfo(
+                        index,
+                        StringProperty(meta, "patternName") ?? ("Pattern " + (index + 1)),
+                        IntProperty(meta, "level", 0),
+                        lanes));
+                    index++;
+                }
+                return result;
+            }
+        }
+
+        private static PlayerData ParseDocument(JsonElement root, int requestedPattern = 0)
         {
             if (root.ValueKind != JsonValueKind.Object)
             {
@@ -137,19 +207,27 @@ namespace DJMaxEditor.Files.Tech
                 AutoOrderPatterns = TrackBool(root, "autoOrderPatterns")
             };
 
-            // One model is one chart; the first pattern opens deterministically. A container
-            // normally holds one pattern per difficulty, and the others are not edited - they
-            // are retained verbatim so the save-back splices all difficulties back together.
+            // One model is one chart. A container normally holds one pattern per
+            // difficulty; the requested slot opens (today the opener always asks for the
+            // first) and every other slot is retained verbatim, tagged with its original
+            // index, so save-back splices all difficulties back in their original order.
             // The opened pattern keeps its raw JSON too: the exporter patches it in place,
             // carrying fields this code does not model (legacy overrides, fingerprint block,
             // null styles) instead of rebuilding the object from a fixed DTO.
-            metadata.ActivePatternIndex = 0;
-            metadata.ActivePatternJson = patterns[0].GetRawText();
-            PlayerData model = ParsePattern(patterns[0], metadata);
-            for (int i = 1; i < patterns.GetArrayLength(); i++)
+            int patternCount = patterns.GetArrayLength();
+            int activeIndex = requestedPattern <= 0
+                ? 0
+                : Math.Min(requestedPattern, patternCount - 1);
+            metadata.ActivePatternIndex = activeIndex;
+            metadata.ActivePatternJson = patterns[activeIndex].GetRawText();
+            PlayerData model = ParsePattern(patterns[activeIndex], metadata);
+            for (int i = 0; i < patternCount; i++)
             {
-                metadata.SiblingPatterns.Add(
-                    new TechSiblingPattern(i, patterns[i].GetRawText()));
+                if (i != activeIndex)
+                {
+                    metadata.SiblingPatterns.Add(
+                        new TechSiblingPattern(i, patterns[i].GetRawText()));
+                }
             }
 
             return model;

@@ -420,6 +420,25 @@ jobs:
                 && multiRound.TechMetadata.SiblingPatterns[0].Json.Contains("mx.ogg"),
                 "sibling difficulty survives a second round trip");
 
+          // Asking for pattern slot 1 opens MX instead, and slot 0 becomes the sibling.
+          PlayerData multiMx = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiTech), 1);
+          var mmm = multiMx.TechMetadata;
+          Check(mmm.ActivePatternIndex == 1 && mmm.PatternName == "MX"
+                && mmm.SiblingPatterns.Count == 1 && mmm.SiblingPatterns[0].Index == 0,
+                "requesting pattern index 1 opens the MX difficulty");
+          string mxOut = TechmaniaChartSerializer.Serialize(multiMx);
+          Check(mxOut.Contains("\"patternName\": \"MX\"")
+                && mxOut.Contains("\"patternName\": \"NM\"")
+                && mxOut.Contains("Basic|0|1|mx.ogg"),
+                "editing a chosen difficulty slot keeps both difficulties in order");
+
+          var listing = TechmaniaChartSerializer.ListPatterns(
+              Encoding.UTF8.GetBytes(multiTech));
+          Check(listing.Count == 2 && listing[0].Name == "NM"
+                && listing[1].Name == "MX" && listing[1].Index == 1,
+                "pattern enumerator lists every difficulty with its slot");
+
           // Real shipped charts: a 3-lane single-pattern file and a two-difficulty
           // container, both with null metadata, fingerprints and legacy overrides.
           byte[] realBytes = File.ReadAllBytes(Path.Combine("smoke", "umapyoi.tech"));

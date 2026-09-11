@@ -87,6 +87,32 @@ namespace DJMaxEditor.Files.Tech
             = new List<TechSiblingPattern>();
     }
 
+    /// <summary>
+    /// Summary of one pattern (difficulty) slot in a track.tech container, enough to populate
+    /// a chooser without importing the chart.
+    /// </summary>
+    public sealed class TechPatternInfo
+    {
+        public TechPatternInfo()
+        {
+        }
+
+        public TechPatternInfo(int index, string name, int level, int playableLanes)
+        {
+            Index = index;
+            Name = name;
+            Level = level;
+            PlayableLanes = playableLanes;
+        }
+
+        /// <summary>Slot in the container's patterns array, the value Parse takes.</summary>
+        public int Index { get; set; }
+
+        public string Name { get; set; } = "";
+        public int Level { get; set; }
+        public int PlayableLanes { get; set; } = 4;
+    }
+
     /// <summary>One non-edited pattern of a multi-pattern .tech container, kept as raw JSON.</summary>
     public sealed class TechSiblingPattern
     {
