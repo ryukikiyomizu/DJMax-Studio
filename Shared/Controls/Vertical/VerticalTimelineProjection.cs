@@ -70,10 +70,11 @@ namespace DJMaxEditor.Controls.Vertical
 
         /// <summary>
         /// Derives the layout from the chart: <see cref="VerticalTrackLayout.BmsMode"/> for a chart
-        /// read out of a .bms, <see cref="VerticalTrackLayout.TechnikaMode"/> for a TECHNIKA-shaped
-        /// one, otherwise the button mode using the same rule as the Respect BMS channel inference —
-        /// 8B when the shoulder tracks (10/11) carry notes, otherwise the highest used gameplay track
-        /// clamped to 4B-6B. Returns 0 when the chart has no gameplay notes at all.
+        /// read out of a .bms or .bmson, <see cref="VerticalTrackLayout.TechnikaMode"/> for a
+        /// TECHNIKA-shaped one, otherwise the button mode using the same rule as the Respect BMS
+        /// channel inference — 8B when the shoulder tracks (10/11) carry notes, otherwise the
+        /// highest used gameplay track clamped to 4B-6B. Returns 0 when the chart has no gameplay
+        /// notes at all.
         /// </summary>
         public static int DetectMode(PlayerData model)
         {
@@ -111,21 +112,25 @@ namespace DJMaxEditor.Controls.Vertical
         }
 
         /// <summary>
-        /// Whether the chart came out of a classic BMS file and still carries the channel map the
-        /// reader built, which is what the BMS layout is drawn from.
+        /// Whether the chart came out of a BMS-family file - classic .bms or .bmson - and still
+        /// carries the channel map the reader built, which is what the BMS layout is drawn from.
         /// </summary>
         /// <remarks>
         /// Format evidence, not note placement, and deliberately so: BMS lane ids are channels, and
         /// no arrangement of notes on tracks 0-8 can tell a 7K+SC chart apart from a TECHNIKA one
-        /// (both put notes on track 0 and none on 9-11). <c>ChartFormat.BmsClassic</c> is only set by
-        /// the reader, and <c>BmsMetadata.TrackChannels</c> is only written there too - the BMS
-        /// *writer* reads that map and never fills it - so exporting a .pt to BMS cannot make a .pt
-        /// look like a BMS chart on reopen.
+        /// (both put notes on track 0 and none on 9-11). A bmson left out of this test is exactly
+        /// what that collision does in practice: a small one draws as TECHNIKA's four touch lanes
+        /// plus scan markers, and one with accompaniment past track 8 draws as an 8B button chart,
+        /// with playable lanes vanishing into the spacer and BGA SYNC columns. <c>ChartFormat</c>
+        /// is only set by the readers, and <c>BmsMetadata.TrackChannels</c> is only written there
+        /// too - the BMS *writers* read that map and never fill it - so exporting a .pt to BMS
+        /// cannot make a .pt look like a BMS chart on reopen.
         /// </remarks>
         public static bool IsBmsShaped(PlayerData model)
         {
             if (model == null) throw new ArgumentNullException("model");
-            return model.SourceFormat == ChartFormat.BmsClassic
+            return (model.SourceFormat == ChartFormat.BmsClassic ||
+                    model.SourceFormat == ChartFormat.Bmson)
                 && model.BmsMetadata != null
                 && model.BmsMetadata.TrackChannels.Count > 0;
         }
@@ -193,9 +198,11 @@ namespace DJMaxEditor.Controls.Vertical
             // its four lanes as the spacer, BGA SYNC, SIDE L and button1, so it gets its own layout
             // and every track from 8 up is appended in track order. BMS goes further still: its lane
             // ids are channels, so the layout is built from the chart's own channel map and only the
-            // tracks with no channel at all are appended.
+            // tracks with no channel at all are appended - and a chart with no channel map at all,
+            // a button chart under a forced BMS layout, gets its 7K+SC shape inferred from the
+            // button schema rather than a row of TRK columns.
             VerticalTrackLayout layout = VerticalTrackLayout.IsBmsMode(mode)
-                ? VerticalTrackLayout.ForBms(BmsTrackChannels(model), UnchanneledOccupiedTracks(model))
+                ? ForBmsProjection(model)
                 : VerticalTrackLayout.ForMode(
                     mode,
                     UnmappedOccupiedTracks(model, mode),
@@ -265,47 +272,25 @@ namespace DJMaxEditor.Controls.Vertical
         }
 
         /// <summary>
-        /// The chart's track-to-BMS-channel pairs in track order, for tracks that actually exist. A
-        /// metadata entry left behind by a deleted track is ignored, so the layout can never claim a
-        /// column for a track the model no longer has.
+        /// Builds the BMS layout for a chart: channel columns in playing order for the tracks the
+        /// effective channel map names, overflow columns for occupied tracks it does not. One pass
+        /// over the tracks feeds both lists, so a track can never land in both or in neither.
         /// </summary>
-        private static List<KeyValuePair<int, string>> BmsTrackChannels(PlayerData model)
+        private static VerticalTrackLayout ForBmsProjection(PlayerData model)
         {
+            Dictionary<uint, string> effective = EffectiveBmsChannels(model);
             var pairs = new List<KeyValuePair<int, string>>();
-            BmsMetadata metadata = model.BmsMetadata;
-            if (metadata == null)
-            {
-                return pairs;
-            }
-
-            foreach (TrackData track in model.Tracks)
-            {
-                string channel;
-                if (metadata.TrackChannels.TryGetValue(track.Idx, out channel) &&
-                    !string.IsNullOrEmpty(channel))
-                {
-                    pairs.Add(new KeyValuePair<int, string>((int)track.Idx, channel));
-                }
-            }
-            return pairs;
-        }
-
-        /// <summary>
-        /// Occupied tracks with no BMS channel, which the BMS layout appends as overflow columns.
-        /// Picking the BMS layout for a chart that is not BMS lands everything here - honest, and
-        /// still nothing hidden.
-        /// </summary>
-        private static List<int> UnchanneledOccupiedTracks(PlayerData model)
-        {
-            BmsMetadata metadata = model.BmsMetadata;
             var extras = new List<int>();
             foreach (TrackData track in model.Tracks)
             {
                 string channel;
-                if (metadata != null &&
-                    metadata.TrackChannels.TryGetValue(track.Idx, out channel) &&
+                if (effective.TryGetValue(track.Idx, out channel) &&
                     !string.IsNullOrEmpty(channel))
                 {
+                    // A metadata entry left behind by a deleted track never reaches here: only
+                    // tracks the model still has are visited, so the layout can never claim a
+                    // column for one it no longer has.
+                    pairs.Add(new KeyValuePair<int, string>((int)track.Idx, channel));
                     continue;
                 }
                 foreach (EventData sourceEvent in track.Events)
@@ -317,7 +302,30 @@ namespace DJMaxEditor.Controls.Vertical
                     }
                 }
             }
-            return extras;
+            return VerticalTrackLayout.ForBms(pairs, extras);
+        }
+
+        /// <summary>
+        /// The channel map the BMS layout is drawn from: the chart's own when it has one, the
+        /// button-schema inference when it has none at all. A .bms/.bmson keeps its authored
+        /// channels untouched; a button chart under a forced BMS layout gets SIDE L as the
+        /// turntable, mains and SIDE R as keys, and MR/BG as accompaniment - 7K+SC for 6B -
+        /// instead of a row of TRK columns. A TECHNIKA-shaped chart is the exception: four touch
+        /// lanes have no keys-and-turntable reading, and the button roles would scatter them, so
+        /// it keeps the plain overflow row where every lane stays in track order.
+        /// </summary>
+        private static Dictionary<uint, string> EffectiveBmsChannels(PlayerData model)
+        {
+            BmsMetadata metadata = model.BmsMetadata;
+            if (metadata != null && metadata.TrackChannels.Count > 0)
+            {
+                return metadata.TrackChannels;
+            }
+            if (IsTechnikaShaped(model))
+            {
+                return new Dictionary<uint, string>();
+            }
+            return BmsChartSerializer.InferButtonTrackChannels(model);
         }
 
         /// <summary>

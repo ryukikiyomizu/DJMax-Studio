@@ -138,6 +138,7 @@ jobs:
               <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
+              <Compile Include="..\Shared\Files\bms\BmsonLaneMap.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />

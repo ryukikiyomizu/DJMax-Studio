@@ -470,8 +470,16 @@ namespace DJMaxEditor.Preview
                     {
                         note.NativeY = respectLayout.GetNoteY(
                             note.Source.Tick, currentTick, noteSpeed);
+                        // Taps carry a keysound-length duration, not a tail: duration 6 is the
+                        // format's "not a long note" sentinel, yet 6 x speed still clears the
+                        // default head height - which grew every tap a phantom dim body plus a
+                        // bright tail cap, the "two notes" look. The same Duration > 6 long gate
+                        // the state computation above uses; real holds keep their bodies.
+                        int tailDuration = note.Source.Duration > 6
+                            ? note.Source.Duration
+                            : 0;
                         note.NativeHeight = respectLayout.GetLongNoteHeight(
-                            note.Source.Duration,
+                            tailDuration,
                             noteSpeed,
                             respectLayout.GetDefaultNoteHeight(note.RespectType));
                     }

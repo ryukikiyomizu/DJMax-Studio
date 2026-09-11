@@ -1884,8 +1884,10 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// True when a press on this hit may start a note move: a gameplay/authoring column
-        /// (never an end-of-scan marker or other annotation column) carrying a Note event.
+        /// True when a press on this hit may start a move drag: a movable column - every track
+        /// except TECHNIKA's end-of-scan markers - carrying a movable event. Markers stay
+        /// unarmed: a marker's track is its lane pairing, not a lane, so a cross-track drag
+        /// would reassign a scan instead of moving a note.
         /// </summary>
         private static bool IsMovableNoteHit(VerticalHitResult hit)
         {
@@ -1894,13 +1896,34 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 return false;
             }
-            return hit.Item.Item.SourceEvent.EventType == EventType.Note &&
+            return IsMovableEventType(hit.Item.Item.SourceEvent.EventType) &&
                 CanReceiveNotes(hit.Column);
         }
 
         /// <summary>
-        /// Columns a note may be dragged from or onto: the playable lanes and the overflow
-        /// authoring columns. Marker, tempo, MR and BGA columns are annotation and stay out.
+        /// Event types a drag or lane-nudge may carry between tracks: plain notes and the
+        /// opaque beat flags the BGA-era aux tracks carry. Nothing in the editor binds a beat
+        /// flag to its lane (nothing reads <c>EventData.Beat</c> at all), so it travels like a
+        /// note. Tempo and volume stay pinned to their tracks: a BPM change dropped on a key
+        /// lane would corrupt the tempo map, and volume automation belongs to its lane - both
+        /// still slide in time under the Up/Down nudge, which never changes tracks.
+        /// </summary>
+        private static bool IsMovableEventType(EventType type)
+        {
+            return type == EventType.Note || type == EventType.Beat;
+        }
+
+        /// <summary>
+        /// Columns a note may be dragged from or onto: the playable lanes, the overflow
+        /// authoring columns, and every aux track - BGA SYNC, MR and BG. Aux content is
+        /// authored against the music exactly like notes (creatable, selectable, deletable
+        /// and time-nudgeable on this surface already), so the drag treats all tracks but one
+        /// the same. The exception is TECHNIKA's end-of-scan markers: a marker's track IS its
+        /// meaning (tracks 4-7 pair with lanes 0-3), so a cross-track drag would reassign a
+        /// scan or strand a note on a flag track - while Up/Down already slides markers in
+        /// time. (The BMS "BPM" column reuses the BgaSync kind and "BGM" the Background kind;
+        /// tempo events are not a movable type, so they still never arm a move - only notes
+        /// and beat flags travel through this gate.)
         /// </summary>
         private static bool CanReceiveNotes(VerticalColumn column)
         {
@@ -1916,6 +1939,9 @@ namespace DJMaxEditor.Studio.Timeline
                 case VerticalColumnKind.ShoulderRight:
                 case VerticalColumnKind.SideRight:
                 case VerticalColumnKind.Overflow:
+                case VerticalColumnKind.BgaSync:
+                case VerticalColumnKind.Mr:
+                case VerticalColumnKind.Background:
                     return true;
                 default:
                     return false;
@@ -1930,18 +1956,20 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 return;
             }
-            // Only move a homogeneous note selection: a marquee that also caught marker or
-            // tempo annotation must not drag those between tracks.
+            // Only move a homogeneous movable selection (notes and beat flags): a marquee
+            // that also caught tempo or volume automation must not drag those between
+            // tracks.
             foreach (EventData selected in document.Selection.Items)
             {
-                if (selected.EventType != EventType.Note)
+                if (!IsMovableEventType(selected.EventType))
                 {
                     return;
                 }
             }
 
             // Note-capable columns in display order, mapped by column position rather than
-            // model track index so the marker/tempo gap is skipped, not traversed.
+            // model track index so annotation columns (markers, MR, BG) are skipped, not
+            // traversed.
             _moveColumns = NoteMoveColumns();
 
             int anchorColumn = _moveColumns.IndexOf(anchor.TrackId);
@@ -2033,7 +2061,7 @@ namespace DJMaxEditor.Studio.Timeline
             int tickDelta = desiredAnchorTick - _moveAnchorTick;
 
             // Column shift from the note-capable column under the pointer, counted in visible
-            // columns so the marker/tempo track gap is skipped. Stays put while the pointer is
+            // columns so annotation columns are skipped. Stays put while the pointer is
             // over something that is not a lane (gutter, ruler, marker column).
             int columnShift = _moveAppliedColumnShift;
             VerticalHitResult hover = _frame.HitTest(point.X, point.Y);
@@ -2089,10 +2117,11 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// Columns notes can be dragged between, in left-to-right display order: playable lanes
-        /// and overflow authoring columns only - annotation columns are excluded, as is the
-        /// synthesized backing-track trigger a soundtrack-only .tech creates (that track is
-        /// never written back, so parking a note on it would lose the note on save).
+        /// Columns notes can be dragged between, in left-to-right display order: every track
+        /// except TECHNIKA's end-of-scan markers (a marker's track is its lane pairing - see
+        /// CanReceiveNotes), and except the synthesized backing-track trigger a
+        /// soundtrack-only .tech creates (that track is never written back, so parking a note
+        /// on it would lose the note on save).
         /// </summary>
         private List<uint> NoteMoveColumns()
         {
@@ -2166,9 +2195,11 @@ namespace DJMaxEditor.Studio.Timeline
             var trackByCurrent = new Dictionary<uint, uint>();
             if (columnSteps != 0)
             {
+                // Lane steps carry the same movable-type rule as a mouse drag: notes and
+                // beat flags travel, tempo and volume automation stay on their tracks.
                 foreach (EventData selected in document.Selection.Items)
                 {
-                    if (selected.EventType != EventType.Note)
+                    if (!IsMovableEventType(selected.EventType))
                     {
                         return false;
                     }

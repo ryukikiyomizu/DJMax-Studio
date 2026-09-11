@@ -135,6 +135,7 @@
     <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" Link="Shared\Files\BmsChartSerializer.cs" />
     <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" Link="Shared\Files\BmsonChartSerializer.cs" />
     <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" Link="Shared\Files\BmsonChartParser.cs" />
+    <Compile Include="..\Shared\Files\bms\BmsonLaneMap.cs" Link="Shared\Files\BmsonLaneMap.cs" />
     <Compile Include="..\Shared\Files\bytes\TrailerChartReader.cs" Link="Shared\Files\TrailerChartReader.cs" />
     <!-- The open/save wrappers and the handler registry. These only touch WinForms through
          IFile's `Form GetSettingsForm()` return type, which compiles because UseWindowsForms is

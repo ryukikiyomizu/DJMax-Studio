@@ -11,7 +11,7 @@ namespace DJMaxEditor.Files.bms
 {
     // Reader half of BmsonChartSerializer. The writer half lives in BmsonChartSerializer.cs;
     // this is the second partial of the same class, so the writer's resolution constants and
-    // channel table are shared rather than restated.
+    // lane table are shared rather than restated.
     //
     // bmson (https://bmson-spec.readthedocs.io/) is a JSON chart: notes live in `sound_channels`,
     // each channel named after the audio file that plays it, positioned on a pulse grid
@@ -19,6 +19,12 @@ namespace DJMaxEditor.Files.bms
     // sound by filename instead of a two-character object id is the whole point of the format -
     // it is how a chart carries more than the 1296 keysounds classic BMS can address - so an
     // instrument here is a sound_channels entry, not a #WAV line.
+    //
+    // Lanes follow the spec's own tables (see BmsonLaneMap): on beat-* layouts x = 1..7 are the
+    // keys and x = 8 is the turntable, with player 2 mirroring that on x = 9..16, and lane 0 is
+    // accompaniment. The model has no lane ids of its own, so playable lanes fold onto the
+    // classic channels (11-15 keys, 16 turntable, 18/19 keys 6/7, 2x the second side), which is
+    // also what the BMS layout draws them from.
     internal static partial class BmsonChartSerializer
     {
         /// <summary>
@@ -86,6 +92,20 @@ namespace DJMaxEditor.Files.bms
             {
                 DiagnosticLog.Write("open.bmson", "info.init_bpm " + initialBpm + " is not usable; assuming 120.");
                 initialBpm = 120;
+            }
+
+            // Which lane table the x values are read against. beat-* is the spec default and
+            // popn-9k the other layout with its own table; anything else is read as beat and
+            // said out loud, because a lane 8 that is really a ninth key would otherwise
+            // silently become a turntable.
+            string modeHint = StringOr(info, "mode_hint");
+            if (!string.IsNullOrWhiteSpace(modeHint) &&
+                !BmsonLaneMap.IsPopnHint(modeHint) &&
+                !modeHint.Trim().StartsWith("beat", StringComparison.OrdinalIgnoreCase))
+            {
+                DiagnosticLog.Write("open.bmson",
+                    "info.mode_hint \"" + modeHint + "\" is not a beat/popn layout; " +
+                    "reading its lanes as beat.");
             }
 
             // The editor clock is 48 native ticks per quarter note with six virtual sub-ticks
@@ -209,7 +229,7 @@ namespace DJMaxEditor.Files.bms
                 ", " + channelNotes.Count + " sound channel(s), " + totalNotes + " note(s).");
 
             // ---- pass 2: assemble the model ---------------------------------------------------
-            // Playable lanes first, one track per x in 1..8 - the same lanes-first order the
+            // Playable lanes first, one track per playable x - the same lanes-first order the
             // classic reader uses, so the horizontal timeline and track list put keys under the
             // hand before the accompaniment rows.
             var laneNotes = new Dictionary<int, List<EventData>>();
@@ -218,7 +238,7 @@ namespace DJMaxEditor.Files.bms
                 InstrumentData instrument = instruments[channel.InstrumentId];
                 foreach (ParsedNote note in channel.Notes)
                 {
-                    if (note.Lane < 1 || note.Lane > DefaultChannels.Length) continue;
+                    if (BmsonLaneMap.ChannelForLane(modeHint, note.Lane) == null) continue;
                     List<EventData> events;
                     if (!laneNotes.TryGetValue(note.Lane, out events))
                     {
@@ -237,40 +257,55 @@ namespace DJMaxEditor.Files.bms
             foreach (KeyValuePair<int, List<EventData>> lane in laneNotes.OrderBy(x => x.Key))
             {
                 TrackData track = BmsChartSerializer.AddTrack(player, metadata,
-                    "bmson Lane " + lane.Key, DefaultChannels[lane.Key - 1]);
+                    "bmson Lane " + lane.Key, BmsonLaneMap.ChannelForLane(modeHint, lane.Key));
                 track.AddEvents(lane.Value);
             }
 
-            // Lanes the editor model cannot play - the scratch lane 0 and anything above 8 -
-            // become accompaniment tracks, one per sound channel, named after the keysound.
+            // Anything without a playable lane - lane 0, the bmson backing/keysound lane, and
+            // anything past the layout's last lane - becomes accompaniment. Grouped into
+            // simultaneity voice slots rather than one track per sound channel: a bmson carries
+            // its keysounds as hundreds of channels, and a track per channel buried the playable
+            // lanes under hundreds of BGM columns. A slot is a column of the score, not an
+            // instrument - the same rule the classic reader's per-measure BGM slots follow - and
+            // the writer regroups by filename on export, so nothing is lost by the merge.
+            var bgmEvents = new List<EventData>();
             foreach (BmsonChannelNotes channel in channelNotes)
             {
                 InstrumentData instrument = instruments[channel.InstrumentId];
-                List<EventData> events = null;
                 foreach (ParsedNote note in channel.Notes)
                 {
-                    if (note.Lane >= 1 && note.Lane <= DefaultChannels.Length) continue;
-                    if (note.Lane > DefaultChannels.Length)
+                    if (BmsonLaneMap.ChannelForLane(modeHint, note.Lane) != null) continue;
+                    if (note.Lane > 0)
                     {
                         DiagnosticLog.Write("open.bmson",
                             "lane " + note.Lane + " has no playable column in the editor model; " +
                             "its notes are routed to an accompaniment track.");
                     }
-                    if (events == null) events = new List<EventData>();
                     var noteEvent = BmsChartSerializer.NewNote(note.Tick, instrument);
                     if (note.Duration > 0)
                     {
                         noteEvent.VirtualDuration = note.Duration;
                     }
-                    events.Add(noteEvent);
+                    bgmEvents.Add(noteEvent);
                 }
+            }
 
-                if (events != null)
-                {
-                    TrackData track = BmsChartSerializer.AddTrack(player, metadata,
-                        "bmson BGM " + channel.Name, "01");
-                    track.AddEvents(events);
-                }
+            List<List<EventData>> bgmSlots = SplitBgmVoices(bgmEvents);
+            bool numberedBgm = bgmSlots.Count > 1;
+            for (int slot = 0; slot < bgmSlots.Count; slot++)
+            {
+                string name = numberedBgm
+                    ? "bmson BGM " + (slot + 1).ToString(CultureInfo.InvariantCulture)
+                    : "bmson BGM";
+                TrackData track = BmsChartSerializer.AddTrack(player, metadata, name, "01");
+                track.AddEvents(bgmSlots[slot]);
+            }
+            if (bgmSlots.Count > 0)
+            {
+                DiagnosticLog.Write("open.bmson",
+                    bgmEvents.Count.ToString(CultureInfo.InvariantCulture) +
+                    " accompaniment note(s) in " +
+                    bgmSlots.Count.ToString(CultureInfo.InvariantCulture) + " voice slot(s).");
             }
 
             // Tempo events last, matching the classic reader's track order.
@@ -303,6 +338,65 @@ namespace DJMaxEditor.Files.bms
             }
 
             return player;
+        }
+
+        /// <summary>
+        /// Colours accompaniment notes into voice slots: notes that sound together go on
+        /// different tracks so the timeline can draw them side by side, and notes that never
+        /// overlap share one. Greedy interval colouring on (start, end) with instantaneous
+        /// notes splitting same-tick ties - a bmson's accompaniment is nearly all
+        /// instantaneous, and two of those on one tick are two voices, not one.
+        /// </summary>
+        private static List<List<EventData>> SplitBgmVoices(List<EventData> events)
+        {
+            var slots = new List<List<EventData>>();
+            if (events == null || events.Count == 0)
+            {
+                return slots;
+            }
+
+            // CompareTo rather than subtraction: ticks near the top of the int range would
+            // overflow a difference and sort backwards.
+            events.Sort(delegate(EventData a, EventData b)
+            {
+                int byStart = a.VirtualTick.CompareTo(b.VirtualTick);
+                if (byStart != 0)
+                {
+                    return byStart;
+                }
+                return EndTick(b).CompareTo(EndTick(a));
+            });
+
+            var slotEnds = new List<int>();
+            foreach (EventData note in events)
+            {
+                int start = note.VirtualTick;
+                int end = EndTick(note);
+                int slot = 0;
+                while (slot < slotEnds.Count && slotEnds[slot] >= start)
+                {
+                    slot++;
+                }
+                if (slot == slots.Count)
+                {
+                    slots.Add(new List<EventData>());
+                    slotEnds.Add(end);
+                }
+                else
+                {
+                    slotEnds[slot] = end;
+                }
+                slots[slot].Add(note);
+            }
+            return slots;
+        }
+
+        /// <summary>End tick of a note, clamped rather than overflowing near int.MaxValue.</summary>
+        private static int EndTick(EventData note)
+        {
+            return note.VirtualTick > int.MaxValue - note.VirtualDuration
+                ? int.MaxValue
+                : note.VirtualTick + note.VirtualDuration;
         }
 
         /// <summary>
