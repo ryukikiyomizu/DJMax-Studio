@@ -546,7 +546,9 @@ namespace DJMaxEditor.Controls.Vertical
         /// put it rather than on 22-40 - so the honest layout names only what TECHNIKA defines and
         /// lets the chart's own occupied tracks decide the rest.
         /// </remarks>
-        private static VerticalTrackLayout TechnikaLayout(IEnumerable<int> extraSourceTracks)
+        private static VerticalTrackLayout TechnikaLayout(
+            IEnumerable<int> extraSourceTracks,
+            IDictionary<int, string> overflowLabels)
         {
             var columns = new List<VerticalColumn>();
             int index = 0;
