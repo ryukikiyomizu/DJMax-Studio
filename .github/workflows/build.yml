@@ -307,8 +307,12 @@ jobs:
               techChart, GameplayPreviewProfile.Technika);
           Check(techProjection.BeatsPerScan == 2,
                 "projection honors the .tech beats-per-scan");
-          Check(techChart.Tracks.Count == 11, "four lanes, four markers, tempo and two "
-                + "overflow tracks, got " + techChart.Tracks.Count);
+          Check(techChart.Tracks.Count == 12, "four lanes, four markers, tempo, two "
+                + "keysound overflow tracks and the backing trigger, got "
+                + techChart.Tracks.Count);
+          // The fixture names a backingTrack, so a synth BGM trigger joins at track 11.
+          Check(techChart.TechMetadata.BackingTrackModelTrack == 11,
+                "the synth backing trigger takes the next overflow track");
           // Format lanes 5 and 7 compact onto model tracks 9 and 10; empty format lanes
           // 4 and 6 create no track and no column.
           Check(techChart.TechMetadata.FormatLaneByTrack[9] == 5
@@ -405,11 +409,15 @@ jobs:
                 && blankDragOut.Contains("120|0") && blankDragOut.Contains("240|0|-120|0|0|0"),
                 "a newly authored drag is built as a straight 240-pulse drag");
           PlayerData roundTech = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(techOut));
-          Check(roundTech.Tracks.Count == 11,
-                "round trip keeps four lanes, four markers, tempo and two overflow tracks");
+          Check(roundTech.Tracks.Count == 12,
+                "round trip keeps four lanes, four markers, tempo, two keysound "
+                + "overflow tracks and the backing trigger");
           Check(techOut.Contains("Basic|3000|5|extra5.ogg")
                 && techOut.Contains("Basic|3120|7|extra7.ogg"),
                 "overflow notes are written back to their original format lanes");
+          Check(techOut.Contains("\"backingTrack\": \"audio.ogg\"")
+                && !techOut.Contains("|audio.ogg"),
+                "the backing file stays in metadata, not in the packed note tables");
           Check(roundTech.TechMetadata.FormatLaneByTrack[9] == 5
                 && roundTech.Tracks.GetTrackAtIndex(9).Events.First().Tick == 600,
                 "overflow track identity survives the full round trip");
