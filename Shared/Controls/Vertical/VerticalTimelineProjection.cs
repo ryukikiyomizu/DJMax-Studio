@@ -151,6 +151,15 @@ namespace DJMaxEditor.Controls.Vertical
         {
             if (model == null) throw new ArgumentNullException("model");
 
+            // A TECHMANIA track.tech is unambiguously the TECHNIKA schema - format evidence
+            // beats note placement here, because its invisible keysound lanes compact onto
+            // overflow tracks 9+, which the PT-era structural test below reads as Portable
+            // side/shoulder tracks and would answer 8B on.
+            if (model.SourceFormat == ChartFormat.TechmaniaTrack)
+            {
+                return true;
+            }
+
             bool firstLane = false;
             foreach (TrackData track in model.Tracks)
             {
@@ -187,7 +196,10 @@ namespace DJMaxEditor.Controls.Vertical
             // tracks with no channel at all are appended.
             VerticalTrackLayout layout = VerticalTrackLayout.IsBmsMode(mode)
                 ? VerticalTrackLayout.ForBms(BmsTrackChannels(model), UnchanneledOccupiedTracks(model))
-                : VerticalTrackLayout.ForMode(mode, UnmappedOccupiedTracks(model, mode));
+                : VerticalTrackLayout.ForMode(
+                    mode,
+                    UnmappedOccupiedTracks(model, mode),
+                    OverflowLabels(model));
             var items = new List<TimelineItem>();
             int skipped = 0;
 
@@ -306,6 +318,31 @@ namespace DJMaxEditor.Controls.Vertical
                 }
             }
             return extras;
+        }
+
+        /// <summary>
+        /// Header labels for appended overflow columns. A .tech compacts invisible
+        /// keysound format lanes onto model tracks 9..50; their columns should name the
+        /// in-game lane ("lane 6") rather than the compacted model slot ("TRK 9").
+        /// </summary>
+        private static Dictionary<int, string> OverflowLabels(PlayerData model)
+        {
+            if (model.TechMetadata == null ||
+                model.TechMetadata.FormatLaneByTrack.Count == 0)
+            {
+                return null;
+            }
+
+            var labels = new Dictionary<int, string>();
+            foreach (KeyValuePair<int, int> map in model.TechMetadata.FormatLaneByTrack)
+            {
+                labels[map.Key] = "lane " + (map.Value + 1);
+            }
+            if (model.TechMetadata.BackingTrackModelTrack >= 0)
+            {
+                labels[model.TechMetadata.BackingTrackModelTrack] = "BGM";
+            }
+            return labels;
         }
 
         /// <summary>

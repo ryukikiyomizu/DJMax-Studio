@@ -178,7 +178,20 @@ namespace DJMaxEditor.Studio.Preview
             _notes[GameplayPreviewNoteKind.RepeatHeadHold] = repeat;
             _notes[GameplayPreviewNoteKind.Repeat] = repeat;
             _notes[GameplayPreviewNoteKind.RepeatHold] = repeat;
+
+            // The connector fallback when the arcade's `notepressline` sheet is not on disk. The
+            // green chain fill above colours the note head; the line that joins a chain's members
+            // is yellow in the arcade (it matches the yellow `notepressnote` node rings), so the
+            // fallback must not reuse the head's green. Sampled from notepressnote's ring.
+            ChainRunLine = new SolidColorBrush(StudioPalette.Parse("#FFFFD300"));
+            ChainRunLine.Freeze();
         }
+
+        /// <summary>
+        /// The yellow bar joining chain members when the packaged <c>notepressline</c> art is
+        /// unavailable. Repeat runs fall back to their own purple trail brush instead.
+        /// </summary>
+        public Brush ChainRunLine { get; private set; }
 
         /// <summary>
         /// The scanline wash, as a gradient across the quad.

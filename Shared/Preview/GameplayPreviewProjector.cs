@@ -4,6 +4,7 @@ using System.Linq;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Files.bms;
 using DJMaxEditor.Files.FormatDetection;
+using DJMaxEditor.Files.Tech;
 
 namespace DJMaxEditor.Preview
 {
@@ -11,6 +12,39 @@ namespace DJMaxEditor.Preview
     {
         Generic,
         Technika
+    }
+
+    /// <summary>
+    /// The arcade's scroll-direction effector for a TECHNIKA field.
+    ///
+    /// <para>
+    /// The timeline sweeps the two halves clockwise by default - over the top half it travels
+    /// left to right, over the bottom half right to left - and the pre-song effector screen
+    /// offers three alternatives, present since TECHNIKA 1's mission courses and in both
+    /// sequels (the Korean manuals name them CW / ACW / LL / RR):
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><see cref="Clockwise"/> (CW): top left-to-right, bottom right-to-left.
+    /// The default and the only direction charts are authored against.</description></item>
+    /// <item><description><see cref="CounterClockwise"/> (ACW): the inverse reading - top
+    /// right-to-left, bottom left-to-right.</description></item>
+    /// <item><description><see cref="AllLeft"/> (LL): both halves sweep toward the left.</description></item>
+    /// <item><description><see cref="AllRight"/> (RR): both halves sweep toward the right.</description></item>
+    /// </list>
+    /// <para>
+    /// The scan a note belongs to and which half that scan fills are properties of the clock
+    /// and never change; only the direction of travel inside the field does, which is why this
+    /// is one enum feeding note placement, the scanline, hold bodies and the approach glow
+    /// rather than a second projection. It is the one effector the manuals note can help a
+    /// player's score, so it gets modelled even though the preview cannot be played.
+    /// </para>
+    /// </summary>
+    public enum TechnikaScrollDirection
+    {
+        Clockwise,
+        CounterClockwise,
+        AllLeft,
+        AllRight
     }
 
     public enum GameplayPreviewNoteKind
@@ -124,6 +158,16 @@ namespace DJMaxEditor.Preview
                     GameplayPreviewProfile.Technika,
                     true,
                     "PTFF can contain TECHNIKA or Trilogy data. Confirm the TECHNIKA profile.");
+            }
+
+            if (format == ChartFormat.TechmaniaTrack)
+            {
+                // A TECHMANIA track.tech is the fan TECHNIKA format by construction, so its
+                // profile is not merely inferred - no confirmation prompt is warranted.
+                return new GameplayPreviewProfileSuggestion(
+                    GameplayPreviewProfile.Technika,
+                    true,
+                    "TECHMANIA track file; the TECHNIKA profile is certain.");
             }
 
             return new GameplayPreviewProfileSuggestion(
@@ -240,13 +284,15 @@ namespace DJMaxEditor.Preview
             int beatsPerScan,
             double tempo,
             IList<ProjectedGameplayNote> notes,
-            IList<string> diagnostics)
+            IList<string> diagnostics,
+            TechnikaScrollDirection scrollDirection = TechnikaScrollDirection.Clockwise)
         {
             Profile = profile;
             StatusLabel = statusLabel;
             LaneCount = laneCount;
             _ticksPerMeasure = ticksPerMeasure;
             _beatsPerScan = beatsPerScan;
+            ScrollDirection = scrollDirection;
             ScanSeconds = tempo > 0.0 ? (beatsPerScan * 60.0) / tempo : 0.0;
             Notes = new List<ProjectedGameplayNote>(notes).AsReadOnly();
             Diagnostics = new List<string>(diagnostics).AsReadOnly();
@@ -257,6 +303,24 @@ namespace DJMaxEditor.Preview
         public string StatusLabel { get; private set; }
 
         public int LaneCount { get; private set; }
+
+        /// <summary>
+        /// Beats per scan the notes were placed with: four on real TECHNIKA .pt charts, and
+        /// the value a TECHMANIA .tech declares (2, 4, 8, 12 ...). Renderers that lay trails
+        /// or count beats per scan must read this rather than assume four.
+        /// </summary>
+        public int BeatsPerScan
+        {
+            get { return _beatsPerScan; }
+        }
+
+        /// <summary>
+        /// The TECHNIKA scroll-direction effector this projection was placed under;
+        /// <see cref="TechnikaScrollDirection.Clockwise"/> for the arcade default and for every
+        /// non-TECHNIKA profile. Renderers read it to sweep the scanline, lay hold bodies and
+        /// orient the approach glow the same way the notes were placed.
+        /// </summary>
+        public TechnikaScrollDirection ScrollDirection { get; private set; }
 
         /// <summary>
         /// How long one scan lasts at the chart's header tempo, in seconds, or 0 when the chart
@@ -426,10 +490,14 @@ namespace DJMaxEditor.Preview
         {
             if (Profile == GameplayPreviewProfile.Technika)
             {
-                // The Technika renderer draws only this scan and the next scan, but a hold
-                // belongs to the window while any part of its span intersects those two - its
-                // head may be scans behind while its tail is still ahead, and testing the head
-                // alone is what clipped a long hold at the scan past it. Taps answer for their
+                // The Technika renderer draws this scan plus the one already waiting on the
+                // other half - two float scans on stage. A hold belongs to the window while any
+                // part of its span intersects them: its head may be scans behind while its tail
+                // is still ahead, and testing the head alone is what clipped a long hold at the
+                // scan past it. The far edge sits at the start of the scan AFTER the waiting
+                // one (float scan current+2); an edge at current+1 admitted only notes exactly
+                // on the handover boundary, so the waiting half showed just its first note and
+                // swallowed every other one until the sweep reached it. Taps answer for their
                 // head alone (see CreateFrame for why the raw duration is not a tail).
                 double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
                 double headFloatScan = note.Pulse / pulsesPerScan;
@@ -437,7 +505,7 @@ namespace DJMaxEditor.Preview
                     ? (note.Pulse + note.DurationPulse) / pulsesPerScan
                     : headFloatScan;
                 return tailFloatScan >= currentIntScan &&
-                    headFloatScan <= currentIntScan + 1;
+                    headFloatScan < currentIntScan + 2;
             }
 
             // Keep a long note while any part of its tick span intersects the
@@ -456,6 +524,50 @@ namespace DJMaxEditor.Preview
         private const int PulsesPerMeasure = 960;
         private const int PulsesPerBeat = 240;
         private const int DefaultBeatsPerScan = 4;
+
+        /// <summary>
+        /// Beats per scan for the projection. Real TECHNIKA .pt charts are always four; a
+        /// TECHMANIA .tech declares its own (2, 4, 8, 12 ...) in pattern metadata, and the
+        /// scan boundary is what places every note, so a fixed four would pack a 2-bps chart
+        /// into half-length scans. Anything that declares none keeps the four-beat default.
+        /// </summary>
+        private static int BeatsPerScanFor(PlayerData model)
+        {
+            int bps = model != null && model.TechMetadata != null
+                ? model.TechMetadata.Bps
+                : DefaultBeatsPerScan;
+            return bps > 0 ? bps : DefaultBeatsPerScan;
+        }
+
+        /// <summary>
+        /// Whether the timeline sweeps left-to-right (true) or right-to-left (false) over the
+        /// named half under a scroll-direction effector. See
+        /// <see cref="TechnikaScrollDirection"/> for the four arcade readings; this is the one
+        /// rule both the projector's note placement and every renderer-side sweep (scanline,
+        /// hold body, approach glow) answer to, so they cannot disagree about which way a scan
+        /// runs.
+        /// </summary>
+        public static bool TechnikaSweepRightward(
+            bool isTopHalf,
+            TechnikaScrollDirection direction)
+        {
+            switch (direction)
+            {
+                case TechnikaScrollDirection.CounterClockwise:
+                    // The inverse of the clockwise default: top runs right-to-left, bottom
+                    // left-to-right.
+                    return !isTopHalf;
+                case TechnikaScrollDirection.AllLeft:
+                    // Both halves travel toward the left edge.
+                    return false;
+                case TechnikaScrollDirection.AllRight:
+                    // Both halves travel toward the right edge.
+                    return true;
+                default:
+                    // Clockwise: top left-to-right, bottom right-to-left.
+                    return isTopHalf;
+            }
+        }
 
         /// <summary>
         /// Left edge of the TECHNIKA note field, as a fraction of the arcade's 1280 px width.
@@ -548,18 +660,43 @@ namespace DJMaxEditor.Preview
             PlayerData model,
             GameplayPreviewProfile profile)
         {
+            return Project(model, profile, TechnikaScrollDirection.Clockwise);
+        }
+
+        /// <summary>
+        /// Projects a chart, applying a scroll-direction effector to the TECHNIKA field. The
+        /// direction changes where every note sits inside its scan, so it is applied here at
+        /// placement time rather than as a renderer-side mirror; a Generic projection ignores
+        /// it, because the vertical gear has no such effector.
+        /// </summary>
+        public static GameplayPreviewProjection Project(
+            PlayerData model,
+            GameplayPreviewProfile profile,
+            TechnikaScrollDirection scrollDirection)
+        {
             if (model == null) throw new ArgumentNullException("model");
             return profile == GameplayPreviewProfile.Technika
-                ? ProjectTechnika(model)
+                ? ProjectTechnika(model, scrollDirection)
                 : ProjectGeneric(model);
         }
 
-        private static GameplayPreviewProjection ProjectTechnika(PlayerData model)
+        private static GameplayPreviewProjection ProjectTechnika(
+            PlayerData model,
+            TechnikaScrollDirection scrollDirection)
         {
             int ticksPerMeasure = Math.Max(1, (int)model.TickPerMinute);
             var diagnostics = new List<string>();
             var notes = new List<ProjectedGameplayNote>();
             int secondPlayerNotes = 0;
+
+            // A .tech declares how many lanes are playable. Notes on later lanes (including
+            // the compacted overflow tracks 9+, which are already skipped below) are the
+            // format's invisible/autoplay keysound lanes: they still trigger audio in game
+            // but are never drawn, and letting one widen the field would misdraw every note.
+            int playableLanes = model.TechMetadata != null &&
+                                model.TechMetadata.PlayableLanes >= 2
+                ? Math.Min(4, model.TechMetadata.PlayableLanes)
+                : 0;
 
             foreach (TrackData track in model.Tracks)
             {
@@ -574,6 +711,10 @@ namespace DJMaxEditor.Preview
                 }
                 foreach (EventData source in track.Events)
                 {
+                    if (playableLanes > 0 && (int)track.Idx >= playableLanes)
+                    {
+                        continue;
+                    }
                     GameplayPreviewNoteKind? kind = Classify(source);
                     if (!kind.HasValue)
                     {
@@ -613,10 +754,15 @@ namespace DJMaxEditor.Preview
             ApplyRepeatFixups(notes, diagnostics);
             ApplyEndOfScanMarkers(model, notes, ticksPerMeasure);
 
-            int laneCount = DeriveLaneCount(notes);
+            // A .tech's declared playable lanes win; anything else (legacy .pt charts)
+            // keeps deriving the count from the lanes the notes actually use.
+            int laneCount = playableLanes > 0
+                ? playableLanes
+                : DeriveLaneCount(notes);
+            int beatsPerScan = BeatsPerScanFor(model);
             foreach (ProjectedGameplayNote note in notes)
             {
-                PlaceTechnikaNote(note, laneCount);
+                PlaceTechnikaNote(note, laneCount, beatsPerScan, scrollDirection);
             }
 
             return new GameplayPreviewProjection(
@@ -624,10 +770,11 @@ namespace DJMaxEditor.Preview
                 "TECHNIKA PROFILE  |  CONFIRMED TWO-WAY PROJECTION",
                 laneCount,
                 model.TickPerMinute,
-                DefaultBeatsPerScan,
+                BeatsPerScanFor(model),
                 model.Tempo,
                 notes,
-                diagnostics);
+                diagnostics,
+                scrollDirection);
         }
 
         private static GameplayPreviewProjection ProjectGeneric(PlayerData model)
@@ -907,50 +1054,79 @@ namespace DJMaxEditor.Preview
             IList<ProjectedGameplayNote> notes,
             IList<string> diagnostics)
         {
-            bool open = false;
-            int headPulse = -1;
-            var implicitNodes = new List<ProjectedGameplayNote>();
-
+            // Pass 1 - spans, delimited purely from the explicit typing. A .tech chains one
+            // ChainHead through every ChainNode that follows (the waypoints cross lanes), and
+            // the next head starts the next span; there is no single closing node. The legacy
+            // dialect's span ends at its one node. Streaming "first node closes" chopped a real
+            // dozen-node chain into a pair plus eleven orphans - and closing on any other-family
+            // note killed a chain that shares a tick with, say, a repeat head in another lane.
+            var heads = new List<ProjectedGameplayNote>();
+            var spanEnd = new List<int>();
+            var spanNodePulses = new List<HashSet<int>>();
+            int openSpan = -1;
             foreach (ProjectedGameplayNote note in notes)
             {
                 if (note.Kind == GameplayPreviewNoteKind.ChainHead)
                 {
-                    open = true;
-                    headPulse = note.Pulse;
-                    implicitNodes.Clear();
+                    heads.Add(note);
+                    spanEnd.Add(note.Pulse);
+                    spanNodePulses.Add(new HashSet<int>());
+                    openSpan = heads.Count - 1;
+                }
+                else if (note.Kind == GameplayPreviewNoteKind.ChainNode)
+                {
+                    if (openSpan < 0)
+                    {
+                        diagnostics.Add("Orphan chain node at tick " + note.Source.Tick + ".");
+                        continue;
+                    }
+                    spanEnd[openSpan] = note.Pulse;
+                    spanNodePulses[openSpan].Add(note.Pulse);
+                }
+            }
+
+            // Pass 2 - the legacy dialect traces its path through ordinary taps that the file
+            // never re-tagged: absorb the basics strictly inside a span, except taps on a
+            // node's own pulse, which are real taps in another lane sharing the waypoint's tick.
+            openSpan = -1;
+            int noteIndex = 0;
+            foreach (ProjectedGameplayNote note in notes)
+            {
+                if (note.Kind == GameplayPreviewNoteKind.ChainHead)
+                {
+                    // The heads list follows the same walk order, so a pointer is enough.
+                    while (noteIndex < heads.Count && heads[noteIndex] != note)
+                    {
+                        noteIndex++;
+                    }
+                    openSpan = noteIndex < heads.Count ? noteIndex : -1;
+                    noteIndex++;
                     continue;
                 }
 
                 if (note.Kind == GameplayPreviewNoteKind.ChainNode)
                 {
-                    if (!open)
-                    {
-                        diagnostics.Add("Orphan chain node at tick " + note.Source.Tick + ".");
-                        continue;
-                    }
-
-                    foreach (ProjectedGameplayNote implicitNode in
-                        implicitNodes.Where(node => node.Pulse == note.Pulse))
-                    {
-                        implicitNode.Kind = GameplayPreviewNoteKind.Basic;
-                        implicitNode.IsImplicitChainNode = false;
-                    }
-                    open = false;
+                    // Explicit waypoint: nothing to absorb or hand back here.
                     continue;
                 }
 
-                if (open && note.Kind == GameplayPreviewNoteKind.Basic &&
-                    note.Pulse > headPulse)
+                if (openSpan >= 0 && note.Kind == GameplayPreviewNoteKind.Basic &&
+                    note.Pulse > heads[openSpan].Pulse &&
+                    note.Pulse <= spanEnd[openSpan] &&
+                    !spanNodePulses[openSpan].Contains(note.Pulse))
                 {
                     note.Kind = GameplayPreviewNoteKind.ChainNode;
                     note.IsImplicitChainNode = true;
-                    implicitNodes.Add(note);
                 }
             }
 
-            if (open)
+            for (int i = 0; i < heads.Count; i++)
             {
-                diagnostics.Add("Unclosed chain beginning at pulse " + headPulse + ".");
+                if (spanEnd[i] == heads[i].Pulse)
+                {
+                    diagnostics.Add(
+                        "Unclosed chain beginning at pulse " + heads[i].Pulse + ".");
+                }
             }
         }
 
@@ -959,13 +1135,19 @@ namespace DJMaxEditor.Preview
             IList<string> diagnostics)
         {
             var openByLane = new bool[4];
+            // The legacy dialect tags the single closing tick with Repeat/RepeatHold, while a
+            // .tech series names every post-head marker Repeat (a held RepeatHold may sit among
+            // them). An end marker therefore joins the series but does not close it; only a fresh
+            // head or a non-repeat note on the same lane does.
+            var endSeenByLane = new bool[4];
             foreach (ProjectedGameplayNote note in notes)
             {
                 if (note.Kind == GameplayPreviewNoteKind.RepeatHead ||
                     note.Kind == GameplayPreviewNoteKind.RepeatHeadHold)
                 {
-                    if (openByLane[note.Lane])
+                    if (openByLane[note.Lane] && !endSeenByLane[note.Lane])
                     {
+                        // Legacy intermediate ticks keep the head attribute until the end marker.
                         note.Kind = note.Kind == GameplayPreviewNoteKind.RepeatHeadHold
                             ? GameplayPreviewNoteKind.RepeatHold
                             : GameplayPreviewNoteKind.Repeat;
@@ -973,18 +1155,30 @@ namespace DJMaxEditor.Preview
                     else
                     {
                         openByLane[note.Lane] = true;
+                        endSeenByLane[note.Lane] = false;
                     }
                 }
                 else if (note.Kind == GameplayPreviewNoteKind.Repeat ||
                     note.Kind == GameplayPreviewNoteKind.RepeatHold)
                 {
-                    if (!openByLane[note.Lane])
+                    if (openByLane[note.Lane])
+                    {
+                        endSeenByLane[note.Lane] = true;
+                    }
+                    else
                     {
                         diagnostics.Add(
                             "Orphan repeat node on lane " + note.Lane +
                             " at tick " + note.Source.Tick + ".");
                     }
+                }
+                else if (note.Lane >= 0 && note.Lane < openByLane.Length &&
+                    openByLane[note.Lane])
+                {
+                    // A repeat never leaves its lane, so only a same-lane note closes the series;
+                    // anything happening in other lanes is irrelevant.
                     openByLane[note.Lane] = false;
+                    endSeenByLane[note.Lane] = false;
                 }
             }
 
@@ -1042,20 +1236,26 @@ namespace DJMaxEditor.Preview
             return lane3 ? 4 : 3;
         }
 
-        private static void PlaceTechnikaNote(ProjectedGameplayNote note, int laneCount)
+        private static void PlaceTechnikaNote(
+            ProjectedGameplayNote note,
+            int laneCount,
+            int beatsPerScan,
+            TechnikaScrollDirection scrollDirection)
         {
-            double floatScan = note.Pulse / (double)(PulsesPerBeat * DefaultBeatsPerScan);
+            double pulsesPerScan = PulsesPerBeat * Math.Max(1, beatsPerScan);
+            double floatScan = note.Pulse / pulsesPerScan;
             int intScan = (int)Math.Floor(floatScan);
             if (note.EndOfScan &&
                 note.Kind != GameplayPreviewNoteKind.Drag &&
                 note.Pulse > 0 &&
-                note.Pulse % (PulsesPerBeat * DefaultBeatsPerScan) == 0)
+                note.Pulse % pulsesPerScan == 0)
             {
                 intScan--;
             }
 
             double relative = floatScan - intScan;
             bool top = (intScan & 1) == 1;
+            bool rightward = TechnikaSweepRightward(top, scrollDirection);
             double travel = (ScanFieldRight - ScanFieldLeft) * relative;
             double laneHeight = (1.0 - 0.05 - 0.05) / laneCount;
             double localY = 0.05 + laneHeight * (note.Lane + 0.5);
@@ -1064,11 +1264,13 @@ namespace DJMaxEditor.Preview
             note.RelativeScan = relative;
             note.IsTopHalf = top;
 
-            // Both halves sweep the same rectangle - the upper one left to right, the lower one
-            // right to left - so the lower half is the same window run backwards, not the upper
-            // half's window reflected. See ScanFieldLeft: the field is 7 px left of centre, so
-            // reflecting it (1 - x) would put every lower-half note 7 px off the arcade's.
-            note.X = top ? ScanFieldLeft + travel : ScanFieldRight - travel;
+            // Both halves sweep the same rectangle; under the clockwise default the upper one
+            // runs left to right and the lower one right to left, so the lower half is the same
+            // window run backwards, not the upper half's window reflected. See ScanFieldLeft:
+            // the field is 7 px left of centre, so reflecting it (1 - x) would put every
+            // leftward-sweeping note 7 px off the arcade's. The scroll effector only changes
+            // which way that run goes, which TechnikaSweepRightward answers for all four modes.
+            note.X = rightward ? ScanFieldLeft + travel : ScanFieldRight - travel;
             note.Y = top ? localY / 2.0 : 0.5 + localY / 2.0;
         }
     }

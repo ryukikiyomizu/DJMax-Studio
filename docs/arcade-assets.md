@@ -53,8 +53,11 @@ was wrong about both).
 
 ## Fallbacks
 
-- No TECHNIKA folder → the packaged vector glyphs in `Preview/Notes/` draw the notes, and the
-  hit burst is the renderer's own flash. The panel header reads the packaged label.
+- No TECHNIKA folder → the repository's own arcade strips (the shared `Timeline/Notes/`
+  resources the editor timeline draws, sliced the same way a local extraction would be) draw
+  the heads and the hold/drag/repeat trails; the run connecting lines, the actively-held trail
+  variants, the approach ring and the hit burst keep their vector fallbacks. The panel header
+  reads the packaged label.
 - No RESPECT V gear → `RespectPlayfieldView` draws the same scenes as flat plates in the same
   hues (header reads `RE-DERIVED GEAR` instead of `SHINO-TOKUU GEAR`).
 

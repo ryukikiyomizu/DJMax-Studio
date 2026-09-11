@@ -9,12 +9,14 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.Diagnostics;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
 using DJMaxEditor.Files.FormatDetection;
+using DJMaxEditor.Files.Tech;
 using DJMaxEditor.Preview;
 using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Design;
@@ -193,6 +195,8 @@ namespace DJMaxEditor.Studio.Shell
             _settings = _settingsStore.Load();
 
             InitializeComponent();
+
+            LoadPaletteIcons();
 
             _canvas.ViewModel = _viewModel;
             _volumeLane.ViewModel = _viewModel;
@@ -468,6 +472,7 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.ShowNoteLabels = timeline.ShowNoteLabels;
             AssetsToggle.IsChecked = timeline.ShowNoteArt;
             _canvas.ShowNoteAssets = timeline.ShowNoteArt;
+            _canvas.InverseScrolling = timeline.InverseScrolling;
 
             GridDivision division = GridDivision.FromDenominator(timeline.GridDenominator);
             if (division != null)
@@ -865,6 +870,99 @@ namespace DJMaxEditor.Studio.Shell
         // Document
         // ===================================================================================
 
+        /// <summary>
+        /// The open-time chooser for a multi-difficulty track.tech. Returns the selected
+        /// pattern slot, or null when the user cancels. Double-clicking a row opens it.
+        /// </summary>
+        private int? ChooseTechPattern(IList<TechPatternInfo> patterns, string fileName)
+        {
+            var dialog = new Window
+            {
+                Title = "Open difficulty",
+                Width = 430,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Margin = new Thickness(0)
+            };
+
+            var root = new StackPanel { Margin = new Thickness(18) };
+            root.Children.Add(new TextBlock
+            {
+                Text = fileName + " contains " + patterns.Count + " difficulties.",
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+            root.Children.Add(new TextBlock
+            {
+                Text = "Choose the pattern to edit. Every other difficulty stays in the " +
+                       "container and is written back unchanged when you save.",
+                Foreground = SystemColors.GrayTextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+
+            var list = new ListBox
+            {
+                Height = Math.Min(220, 26 + patterns.Count * 24),
+                SelectedIndex = 0
+            };
+            foreach (TechPatternInfo info in patterns)
+            {
+                list.Items.Add(string.Format(CultureInfo.CurrentCulture,
+                    "{0,-14}  Level {1,-3}  {2} lanes",
+                    string.IsNullOrEmpty(info.Name) ? "(unnamed)" : info.Name,
+                    info.Level,
+                    info.PlayableLanes));
+            }
+            list.MouseDoubleClick += (sender, args) =>
+            {
+                if (list.SelectedIndex >= 0)
+                {
+                    dialog.DialogResult = true;
+                }
+            };
+            root.Children.Add(list);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                Width = 90,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsCancel = true
+            };
+            var openButton = new Button
+            {
+                Content = "Open",
+                Width = 90,
+                IsDefault = true
+            };
+            buttons.Children.Add(cancelButton);
+            buttons.Children.Add(openButton);
+            root.Children.Add(buttons);
+
+            int? chosen = null;
+            openButton.Click += (sender, args) =>
+            {
+                if (list.SelectedIndex >= 0)
+                {
+                    chosen = list.SelectedIndex;
+                    dialog.DialogResult = true;
+                }
+            };
+            dialog.Content = root;
+
+            return dialog.ShowDialog() == true ? chosen : null;
+        }
+
         private async System.Threading.Tasks.Task OpenPathAsync(string path)
         {
             string error;
@@ -904,12 +1002,27 @@ namespace DJMaxEditor.Studio.Shell
                 fromDecrypted = true;
             }
 
+            // A track.tech packs one pattern per difficulty; ask which one to open when the
+            // container holds several. The other slots are retained on save regardless.
+            int patternIndex = 0;
+            IList<TechPatternInfo> patterns = _files.EnumeratePatterns(probe);
+            if (patterns != null && patterns.Count > 1)
+            {
+                int? chosen = ChooseTechPattern(patterns, probe.FileName);
+                if (!chosen.HasValue)
+                {
+                    StatusHint.Text = string.Empty;
+                    return;
+                }
+                patternIndex = chosen.Value;
+            }
+
             StatusHint.Text = "Loading " + probe.FileName + "...";
             Cursor = Cursors.AppStarting;
             ChartOpenResult result;
             try
             {
-                result = await _files.OpenAsync(probe, fromDecrypted);
+                result = await _files.OpenAsync(probe, fromDecrypted, patternIndex);
             }
             finally
             {
@@ -1695,6 +1808,45 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// Slices the resting still (strip frame 9 - the same frame the timeline draws with
+        /// <c>StillPhase</c>) out of each arcade strip and puts it on its palette button. Done
+        /// here rather than in XAML so a missing resource can fail one button quietly instead of
+        /// throwing a BAML parse exception that stops the whole window loading.
+        /// </summary>
+        private void LoadPaletteIcons()
+        {
+            PaletteIconTap.Source = PaletteNoteFrame("Note_Basic", 90, 9);
+            PaletteIconDrag.Source = PaletteNoteFrame("longnote", 116, 9);
+            PaletteIconChain.Source = PaletteNoteFrame("notepressstart", 116, 9);
+            PaletteIconChainNode.Source = PaletteNoteFrame("notepressnote", 76, 9);
+            PaletteIconHold.Source = PaletteNoteFrame("longnotehold", 90, 9);
+            PaletteIconRepeatHold.Source = PaletteNoteFrame("noterepeat", 90, 9);
+            PaletteIconRepeat.Source = PaletteNoteFrame("noterepeat", 90, 9);
+            PaletteIconRepeatRoll.Source = PaletteNoteFrame("repeattail", 90, 9);
+        }
+
+        private static ImageSource PaletteNoteFrame(string sheet, int frameSize, int frameIndex)
+        {
+            try
+            {
+                BitmapImage strip = new BitmapImage(new Uri(
+                    "pack://application:,,,/DJMaxEditor.Studio;component/Timeline/Notes/" +
+                    sheet + ".png",
+                    UriKind.Absolute));
+                CroppedBitmap frame = new CroppedBitmap(
+                    strip, new Int32Rect(frameIndex * frameSize, 0, frameSize, frameSize));
+                frame.Freeze();
+                return frame;
+            }
+            catch (Exception ex)
+            {
+                // One bad or unshipped strip hides just that icon; the text label remains.
+                DiagnosticLog.Exception("shell.palette", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
         /// One of the TECHNIKA note-kind buttons. The pick lives on the canvas (attribute plus
         /// whether the note starts long), the buttons are exclusive, and picking one arms the
         /// Addition tool: a palette that changed art but not the tool would place whatever the
@@ -1965,7 +2117,41 @@ namespace DJMaxEditor.Studio.Shell
                     OnZoomOut(this, null);
                     e.Handled = true;
                     break;
+
+                // Drag-move by keyboard: arrows move the selection one lane and one grid step,
+                // in screen directions regardless of orientation or inverse scroll. A slider,
+                // combo or text box with focus keeps the keys for its own use.
+                case Key.Left:
+                case Key.Right:
+                case Key.Up:
+                case Key.Down:
+                    if (!ArrowKeyWantedByFocusedControl())
+                    {
+                        int x = e.Key == Key.Left ? -1 : (e.Key == Key.Right ? 1 : 0);
+                        int y = e.Key == Key.Up ? -1 : (e.Key == Key.Down ? 1 : 0);
+                        e.Handled = _canvas.NudgeSelection(x, y);
+                    }
+                    break;
             }
+        }
+
+        /// <summary>
+        /// True when the focused control consumes the arrow keys itself (a slider steps, a combo
+        /// or list moves its selection, a text box moves the caret). Nudging notes must not steal
+        /// the keys there.
+        /// </summary>
+        private static bool ArrowKeyWantedByFocusedControl()
+        {
+            if (Keyboard.FocusedElement is System.Windows.DependencyObject focused)
+            {
+                if (focused is System.Windows.Controls.TextBox ||
+                    focused is System.Windows.Controls.Primitives.RangeBase ||
+                    focused is System.Windows.Controls.Primitives.Selector)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void SetTool(ToolMode tool)
@@ -2686,6 +2872,88 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// The scroll-direction effector: it moves every note inside its scan, so honouring it
+        /// means rebuilding the TECHNIKA projection rather than mirroring the finished frame.
+        /// The view and its other effectors survive the rebind, since it is the same instance.
+        /// </summary>
+        private void OnTechnikaScrollChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded || _document == null || _chartFormat == null)
+            {
+                return;
+            }
+            if (_chartFormat != ChartFormat.PtffDecrypted &&
+                _chartFormat != ChartFormat.PtffEncryptedTechnika &&
+                _chartFormat != ChartFormat.TechmaniaTrack)
+            {
+                return;
+            }
+            BindPlayfield(_document.Model);
+        }
+
+        private void OnTechnikaFaderChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded)
+            {
+                return;
+            }
+            // The combo's item order matches the enum's declaration order: Off, FadeIn,
+            // FadeIn2, FadeOut, FadeOut2.
+            int mode = TechnikaFaderCombo.SelectedIndex;
+            if (mode >= 0)
+            {
+                _playfield.NoteFader = (TechnikaNoteFader)mode;
+            }
+        }
+
+        private void OnTechnikaLineChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded)
+            {
+                return;
+            }
+            // Item order matches the enum: On, Blink, Blink2, Blind.
+            int mode = TechnikaLineCombo.SelectedIndex;
+            if (mode >= 0)
+            {
+                _playfield.LineEffector = (TechnikaLineEffector)mode;
+            }
+        }
+
+        private void OnTechnikaGuidesChanged(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded)
+            {
+                return;
+            }
+            _playfield.ShowMeasurementGuides = TechnikaGuidesCheck.IsChecked == true;
+        }
+
+        /// <summary>The scroll-direction effector selected in the playfield strip.</summary>
+        private TechnikaScrollDirection SelectedTechnikaScroll()
+        {
+            switch (TechnikaScrollCombo.SelectedIndex)
+            {
+                case 1: return TechnikaScrollDirection.CounterClockwise;
+                case 2: return TechnikaScrollDirection.AllLeft;
+                case 3: return TechnikaScrollDirection.AllRight;
+                default: return TechnikaScrollDirection.Clockwise;
+            }
+        }
+
+        /// <summary>The arcade effector code shown in the panel status for the bound direction.</summary>
+        private static string TechnikaScrollLabel(TechnikaScrollDirection direction)
+        {
+            switch (direction)
+            {
+                case TechnikaScrollDirection.CounterClockwise: return "CCW";
+                case TechnikaScrollDirection.AllLeft: return "LL";
+                case TechnikaScrollDirection.AllRight: return "RR";
+                default: return "CW";
+            }
+        }
+
+        /// <summary>
         /// Per-format shell shape, settled once per adopted document. Three rules, all from real
         /// feature requests:
         ///
@@ -2715,7 +2983,8 @@ namespace DJMaxEditor.Studio.Shell
             _chartFormat = format;
 
             bool technika = format == ChartFormat.PtffDecrypted ||
-                format == ChartFormat.PtffEncryptedTechnika;
+                format == ChartFormat.PtffEncryptedTechnika ||
+                format == ChartFormat.TechmaniaTrack;
             bool respectV = format == ChartFormat.TrailerRespectV;
             bool bms = format == ChartFormat.BmsClassic || format == ChartFormat.Bmson;
 
@@ -2790,6 +3059,7 @@ namespace DJMaxEditor.Studio.Shell
                 _playfield.Unbind();
                 _respectPlayfield.Unbind();
                 _activePlayfield = null;
+                TechnikaEffectorStrip.Visibility = Visibility.Collapsed;
                 PlayfieldStatus.Text = "no chart loaded";
                 PlayfieldStatus.ToolTip = null;
                 return;
@@ -2800,7 +3070,11 @@ namespace DJMaxEditor.Studio.Shell
             try
             {
                 suggestion = GameplayPreviewProfileResolver.Suggest(model);
-                projection = GameplayPreviewProjector.Project(model, suggestion.Profile);
+                // The scroll effector moves every note inside its scan, so it feeds the
+                // projection rather than a renderer mirror; the Generic branch ignores it.
+                TechnikaScrollDirection scroll = SelectedTechnikaScroll();
+                projection = GameplayPreviewProjector.Project(
+                    model, suggestion.Profile, scroll);
             }
             catch (Exception ex)
             {
@@ -2810,6 +3084,7 @@ namespace DJMaxEditor.Studio.Shell
                 _playfield.Unbind();
                 _respectPlayfield.Unbind();
                 _activePlayfield = null;
+                TechnikaEffectorStrip.Visibility = Visibility.Collapsed;
                 PlayfieldStatus.Text = "projection failed";
                 PlayfieldStatus.ToolTip = ex.Message;
                 return;
@@ -2821,13 +3096,15 @@ namespace DJMaxEditor.Studio.Shell
                 HostPlayfield(_playfield);
                 _playfield.Bind(projection);
                 _activePlayfield = _playfield;
+                TechnikaEffectorStrip.Visibility = Visibility.Visible;
 
                 PlayfieldStatus.Text = string.Format(
                     CultureInfo.InvariantCulture,
-                    "{0} lanes  {1} notes  {2}",
+                    "{0} lanes  {1} notes  {2}  scroll {3}",
                     projection.LaneCount,
                     projection.Notes.Count,
-                    _playfield.SpriteSourceLabel);
+                    _playfield.SpriteSourceLabel,
+                    TechnikaScrollLabel(projection.ScrollDirection));
                 PlayfieldStatus.ToolTip = suggestion.RequiresConfirmation
                     ? projection.StatusLabel + "\n" + suggestion.Explanation
                     : projection.StatusLabel;
@@ -2836,11 +3113,12 @@ namespace DJMaxEditor.Studio.Shell
             {
                 // A RESPECT V chart: the Generic branch has already placed every note in the
                 // game's own 502-wide lane geometry; the Respect view draws that, in the game's
-                // gear where the extraction is on hand.
+                // gear where the extraction is on hand. Its gear has no TECHNIKA effectors.
                 _playfield.Unbind();
                 HostPlayfield(_respectPlayfield);
                 _respectPlayfield.Bind(projection);
                 _activePlayfield = _respectPlayfield;
+                TechnikaEffectorStrip.Visibility = Visibility.Collapsed;
 
                 PlayfieldStatus.Text = string.Format(
                     CultureInfo.InvariantCulture,
@@ -2858,6 +3136,7 @@ namespace DJMaxEditor.Studio.Shell
                 _respectPlayfield.Unbind();
                 _activePlayfield = null;
                 HostPlayfield(_playfield);
+                TechnikaEffectorStrip.Visibility = Visibility.Collapsed;
                 PlayfieldStatus.Text = "no gameplay preview for this format";
                 PlayfieldStatus.ToolTip = suggestion.Explanation;
                 return;

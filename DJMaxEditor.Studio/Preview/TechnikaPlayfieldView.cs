@@ -11,6 +11,37 @@ using DJMaxEditor.Studio.Timeline;
 namespace DJMaxEditor.Studio.Preview
 {
     /// <summary>
+    /// The arcade's note-series effector: whether notes fade in as the sweep approaches or fade
+    /// out before it reaches them. Fade In hides notes far ahead of the line, Fade Out hides
+    /// them right where the line reads, and the 2 variants do it over roughly half the distance.
+    /// The manuals name them FI / FI2 / FO / FO2; they are position-based, not speed-based, so
+    /// the renderer derives opacity from each note's distance in scans, the same number the
+    /// approach glow uses.
+    /// </summary>
+    internal enum TechnikaNoteFader
+    {
+        Off,
+        FadeIn,
+        FadeIn2,
+        FadeOut,
+        FadeOut2
+    }
+
+    /// <summary>
+    /// The arcade's timeline-series effector. Blink flashes the sweep on for about half (Blink)
+    /// or a quarter (Blink2) of the time; Blind removes it altogether, leaving memory play.
+    /// The duty is taken off the musical clock rather than a wall clock, the same contract the
+    /// note shine loop keeps, so a stopped transport holds a still, deterministic frame.
+    /// </summary>
+    internal enum TechnikaLineEffector
+    {
+        On,
+        Blink,
+        Blink2,
+        Blind
+    }
+
+    /// <summary>
     /// The TECHNIKA playfield, drawn at the arcade's own proportions.
     ///
     /// <para>
@@ -38,18 +69,20 @@ namespace DJMaxEditor.Studio.Preview
     internal sealed class TechnikaPlayfieldView : FrameworkElement, IGameplayPlayfieldView
     {
         /// <summary>
-        /// Beats in one scan: the projector's <c>DefaultBeatsPerScan</c>, and the unit the countdown
-        /// counts in. See <see cref="PulsesPerScan"/> for why it is duplicated here.
+        /// Beats in one scan for the bound chart. Real TECHNIKA .pt charts scan four beats;
+        /// a TECHMANIA .tech declares its own length, so this reads the projection rather
+        /// than assuming. Falls back to the four-beat default before a projection is bound.
         /// </summary>
-        private const double BeatsPerScan = 4.0;
+        private double BeatsPerScan
+        {
+            get { return _projection != null ? _projection.BeatsPerScan : 4.0; }
+        }
 
-        /// <summary>
-        /// Pulses in one scan: <c>PulsesPerBeat * DefaultBeatsPerScan</c> from the projector.
-        /// Duplicated rather than exposed because it is the projector's private calibration, and
-        /// widening its API to share one constant would be the worse trade. If the projector ever
-        /// gains a per-chart scan length, this becomes a property read off the projection.
-        /// </summary>
-        private const double PulsesPerScan = 240.0 * BeatsPerScan;
+        /// <summary>Pulses in one scan: <c>PulsesPerBeat</c> (240) times <see cref="BeatsPerScan"/>.</summary>
+        private double PulsesPerScan
+        {
+            get { return 240.0 * BeatsPerScan; }
+        }
 
         /// <summary>
         /// Opacity of a note that belongs to the next scan and has not been handed over yet.
@@ -74,7 +107,9 @@ namespace DJMaxEditor.Studio.Preview
         /// rendered frame - which the pixel tests diff against fixed baselines.
         /// </para>
         /// </summary>
-        private const double ShineLoopsPerScan = 4.0;
+        /// <summary>Shine loops per scan - one per beat, so this equals the chart's beats per
+        /// scan (4 on standard charts, 2 on half-scan charts).</summary>
+        private double ShineLoopsPerScan { get { return BeatsPerScan; } }
 
         /// <summary>
         /// Phase at which the next scan's notes go Active and its scanline appears. The system
@@ -169,6 +204,9 @@ namespace DJMaxEditor.Studio.Preview
 
         private bool _showGuides;
 
+        private TechnikaNoteFader _noteFader = TechnikaNoteFader.Off;
+        private TechnikaLineEffector _lineEffector = TechnikaLineEffector.On;
+
         private GameplayPreviewProjection _projection;
         private GameplayPreviewFrame _frame;
         private TechnikaPlayfieldFit _fit;
@@ -241,6 +279,43 @@ namespace DJMaxEditor.Studio.Preview
                 _showGuides = value;
                 _chromeLaneCount = -1;
                 InvalidateVisual();
+            }
+        }
+
+        /// <summary>
+        /// The note-series effector (fade in / fade out). Renderer state only: the arcade
+        /// computes visibility from where the sweep is, which this view knows per note, so this
+        /// never rebuilds the projection the way the scroll direction does.
+        /// </summary>
+        public TechnikaNoteFader NoteFader
+        {
+            get { return _noteFader; }
+            set
+            {
+                if (_noteFader == value)
+                {
+                    return;
+                }
+                _noteFader = value;
+                RedrawFieldIfReady();
+            }
+        }
+
+        /// <summary>
+        /// The timeline-series effector (blink / blind). Flashing is driven from the frame's
+        /// phase, so changing this only repaints the field layer.
+        /// </summary>
+        public TechnikaLineEffector LineEffector
+        {
+            get { return _lineEffector; }
+            set
+            {
+                if (_lineEffector == value)
+                {
+                    return;
+                }
+                _lineEffector = value;
+                RedrawFieldIfReady();
             }
         }
 
@@ -775,13 +850,29 @@ namespace DJMaxEditor.Studio.Preview
 
         private void DrawScanlines(DrawingContext dc)
         {
+            // Blind draws no sweep at all; Blink gates it on the musical phase. Both lines in a
+            // handover share that phase, so they flash together rather than independently.
+            if (_lineEffector == TechnikaLineEffector.Blind)
+            {
+                return;
+            }
+            bool visible = LineVisibleAt(_frame.CurrentPhase);
+            if (!visible && _frame.CurrentPhase < HandoverPhase)
+            {
+                return;
+            }
+
             bool currentIsTop = (_frame.CurrentIntScan & 1) == 1;
-            DrawScanline(dc, currentIsTop, _frame.CurrentPhase);
+            if (visible)
+            {
+                DrawScanline(dc, currentIsTop, _frame.CurrentPhase);
+            }
 
             // During the handover the arcade shows both: the outgoing scan finishing its sweep
             // and the incoming one already parked at its start. The projector flips note state at
             // the same phase, so this is the visual half of one rule, not a second one.
-            if (_frame.CurrentPhase >= HandoverPhase)
+            if (_frame.CurrentPhase >= HandoverPhase &&
+                LineVisibleAt(0.0))
             {
                 DrawScanline(dc, !currentIsTop, 0.0);
             }
@@ -789,18 +880,19 @@ namespace DJMaxEditor.Studio.Preview
 
         private void DrawScanline(DrawingContext dc, bool isTopHalf, double phase)
         {
-            // The hit point, from the same margins the projector places notes with. Both halves
-            // sweep the same rectangle - the lower one backwards - exactly as PlaceTechnikaNote
-            // runs it backwards rather than reflecting it.
+            // The hit point, from the same margins the projector places notes with. Every half
+            // sweeps the same rectangle, its direction answered by the scroll effector - under
+            // the clockwise default that is left to right on top and right to left below.
+            bool rightward = SweepRightward(isTopHalf);
             double left = TechnikaPlayfieldMetrics.NoteMarginLeft;
             double right = TechnikaPlayfieldMetrics.NoteMarginRight;
             double travel = (right - left) * phase;
-            double normalizedX = isTopHalf ? left + travel : right - travel;
+            double normalizedX = rightward ? left + travel : right - travel;
             double edgeX = normalizedX * TechnikaPlayfieldMetrics.NativeWidth;
 
             // Place the quad so its bright edge lands on the hit point. The wash trails behind,
             // which is why the offset flips with the sweep direction.
-            double quadLeft = isTopHalf
+            double quadLeft = rightward
                 ? edgeX - TechnikaPlayfieldMetrics.ScanlineLeadingEdgeOffset
                 : edgeX - (TechnikaPlayfieldMetrics.ScanlineWidth -
                     TechnikaPlayfieldMetrics.ScanlineLeadingEdgeOffset);
@@ -818,7 +910,7 @@ namespace DJMaxEditor.Studio.Preview
             Rect half = _fit.Half(isTopHalf);
             dc.PushClip(new RectangleGeometry(half));
             dc.DrawRectangle(
-                isTopHalf ? _theme.ScanlineForward : _theme.ScanlineReverse, null, quad);
+                rightward ? _theme.ScanlineForward : _theme.ScanlineReverse, null, quad);
             double edge = _fit.X(edgeX);
             dc.DrawLine(_theme.ScanlineCore,
                 new Point(edge, half.Top), new Point(edge, half.Bottom));
@@ -851,9 +943,16 @@ namespace DJMaxEditor.Studio.Preview
             double headSize = Math.Max(4.0, size * _sprites.ScaleFor(note.Kind));
 
             bool prepare = note.State == GameplayPreviewNoteState.Prepare;
-            if (prepare)
+            double opacity = (prepare ? PrepareOpacity : 1.0) * FaderOpacityFor(note);
+            if (opacity <= 0.01)
             {
-                dc.PushOpacity(PrepareOpacity);
+                // Fully faded by the note effector: no head, trail or approach - the arcade's
+                // Fade Out reads as empty field at the line, not as a stack of zero-alpha art.
+                return;
+            }
+            if (opacity < 0.999)
+            {
+                dc.PushOpacity(opacity);
             }
 
             DrawTrail(dc, note, size, brushes);
@@ -904,7 +1003,7 @@ namespace DJMaxEditor.Studio.Preview
                 }
             }
 
-            if (prepare)
+            if (opacity < 0.999)
             {
                 dc.Pop();
             }
@@ -969,13 +1068,17 @@ namespace DJMaxEditor.Studio.Preview
             }
 
             double offset = note.ApproachScanDistance * scanTravel / glowNative;
-            ImageSource frame = ring.Sweep(note.IsTopHalf ? offset : -offset);
+            // The light enters from the edge the sweep comes from, so its sign and the mirror
+            // follow the sweep's direction rather than the half - an ACW/LL/RR field otherwise
+            // drags the glow in from the wrong side.
+            bool rightward = SweepRightward(note.IsTopHalf);
+            ImageSource frame = ring.Sweep(rightward ? offset : -offset);
             if (frame == null)
             {
                 return;
             }
 
-            bool mirrored = !note.IsTopHalf;
+            bool mirrored = !rightward;
             if (mirrored)
             {
                 dc.PushTransform(new ScaleTransform(-1.0, 1.0, center.X, center.Y));
@@ -1259,9 +1362,14 @@ namespace DJMaxEditor.Studio.Preview
                 TechnikaPlayfieldMetrics.NoteFrameSize(laneCount)));
 
             bool prepare = from.State == GameplayPreviewNoteState.Prepare;
-            if (prepare)
+            double opacity = (prepare ? PrepareOpacity : 1.0) * FaderOpacityFor(from);
+            if (opacity <= 0.01)
             {
-                dc.PushOpacity(PrepareOpacity);
+                return;
+            }
+            if (opacity < 0.999)
+            {
+                dc.PushOpacity(opacity);
             }
 
             if (LinkFamily(from.Kind) == ChainFamily)
@@ -1279,7 +1387,7 @@ namespace DJMaxEditor.Studio.Preview
                     Math.Abs(b.X - a.X), 0.0, size);
             }
 
-            if (prepare)
+            if (opacity < 0.999)
             {
                 dc.Pop();
             }
@@ -1387,7 +1495,12 @@ namespace DJMaxEditor.Studio.Preview
             dc.PushTransform(new MatrixTransform(placement));
             if (line == null)
             {
-                dc.DrawRectangle(_theme.NoteFor(kind).Trail, null, new Rect(0, 0, length, height));
+                // Chain connectors are yellow even though chain heads are green: the arcade's
+                // line matches the yellow node rings. Repeat connectors reuse the purple trail.
+                Brush fallback = LinkFamily(kind) == ChainFamily
+                    ? _theme.ChainRunLine
+                    : _theme.NoteFor(kind).Trail;
+                dc.DrawRectangle(fallback, null, new Rect(0, 0, length, height));
             }
             else
             {
@@ -1550,14 +1663,17 @@ namespace DJMaxEditor.Studio.Preview
             bool withCap)
         {
             bool top = (scan & 1) == 1;
+            // Placement is PlaceTechnikaNote run over a span, so it answers direction from the
+            // same effector rule the note heads do rather than assuming the clockwise default.
+            bool rightward = SweepRightward(top);
             double left = TechnikaPlayfieldMetrics.NoteMarginLeft;
             double right = TechnikaPlayfieldMetrics.NoteMarginRight;
             double fromFraction = start - scan;
             double toFraction = end - scan;
-            double fromX = top
+            double fromX = rightward
                 ? left + ((right - left) * fromFraction)
                 : right - ((right - left) * fromFraction);
-            double toX = top
+            double toX = rightward
                 ? left + ((right - left) * toFraction)
                 : right - ((right - left) * toFraction);
 
@@ -1580,9 +1696,9 @@ namespace DJMaxEditor.Studio.Preview
             TechnikaNoteSprite cap = _sprites.TrailCap(note.Kind, ongoing);
             if (cap == null)
             {
-                // No art in the loaded set - the packaged glyphs have no cap - so a themed bar
-                // spans the segment at lower fidelity, which is what the trail drew for every
-                // kind before.
+                // No cap in the local extraction or the packaged sheets - only the actively-held
+                // trail variants ship nowhere - so a themed bar spans the segment at lower
+                // fidelity, which is what the trail drew for every kind before.
                 double flat = size * 0.42;
                 double x = Math.Min(from.X, to.X);
                 dc.DrawRectangle(
@@ -1640,6 +1756,90 @@ namespace DJMaxEditor.Studio.Preview
         private static double Snap(double value)
         {
             return Math.Round(value) + 0.5;
+        }
+
+        /// <summary>
+        /// Repaints the note layer when an effector changes outside the tick pump - while the
+        /// transport is stopped <c>Sync</c> is not being called, and without this the new
+        /// effector would not be visible until playback moved.
+        /// </summary>
+        private void RedrawFieldIfReady()
+        {
+            // _fit is a struct whose default scale is zero, so IsUsable is the ready test.
+            if (_fit.IsUsable && HasPlayfield && _frame != null)
+            {
+                RedrawField();
+            }
+        }
+
+        /// <summary>Which way the sweep travels over the named half under the bound effector.</summary>
+        private bool SweepRightward(bool isTopHalf)
+        {
+            TechnikaScrollDirection direction = _projection == null
+                ? TechnikaScrollDirection.Clockwise
+                : _projection.ScrollDirection;
+            return GameplayPreviewProjector.TechnikaSweepRightward(isTopHalf, direction);
+        }
+
+        /// <summary>
+        /// The fader's opacity for one note, read off how many scans ahead of the sweep its head
+        /// sits (<see cref="ProjectedGameplayNote.ApproachScanDistance"/> negated).
+        ///
+        /// <para>
+        /// Fade In is invisible far ahead and solid at the line; Fade Out is the inverse. The
+        /// level-1 variants complete the fade across most of a scan (0.9), level 2 across about
+        /// half one (0.45) - the arcade calls 2 the "stronger" effector purely because the note
+        /// changes over a shorter distance. Notes already behind the sweep (a hold's played
+        /// body) are held solid under Fade In and gone under Fade Out, which is what applying
+        /// the same ramp past its ends naturally answers.
+        /// </para>
+        /// </summary>
+        private double FaderOpacityFor(ProjectedGameplayNote note)
+        {
+            if (_noteFader == TechnikaNoteFader.Off)
+            {
+                return 1.0;
+            }
+
+            double ahead = -note.ApproachScanDistance;
+            double window = _noteFader == TechnikaNoteFader.FadeIn2 ||
+                _noteFader == TechnikaNoteFader.FadeOut2
+                ? 0.45
+                : 0.9;
+
+            double alpha;
+            if (_noteFader == TechnikaNoteFader.FadeIn ||
+                _noteFader == TechnikaNoteFader.FadeIn2)
+            {
+                alpha = (window - ahead) / window;
+            }
+            else
+            {
+                alpha = ahead / window;
+            }
+            return Math.Max(0.0, Math.Min(1.0, alpha));
+        }
+
+        /// <summary>
+        /// Whether the sweep is visible at a scan phase under Blink / Blind. A half-scan blink
+        /// period gives Blink a 50% duty and Blink2 a 25% duty, matching the arcade timings; the
+        /// incoming sweep during a handover shares the phase, so the two lines flash together.
+        /// </summary>
+        private bool LineVisibleAt(double phase)
+        {
+            if (_lineEffector == TechnikaLineEffector.Blind)
+            {
+                return false;
+            }
+            if (_lineEffector == TechnikaLineEffector.On)
+            {
+                return true;
+            }
+
+            const double Period = 0.5;
+            double duty = _lineEffector == TechnikaLineEffector.Blink2 ? 0.125 : 0.25;
+            double within = phase - Math.Floor(phase / Period) * Period;
+            return within < duty;
         }
     }
 }

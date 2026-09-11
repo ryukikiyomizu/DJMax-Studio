@@ -555,10 +555,13 @@ namespace DJMaxEditor.Studio.Preview
     ///
     /// <para>
     /// Two sources, in order. First an optional local folder the owner can drop their own
-    /// extracted arcade sprites into; if that yields nothing, the six glyphs already in this
-    /// repository (<c>DJMaxEditor\Resources\TechmaniaNotes</c>, linked into this project as WPF
-    /// resources) are used. The fallback is not a placeholder - it is what the legacy preview has
-    /// always drawn - so a fresh clone gets real note art with no setup at all.
+    /// extracted arcade sprites into; if that yields nothing, the arcade sheets already in
+    /// this repository for the editor timeline (<c>Shared\Resources</c>, linked into this
+    /// project under <c>Timeline/Notes</c> as WPF resources) are sliced the same way. The
+    /// fallback is not a placeholder - it is the arcade's own animation strips, heads and
+    /// trails included - so a fresh clone gets real note art with no setup at all. Only the
+    /// run lines, actively-held trail variants, approach ring and hit burst are absent and
+    /// keep their vector fallbacks.
     /// </para>
     ///
     /// <para>
@@ -612,25 +615,26 @@ namespace DJMaxEditor.Studio.Preview
 
 
         /// <summary>
-        /// Packaged glyph per note kind. Six files cover nine kinds because the held variants
-        /// share a head with their un-held counterparts - the tail is what distinguishes them,
-        /// and the renderer draws that itself.
+        /// Packaged glyph per note kind. These are the same arcade sheets the timeline draws,
+        /// linked under <c>Timeline/Notes</c> and reached by the arcade's own file names - so the
+        /// fallback is the real art rather than a stand-in glyph. That matters most for
+        /// <see cref="GameplayPreviewNoteKind.Drag"/>: the old six-glyph TechMania set had no
+        /// slide note at all and handed it the blue hold head, which made the preview report
+        /// every drag as a hold. The strips are sliced exactly as a local extraction would be.
         /// </summary>
         private static readonly Dictionary<GameplayPreviewNoteKind, string> PackagedGlyphs =
             new Dictionary<GameplayPreviewNoteKind, string>
             {
-                { GameplayPreviewNoteKind.Basic, "Basic" },
-                // Drag is a long gesture, not a tap - see ArcadeGlyphs - so the packaged set gives
-                // it the hold head rather than the tap it used to share.
-                { GameplayPreviewNoteKind.Drag, "HoldHead" },
-                { GameplayPreviewNoteKind.Generic, "Basic" },
-                { GameplayPreviewNoteKind.ChainHead, "ChainHead" },
-                { GameplayPreviewNoteKind.ChainNode, "ChainNode" },
-                { GameplayPreviewNoteKind.Hold, "HoldHead" },
-                { GameplayPreviewNoteKind.RepeatHead, "RepeatHead" },
-                { GameplayPreviewNoteKind.RepeatHeadHold, "RepeatHead" },
-                { GameplayPreviewNoteKind.Repeat, "Repeat" },
-                { GameplayPreviewNoteKind.RepeatHold, "Repeat" },
+                { GameplayPreviewNoteKind.Basic, "Note_Basic" },
+                { GameplayPreviewNoteKind.Drag, "longnote" },
+                { GameplayPreviewNoteKind.Generic, "Note_Basic" },
+                { GameplayPreviewNoteKind.ChainHead, "notepressstart" },
+                { GameplayPreviewNoteKind.ChainNode, "notepressnote" },
+                { GameplayPreviewNoteKind.Hold, "longnotehold" },
+                { GameplayPreviewNoteKind.RepeatHead, "noterepeat" },
+                { GameplayPreviewNoteKind.RepeatHeadHold, "noterepeat" },
+                { GameplayPreviewNoteKind.Repeat, "repeattail" },
+                { GameplayPreviewNoteKind.RepeatHold, "repeattail" },
             };
 
         /// <summary>
@@ -769,6 +773,13 @@ namespace DJMaxEditor.Studio.Preview
             new Dictionary<(GameplayPreviewNoteKind, bool), TechnikaNoteSprite>();
 
         private readonly string _localRoot;
+
+        /// <summary>
+        /// Packaged sheets keyed by file name, so the trail caps/bodies and run lines resolve
+        /// through one cache rather than reloading a strip for every kind that shares it.
+        /// </summary>
+        private readonly Dictionary<string, TechnikaNoteSprite> _packagedSheets =
+            new Dictionary<string, TechnikaNoteSprite>(StringComparer.OrdinalIgnoreCase);
 
         private TechnikaNoteSprite _ring;
         private bool _ringResolved;
@@ -959,13 +970,15 @@ namespace DJMaxEditor.Studio.Preview
 
             string name;
             TechnikaNoteSprite resolved = null;
+            // The actively-held variant has no packaged art of its own - it exists only in an
+            // owner's extracted set - so it never falls across to the packaged resting sheet.
             if (ongoing && held.TryGetValue(kind, out name))
             {
                 resolved = LoadLocal(name);
             }
             if (resolved == null && resting.TryGetValue(kind, out name))
             {
-                resolved = LoadLocal(name);
+                resolved = LoadLocal(name) ?? LoadPackagedSheet(name);
             }
             cache[(kind, ongoing)] = resolved;
             return resolved;
@@ -986,7 +999,7 @@ namespace DJMaxEditor.Studio.Preview
 
             string name;
             TechnikaNoteSprite resolved = ArcadeLines.TryGetValue(kind, out name)
-                ? LoadLocal(name)
+                ? LoadLocal(name) ?? LoadPackagedSheet(name)
                 : null;
             _lines[kind] = resolved;
             return resolved;
@@ -1216,28 +1229,59 @@ namespace DJMaxEditor.Studio.Preview
                 && Directory.GetFiles(directory, prefix + "_*.png").Length > 0;
         }
 
-        private static TechnikaNoteSprite LoadPackaged(GameplayPreviewNoteKind kind)
+        private TechnikaNoteSprite LoadPackaged(GameplayPreviewNoteKind kind)
         {
             string name;
-            if (!PackagedGlyphs.TryGetValue(kind, out name))
+            return PackagedGlyphs.TryGetValue(kind, out name)
+                ? LoadPackagedSheet(name)
+                : null;
+        }
+
+        /// <summary>
+        /// One packaged sheet by the arcade's own file name, from the same <c>Timeline/Notes</c>
+        /// resources the editor timeline draws - the glossy arcade sheets, not the flat fallback
+        /// glyphs the preview used to carry. Cached by name so a strip loads once no matter how
+        /// many kinds share it. Returns null for a sheet the repository does not ship (the run
+        /// lines and the actively-held trails), which leaves the caller on its themed fallback.
+        /// </summary>
+        private TechnikaNoteSprite LoadPackagedSheet(string name)
+        {
+            if (string.IsNullOrEmpty(name))
             {
                 return null;
             }
 
+            TechnikaNoteSprite cached;
+            if (_packagedSheets.TryGetValue(name, out cached))
+            {
+                return cached;
+            }
+
+            TechnikaNoteSprite sprite = null;
             try
             {
                 BitmapImage image = new BitmapImage(new Uri(
-                    "pack://application:,,,/DJMaxEditor.Studio;component/Preview/Notes/" +
+                    "pack://application:,,,/DJMaxEditor.Studio;component/Timeline/Notes/" +
                     name + ".png",
                     UriKind.Absolute));
                 image.Freeze();
-                return TechnikaNoteSprite.Slice(image);
+                sprite = TechnikaNoteSprite.Slice(image);
             }
             catch (IOException ex)
             {
                 DiagnosticLog.Exception("technika.sprite", ex);
             }
-            return null;
+            catch (NotSupportedException ex)
+            {
+                // A pack URI the resource table does not contain - an unshipped arcade sheet -
+                // comes back as an unsupported image rather than a missing file.
+                DiagnosticLog.Exception("technika.sprite", ex);
+            }
+
+            // Cache nulls too: a kind without a packaged line would otherwise rebuild and
+            // rethrow for every note of every frame.
+            _packagedSheets[name] = sprite;
+            return sprite;
         }
 
         private static string FindLocalRoot()

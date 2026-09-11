@@ -117,6 +117,9 @@ namespace DJMaxEditor.Studio.Timeline
 
         private VerticalTimelineViewModel _viewModel;
         private VerticalTimelineFrame _frame;
+        private TechnikaSeriesMap _series;
+        private PlayerData _seriesModel;
+        private long _seriesSignature;
         private TimelineOrientation _orientation = TimelineOrientation.Vertical;
         private TimelineSurfaceMap _map = TimelineSurfaceMap.VerticalIdentity;
 
@@ -131,6 +134,24 @@ namespace DJMaxEditor.Studio.Timeline
         private Point _panOrigin;
         private double _panOriginTick;
         private double _panOriginNativeX;
+
+        // Note-move gesture. Armed by a Select-tool press that landed on a note; the move only
+        // starts once the pointer crosses MoveThreshold, so a plain click (select + keysound
+        // preview) never nudges a note. Everything until then is the click/marquee path.
+        private bool _moveArmed;
+        private bool _moveActive;
+        private Point _moveStart;
+        private EventData _moveAnchor;
+        private int _moveAnchorColumn;
+        private int _moveAnchorTick;
+        private int _moveAppliedColumnShift;
+        private int _moveAppliedTickDelta;
+        private object _moveGroupKey;
+        private List<uint> _moveColumns;
+        private List<MoveEntry> _moveEntries;
+
+        /// <summary>Pointer travel that turns a press-on-note into a move drag, in device px.</summary>
+        private const double MoveThreshold = 3.0;
 
         public StudioVerticalCanvas()
         {
@@ -270,6 +291,14 @@ namespace DJMaxEditor.Studio.Timeline
         /// </para>
         /// </summary>
         public bool ShowNoteAssets { get; set; } = true;
+
+        /// <summary>
+        /// Walks the time and lane axes the other way under the wheel. Off is the osu! editor
+        /// contract <see cref="OnMouseWheel"/> documents (wheel up towards earlier bars); on
+        /// reverses the playhead scrub and the Shift+wheel column pan. Alt+wheel zoom and
+        /// Ctrl+wheel grid cycling keep their convention, since neither is a scroll.
+        /// </summary>
+        public bool InverseScrolling { get; set; }
 
         public VerticalTimelineViewModel ViewModel
         {
@@ -464,6 +493,7 @@ namespace DJMaxEditor.Studio.Timeline
             // is tall. Everything downstream - AutoFitColumns, OriginY, LastVisibleTick - then
             // measures the axis it is actually about.
             _frame = _viewModel.BuildFrame((int)_map.SurfaceWidth, (int)_map.SurfaceHeight);
+            EnsureSeriesKinds(_viewModel.Document);
 
             if (_bandDirty)
             {
@@ -601,6 +631,7 @@ namespace DJMaxEditor.Studio.Timeline
 
             DrawLaneFields(dc, frame, body);
             DrawGrid(dc, frame, body);
+            DrawSeriesLinks(dc, frame);
             DrawNotes(dc, frame);
 
             dc.Pop();
@@ -772,6 +803,132 @@ namespace DJMaxEditor.Studio.Timeline
             return Math.Abs(ratio - Math.Round(ratio)) < 0.0001;
         }
 
+        /// <summary>
+        /// The point a connector must start and finish on for one placed note: the lane centre
+        /// across lanes, and the onset edge along time - the exact point DrawNoteArt centres the
+        /// head glyph on, so the bar meets the middle of the note rather than its cell's middle.
+        /// </summary>
+        private static Point NoteAnchor(VerticalPlacedItem placed, double dir)
+        {
+            double onset = dir < 0 ? placed.Bottom : placed.Top;
+            return new Point(placed.Left + (placed.Width / 2.0), onset);
+        }
+
+        /// <summary>
+        /// The arcade's family connectors, painted under the heads: a yellow line from a chain
+        /// head through its joints to its closing node, and a purple line along a repeat series
+        /// from its head to its close. The heads alone do not carry this information - absorbed
+        /// chain joints are ordinary taps and repeat ticks are repeat heads in the model - so
+        /// without the bars a series reads as a scatter of unrelated notes. The gameplay preview
+        /// draws the same connectors; this keeps the two surfaces to one chart.
+        ///
+        /// <para>
+        /// Two stream geometries, two draw calls no matter how many runs there are, matching the
+        /// grid layer's batching.
+        /// </para>
+        /// </summary>
+        private void DrawSeriesLinks(DrawingContext dc, VerticalTimelineFrame frame)
+        {
+            if (_series == null || _series.Runs.Count == 0 ||
+                !VerticalTrackLayout.IsTechnikaMode(frame.Layout.Mode))
+            {
+                return;
+            }
+
+            var placedByEvent = new Dictionary<EventData, VerticalPlacedItem>();
+            for (int i = 0; i < frame.Items.Count; i++)
+            {
+                VerticalPlacedItem placed = frame.Items[i];
+                if (placed.Item != null && placed.Item.SourceEvent != null)
+                {
+                    placedByEvent[placed.Item.SourceEvent] = placed;
+                }
+            }
+            if (placedByEvent.Count == 0)
+            {
+                return;
+            }
+
+            // One thickness from the playable lane width: the connectors are a fixed fraction of
+            // the lane, the same way the playfield measures them, and all playable lanes share it.
+            double laneWidth = 0.0;
+            for (int i = 0; i < frame.Layout.Columns.Count; i++)
+            {
+                VerticalColumn column = frame.Layout.Columns[i];
+                if (IsPlayable(column))
+                {
+                    laneWidth = column.Width * frame.Coordinates.ColumnScale;
+                    break;
+                }
+            }
+            if (laneWidth <= 0.0)
+            {
+                return;
+            }
+            double thickness = Math.Max(2.0, laneWidth * 0.16);
+
+            StreamGeometry chainGeometry = new StreamGeometry();
+            StreamGeometry repeatGeometry = new StreamGeometry();
+            using (StreamGeometryContext chain = chainGeometry.Open())
+            using (StreamGeometryContext repeat = repeatGeometry.Open())
+            {
+                // Onset edge for the time coordinate, exactly where DrawNoteArt centres the
+                // head glyph - the cell centre sits half a head-thickness away from it, which
+                // was the connector visibly missing every note (most obvious on long heads).
+                double linkDir = frame.Coordinates.TimeDirection ==
+                    VerticalTimeDirection.Upward ? -1.0 : 1.0;
+
+                foreach (TechnikaSeriesRun run in _series.Runs)
+                {
+                    StreamGeometryContext target = run.IsChain ? chain : repeat;
+                    Point? previous = null;
+                    Point? first = null;
+                    foreach (EventData member in run.Members)
+                    {
+                        VerticalPlacedItem placed;
+                        if (!placedByEvent.TryGetValue(member, out placed))
+                        {
+                            continue;
+                        }
+                        Point centre = NoteAnchor(placed, linkDir);
+                        if (run.IsChain)
+                        {
+                            // A chain crosses lanes, so every visible member is a vertex and
+                            // joins the one before it.
+                            if (previous.HasValue)
+                            {
+                                target.BeginFigure(previous.Value, false, false);
+                                target.LineTo(centre, true, false);
+                            }
+                        }
+                        else if (!first.HasValue)
+                        {
+                            // A repeat series stays in one lane, so one bar from the first
+                            // visible member to the last is the whole line - and drawing it in
+                            // one piece is what keeps it visually straight.
+                            first = centre;
+                        }
+                        previous = centre;
+                    }
+                    if (!run.IsChain && first.HasValue && previous.HasValue &&
+                        previous.Value != first.Value)
+                    {
+                        target.BeginFigure(first.Value, false, false);
+                        target.LineTo(previous.Value, true, false);
+                    }
+                }
+            }
+            chainGeometry.Freeze();
+            repeatGeometry.Freeze();
+
+            // A wide soft underlay and a bright core, so the bars read on the dark field the way
+            // the arcade's own glow-line sheets do rather than as hairlines.
+            dc.DrawGeometry(null, _theme.SeriesLinkGlow(thickness * 2.2, true), chainGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkPen(thickness, true), chainGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkGlow(thickness * 2.2, false), repeatGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkPen(thickness, false), repeatGeometry);
+        }
+
         private void DrawNotes(DrawingContext dc, VerticalTimelineFrame frame)
         {
             System.Collections.ObjectModel.ReadOnlyCollection<VerticalPlacedItem> items = frame.Items;
@@ -875,6 +1032,62 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
+        /// Rebuilds the runs-aware note-kind map alongside the frame, unless the four playable
+        /// lanes have not changed since last time. The signature covers add, delete and move -
+        /// the edits that can change which notes a run absorbs - without a document version
+        /// counter to subscribe to.
+        /// </summary>
+        private void EnsureSeriesKinds(EditorDocumentContext document)
+        {
+            PlayerData model = document != null ? document.Model : null;
+            long signature = 0;
+            if (model != null && model.Tracks != null)
+            {
+                for (int lane = 0; lane < 4 && lane < model.Tracks.Count; lane++)
+                {
+                    TrackData track = model.Tracks.GetTrackAtIndex((uint)lane);
+                    if (track == null)
+                    {
+                        continue;
+                    }
+                    foreach (EventData evt in track.Events)
+                    {
+                        if (evt == null || evt.EventType != EventType.Note)
+                        {
+                            continue;
+                        }
+                        signature = (signature * 397) ^
+                            (evt.Tick * 31L + evt.Attribute * 7L + evt.Duration + lane);
+                    }
+                }
+            }
+
+            if (model == _seriesModel && signature == _seriesSignature && _series != null)
+            {
+                return;
+            }
+
+            _seriesModel = model;
+            _seriesSignature = signature;
+            _series = TechnikaSeriesClassifier.Build(model);
+        }
+
+        /// <summary>
+        /// The painted kind of one event: the runs-aware map for playable-lane notes, the
+        /// single-event classifier for anything it has no opinion about.
+        /// </summary>
+        private TechnikaNoteKind KindFor(EventData source)
+        {
+            TechnikaNoteKind kind;
+            if (source != null && _series != null &&
+                _series.Kinds.TryGetValue(source, out kind))
+            {
+                return kind;
+            }
+            return TechnikaNoteClassifier.Classify(source);
+        }
+
+        /// <summary>
         /// Draws one note as arcade art, and reports whether it did - false is the caller's signal
         /// to fall back to the rectangle.
         ///
@@ -898,8 +1111,7 @@ namespace DJMaxEditor.Studio.Timeline
                 return false;
             }
 
-            TimelineNoteArt art = sprites.For(
-                TechnikaNoteClassifier.Classify(placed.Item.SourceEvent));
+            TimelineNoteArt art = sprites.For(KindFor(placed.Item.SourceEvent));
             if (art == null)
             {
                 return false;
@@ -1245,7 +1457,9 @@ namespace DJMaxEditor.Studio.Timeline
             double y = coords.TickToY(snapped, frame.OriginTick);
             double left = coords.NativeXToScreen(hit.Column.NativeLeft, frame.OriginNativeX);
             double width = hit.Column.Width * coords.ColumnScale;
-            double height = Math.Max(_viewModel.MinimumNoteHeight, GridStepPixels());
+            // The rubber-band preview matches what a head note actually lands as: a constant
+            // thickness the zoom cannot change, or the grid step when that is larger.
+            double height = Math.Max(_viewModel.NoteHeadHeight, GridStepPixels());
 
             double top = coords.TimeDirection == VerticalTimeDirection.Upward ? y - height : y;
             return new Rect(Math.Round(left) + 0.5, Math.Round(top) + 0.5,
@@ -1256,7 +1470,7 @@ namespace DJMaxEditor.Studio.Timeline
         {
             if (_frame == null || Grid == null || Grid.IsFree)
             {
-                return _viewModel.MinimumNoteHeight;
+                return _viewModel.NoteHeadHeight;
             }
             return Grid.StepTicks(TicksPerMeasure()) * _frame.Coordinates.PixelsPerTick;
         }
@@ -1318,6 +1532,27 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             Point point = Surface(e);
+            bool additive = (Keyboard.Modifiers &
+                (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+            if (SurfacePress(point, additive))
+            {
+                CaptureMouse();
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// The body of a left press, in surface coordinates. Shared with the headless probe so
+        /// it can drive the exact gesture the mouse drives. Answers true when the press began
+        /// an owned drag (the caller captures the pointer); false for presses outside the body
+        /// (the tick ruler seeks instead).
+        /// </summary>
+        internal bool SurfacePress(Point point, bool additive)
+        {
+            if (_frame == null)
+            {
+                return false;
+            }
 
             // The tick ruler is a seek strip. Round-3 item 3 asked for exactly this: click the
             // ruler to jump the playhead.
@@ -1327,22 +1562,19 @@ namespace DJMaxEditor.Studio.Timeline
                 {
                     InvalidateOverlay();
                 }
-                e.Handled = true;
-                return;
+                return true;
             }
 
             if (point.Y < _frame.Coordinates.RulerHeight)
             {
-                return;
+                return false;
             }
 
             _dragOrigin = point;
             _dragging = true;
-            CaptureMouse();
 
-            bool additive = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
             HandleToolPress(point, additive);
-            e.Handled = true;
+            return true;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -1371,18 +1603,54 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             _hoverPoint = point;
-
-            if (_dragging && Tool == ToolMode.Select)
-            {
-                _marquee = new Rect(_dragOrigin, point);
-                DrawOverlay();
-                return;
-            }
+            SurfaceDrag(point);
 
             if (Tool == ToolMode.Addition)
             {
                 DrawOverlay();
             }
+        }
+
+        /// <summary>
+        /// The Select-tool part of a drag in progress, in surface coordinates: the note-move
+        /// gesture when a note was armed, the selection marquee otherwise. Shared with the
+        /// headless probe.
+        /// </summary>
+        internal void SurfaceDrag(Point point)
+        {
+            if (_dragging && Tool == ToolMode.Select)
+            {
+                if (_moveArmed)
+                {
+                    UpdateNoteMove(point);
+                    return;
+                }
+                _marquee = new Rect(_dragOrigin, point);
+                DrawOverlay();
+            }
+        }
+
+        /// <summary>Whether a press armed the note-move gesture. Test hook for the probe.</summary>
+        internal bool IsNoteMoveArmed { get { return _moveArmed; } }
+
+        /// <summary>Whether the armed move crossed the threshold and began applying. Probe hook.</summary>
+        internal bool IsNoteMoveActive { get { return _moveActive; } }
+
+        /// <summary>The release of an owned left-press drag, in surface space-free form.</summary>
+        internal void SurfaceRelease()
+        {
+            // A move gesture owns this press: no marquee selection is committed.
+            bool moved = _moveActive;
+            CancelMove();
+
+            if (!moved && _marquee.HasValue)
+            {
+                CommitMarquee(_marquee.Value);
+                _marquee = null;
+            }
+
+            _dragging = false;
+            DrawOverlay();
         }
 
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -1393,14 +1661,7 @@ namespace DJMaxEditor.Studio.Timeline
                 ReleaseMouseCapture();
             }
 
-            if (_marquee.HasValue)
-            {
-                CommitMarquee(_marquee.Value);
-                _marquee = null;
-            }
-
-            _dragging = false;
-            DrawOverlay();
+            SurfaceRelease();
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -1466,6 +1727,11 @@ namespace DJMaxEditor.Studio.Timeline
         /// A plain wheel *scroll* of the canvas is gone deliberately: scrolling the view while
         /// the playhead stayed put was exactly the gesture that lost the playhead off the bottom
         /// of the screen, and the middle-drag pan still covers free browsing.
+        /// <para>
+        /// <see cref="InverseScrolling"/> flips the two travel axes for hands that read wheel-up
+        /// as "forward through the document". It deliberately leaves zoom and grid cycling alone:
+        /// wheel-up zooming in is its own convention, not a scroll direction.
+        /// </para>
         /// </summary>
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
@@ -1477,6 +1743,7 @@ namespace DJMaxEditor.Studio.Timeline
 
             Point point = Surface(e);
             ModifierKeys modifiers = Keyboard.Modifiers;
+            int wheel = InverseScrolling ? -e.Delta : e.Delta;
 
             if ((modifiers & ModifierKeys.Control) != 0)
             {
@@ -1492,11 +1759,11 @@ namespace DJMaxEditor.Studio.Timeline
             }
             else if ((modifiers & ModifierKeys.Shift) != 0)
             {
-                _viewModel.ScrollByNativeX(e.Delta > 0 ? -60 : 60);
+                _viewModel.ScrollByNativeX(wheel > 0 ? -60 : 60);
             }
             else
             {
-                ScrubPlayhead(e.Delta > 0 ? -1 : 1);
+                ScrubPlayhead(wheel > 0 ? -1 : 1);
             }
             e.Handled = true;
         }
@@ -1562,9 +1829,7 @@ namespace DJMaxEditor.Studio.Timeline
             switch (Tool)
             {
                 case ToolMode.Select:
-                    _viewModel.SelectAt(point.X, point.Y, additive);
-                    RaiseNoteClickedAt(point);
-                    RaiseInteractionCompleted();
+                    HandleSelectPress(point, additive);
                     break;
 
                 case ToolMode.Addition:
@@ -1583,6 +1848,364 @@ namespace DJMaxEditor.Studio.Timeline
                     RaiseInteractionCompleted();
                     break;
             }
+        }
+
+        /// <summary>
+        /// A Select-tool press. A press on a movable note arms a drag (moving the whole
+        /// selection when the press landed inside one, otherwise the one note just selected);
+        /// every other press is the plain select/click the marquee path expects.
+        /// </summary>
+        private void HandleSelectPress(Point point, bool additive)
+        {
+            VerticalHitResult hit = _frame.HitTest(point.X, point.Y);
+            if (!additive && hit.HasItem && IsMovableNoteHit(hit))
+            {
+                EditorDocumentContext document = _viewModel.Document;
+                EventData pressed = hit.Item.Item.SourceEvent;
+                bool selectionReady = document != null && document.Selection != null &&
+                    document.Selection.Contains(pressed);
+
+                // The first press on an unselected note makes it the selection; pressing inside
+                // an existing selection keeps the whole group so one drag moves it together.
+                if (!selectionReady)
+                {
+                    _viewModel.SelectAt(point.X, point.Y, false);
+                }
+                ArmMove(point, pressed);
+            }
+            else
+            {
+                CancelMove();
+                _viewModel.SelectAt(point.X, point.Y, additive);
+            }
+
+            RaiseNoteClickedAt(point);
+            RaiseInteractionCompleted();
+        }
+
+        /// <summary>
+        /// True when a press on this hit may start a note move: a gameplay/authoring column
+        /// (never an end-of-scan marker or other annotation column) carrying a Note event.
+        /// </summary>
+        private static bool IsMovableNoteHit(VerticalHitResult hit)
+        {
+            if (hit == null || !hit.HasItem || hit.Item.Item == null ||
+                hit.Item.Item.SourceEvent == null)
+            {
+                return false;
+            }
+            return hit.Item.Item.SourceEvent.EventType == EventType.Note &&
+                CanReceiveNotes(hit.Column);
+        }
+
+        /// <summary>
+        /// Columns a note may be dragged from or onto: the playable lanes and the overflow
+        /// authoring columns. Marker, tempo, MR and BGA columns are annotation and stay out.
+        /// </summary>
+        private static bool CanReceiveNotes(VerticalColumn column)
+        {
+            if (column == null || column.SourceTrackId < 0)
+            {
+                return false;
+            }
+            switch (column.Kind)
+            {
+                case VerticalColumnKind.SideLeft:
+                case VerticalColumnKind.ShoulderLeft:
+                case VerticalColumnKind.Button:
+                case VerticalColumnKind.ShoulderRight:
+                case VerticalColumnKind.SideRight:
+                case VerticalColumnKind.Overflow:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private void ArmMove(Point point, EventData anchor)
+        {
+            EditorDocumentContext document = _viewModel != null ? _viewModel.Document : null;
+            if (document == null || document.Edits == null || document.Selection == null ||
+                !document.Capabilities.CanEdit || anchor == null)
+            {
+                return;
+            }
+            // Only move a homogeneous note selection: a marquee that also caught marker or
+            // tempo annotation must not drag those between tracks.
+            foreach (EventData selected in document.Selection.Items)
+            {
+                if (selected.EventType != EventType.Note)
+                {
+                    return;
+                }
+            }
+
+            // Note-capable columns in display order, mapped by column position rather than
+            // model track index so the marker/tempo gap is skipped, not traversed.
+            _moveColumns = NoteMoveColumns();
+
+            int anchorColumn = _moveColumns.IndexOf(anchor.TrackId);
+            if (anchorColumn < 0)
+            {
+                return;
+            }
+
+            _moveEntries = new List<MoveEntry>();
+            foreach (EventData selected in document.Selection.Items)
+            {
+                int column = _moveColumns.IndexOf(selected.TrackId);
+                if (column < 0)
+                {
+                    // The selection reaches a column notes cannot live on (a marquee that also
+                    // caught an end-of-scan marker). Drop the gesture rather than relocate an
+                    // annotation onto a playable lane.
+                    _moveColumns = null;
+                    return;
+                }
+                _moveEntries.Add(new MoveEntry(selected, column, selected.VirtualTick));
+            }
+
+            _moveArmed = true;
+            _moveActive = false;
+            _moveStart = point;
+            _moveAnchor = anchor;
+            _moveAnchorColumn = anchorColumn;
+            _moveAnchorTick = anchor.VirtualTick;
+            _moveAppliedColumnShift = 0;
+            _moveAppliedTickDelta = 0;
+            // One key per gesture merges the per-frame moves into one undo entry.
+            _moveGroupKey = new object();
+        }
+
+        private void CancelMove()
+        {
+            _moveArmed = false;
+            _moveActive = false;
+            _moveAnchor = null;
+            _moveGroupKey = null;
+            _moveColumns = null;
+            _moveEntries = null;
+        }
+
+        /// <summary>One selected event's position at the moment a move gesture armed.</summary>
+        private sealed class MoveEntry
+        {
+            public MoveEntry(EventData item, int column, int virtualTick)
+            {
+                Item = item;
+                OriginalColumn = column;
+                OriginalTick = virtualTick;
+            }
+
+            public EventData Item { get; private set; }
+            public int OriginalColumn { get; private set; }
+            public int OriginalTick { get; private set; }
+        }
+
+        /// <summary>
+        /// Drives the armed note move from the current pointer: time delta from the travel
+        /// along the tick axis (grid-snapped from the anchor), lane delta from the column
+        /// under the pointer. Applied as incremental moves so one gesture is one undo entry,
+        /// and the edit controller rejects a frame wholesale if any selected note would leave
+        /// the chart's tracks or go before tick zero.
+        /// </summary>
+        private void UpdateNoteMove(Point point)
+        {
+            if (!_moveArmed || _frame == null || _moveAnchor == null)
+            {
+                return;
+            }
+
+            double deltaX = point.X - _moveStart.X;
+            double deltaY = point.Y - _moveStart.Y;
+            if (!_moveActive &&
+                Math.Abs(deltaX) < MoveThreshold && Math.Abs(deltaY) < MoveThreshold)
+            {
+                return;
+            }
+            _moveActive = true;
+
+            VerticalCoordinateSystem coords = _frame.Coordinates;
+            int startPointerTick = coords.YToTick(_moveStart.Y, _frame.OriginTick);
+            int pointerTick = coords.YToTick(point.Y, _frame.OriginTick);
+            int desiredAnchorTick =
+                SnapTick(_moveAnchorTick + (pointerTick - startPointerTick));
+            int tickDelta = desiredAnchorTick - _moveAnchorTick;
+
+            // Column shift from the note-capable column under the pointer, counted in visible
+            // columns so the marker/tempo track gap is skipped. Stays put while the pointer is
+            // over something that is not a lane (gutter, ruler, marker column).
+            int columnShift = _moveAppliedColumnShift;
+            VerticalHitResult hover = _frame.HitTest(point.X, point.Y);
+            if (hover.HasColumn)
+            {
+                int hoverColumn = _moveColumns.IndexOf((uint)hover.Column.SourceTrackId);
+                if (hoverColumn >= 0)
+                {
+                    columnShift = hoverColumn - _moveAnchorColumn;
+                }
+            }
+
+            int incrementTick = tickDelta - _moveAppliedTickDelta;
+
+            // Per-item destination lanes from each entry's column at arm time, stated against
+            // each item's CURRENT track so the undo action can chain into the previous frame.
+            // A shift that would push any member past the first or last lane is blocked for the
+            // whole frame (rather than clamped, which would stack notes onto one column).
+            var trackByCurrent = new Dictionary<uint, uint>();
+            int columnCount = _moveColumns.Count;
+            foreach (MoveEntry entry in _moveEntries)
+            {
+                int targetColumn = entry.OriginalColumn + columnShift;
+                if (targetColumn < 0 || targetColumn > columnCount - 1)
+                {
+                    trackByCurrent.Clear();
+                    columnShift = _moveAppliedColumnShift;
+                    break;
+                }
+                uint destinationTrack = _moveColumns[targetColumn];
+                if (destinationTrack != entry.Item.TrackId)
+                {
+                    trackByCurrent[entry.Item.TrackId] = destinationTrack;
+                }
+            }
+
+            if (incrementTick == 0 && trackByCurrent.Count == 0)
+            {
+                return;
+            }
+
+            EditorDocumentContext document = _viewModel.Document;
+            if (document != null &&
+                document.Edits.MoveSelectionTo(
+                    trackByCurrent, incrementTick, _moveGroupKey))
+            {
+                _moveAppliedColumnShift = columnShift;
+                _moveAppliedTickDelta = tickDelta;
+                _viewModel.Rebuild();
+                InvalidateBand();
+                RaiseInteractionCompleted();
+            }
+        }
+
+        /// <summary>
+        /// Columns notes can be dragged between, in left-to-right display order: playable lanes
+        /// and overflow authoring columns only - annotation columns are excluded, as is the
+        /// synthesized backing-track trigger a soundtrack-only .tech creates (that track is
+        /// never written back, so parking a note on it would lose the note on save).
+        /// </summary>
+        private List<uint> NoteMoveColumns()
+        {
+            var columns = new List<uint>();
+            if (_frame == null)
+            {
+                return columns;
+            }
+
+            int backingTrack = -1;
+            if (_viewModel != null && _viewModel.Document != null &&
+                _viewModel.Document.Model != null &&
+                _viewModel.Document.Model.TechMetadata != null)
+            {
+                backingTrack = _viewModel.Document.Model.TechMetadata.BackingTrackModelTrack;
+            }
+
+            foreach (VerticalColumn column in _frame.Layout.Columns)
+            {
+                if (CanReceiveNotes(column) && column.SourceTrackId != backingTrack)
+                {
+                    columns.Add((uint)column.SourceTrackId);
+                }
+            }
+            return columns;
+        }
+
+        /// <summary>
+        /// The keyboard companion to a move drag: shifts the current selection by the signed
+        /// number of lanes along the screen X axis and grid steps along the screen Y axis
+        /// (right/down positive). The orientation swap and the inverse-scroll flip are resolved
+        /// here, so the caller just hands over which arrow was pressed. Answers false when there
+        /// is nothing movable or the nudge would leave the field, leaving the key unhandled.
+        /// </summary>
+        public bool NudgeSelection(int screenAxisX, int screenAxisY)
+        {
+            if (_frame == null || _viewModel == null)
+            {
+                return false;
+            }
+            EditorDocumentContext document = _viewModel.Document;
+            if (document == null || document.Edits == null || document.Selection == null ||
+                document.Selection.Count == 0)
+            {
+                return false;
+            }
+
+            int columnSteps;
+            int screenTimeSteps;
+            if (_orientation == TimelineOrientation.Horizontal)
+            {
+                // Transposed: screen X is time, screen Y is lanes (unflipped: down = next lane).
+                columnSteps = screenAxisY;
+                screenTimeSteps = screenAxisX;
+            }
+            else
+            {
+                columnSteps = screenAxisX;
+                screenTimeSteps = screenAxisY;
+            }
+
+            // Upward time puts later ticks toward the top, so a downward keypress must go earlier.
+            int timeSign = _frame.Coordinates.TimeDirection == VerticalTimeDirection.Upward
+                ? -1
+                : 1;
+            int tickDelta = (int)Math.Round(
+                screenTimeSteps * timeSign * ScrubStepTicks(), MidpointRounding.AwayFromZero);
+
+            List<uint> columns = NoteMoveColumns();
+
+            var trackByCurrent = new Dictionary<uint, uint>();
+            if (columnSteps != 0)
+            {
+                foreach (EventData selected in document.Selection.Items)
+                {
+                    if (selected.EventType != EventType.Note)
+                    {
+                        return false;
+                    }
+                    int index = columns.IndexOf(selected.TrackId);
+                    int target = index + columnSteps;
+                    if (index < 0 || target < 0 || target >= columns.Count)
+                    {
+                        return false;
+                    }
+                    if (columns[target] != selected.TrackId)
+                    {
+                        trackByCurrent[selected.TrackId] = columns[target];
+                    }
+                }
+            }
+
+            if (tickDelta == 0 && trackByCurrent.Count == 0)
+            {
+                return false;
+            }
+
+            if (!document.Edits.MoveSelectionTo(trackByCurrent, tickDelta, NudgeGroupKey))
+            {
+                return false;
+            }
+
+            _viewModel.Rebuild();
+            InvalidateBand();
+            RaiseInteractionCompleted();
+            return true;
+        }
+
+        private object _nudgeGroupKey;
+
+        private object NudgeGroupKey
+        {
+            get { return _nudgeGroupKey ?? (_nudgeGroupKey = new object()); }
         }
 
         /// <summary>

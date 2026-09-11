@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using DJMaxEditor.DJMax;
@@ -8,6 +9,7 @@ using DJMaxEditor.Files.bms;
 using DJMaxEditor.Files.bytes;
 using DJMaxEditor.Files.Cyclon;
 using DJMaxEditor.Files.pt;
+using DJMaxEditor.Files.Tech;
 
 namespace DJMaxEditor.Studio.Documents
 {
@@ -88,11 +90,13 @@ namespace DJMaxEditor.Studio.Documents
             _load.Register(new CyclonXmlOpenFile());
             _load.Register(new BmsOpenFile());
             _load.Register(new BmsonOpenFile());
+            _load.Register(new DJMaxEditor.Files.Tech.TechOpenFile());
 
             _save.Register(new PTSaveFile());
             _save.Register(new TQSaveFile());
             _save.Register(new BMESaveFile());
             _save.Register(new BmsonSaveFile());
+            _save.Register(new DJMaxEditor.Files.Tech.TechSaveFile());
         }
 
         public string OpenFilter
@@ -188,17 +192,31 @@ namespace DJMaxEditor.Studio.Documents
                     return _load.GetHandlerForExtension(".bms");
                 case ChartFormat.Bmson:
                     return _load.GetHandlerForExtension(".bmson");
+                case ChartFormat.TechmaniaTrack:
+                    return _load.GetHandlerForExtension(".tech");
                 default:
                     return null;
             }
         }
 
         /// <summary>
+        /// Lists the difficulty patterns a track.tech container holds, without opening it -
+        /// the data behind the open-time difficulty chooser. Null for any other format.
+        /// </summary>
+        public IList<DJMaxEditor.Files.Tech.TechPatternInfo> EnumeratePatterns(ChartProbe probe)
+        {
+            TechOpenFile tech = HandlerFor(probe) as TechOpenFile;
+            return tech == null ? null : tech.EnumeratePatterns(probe.Path);
+        }
+
+        /// <summary>
         /// Parses a probed file off the UI thread. <paramref name="fromDecryptedSource"/> hands the
         /// in-memory decrypted bytes to the PT loader instead of letting it re-read the encrypted
-        /// file from disk.
+        /// file from disk. <paramref name="patternIndex"/> chooses one difficulty in a multi-pattern
+        /// track.tech container; every other pattern is still retained for save-back.
         /// </summary>
-        public Task<ChartOpenResult> OpenAsync(ChartProbe probe, bool fromDecryptedSource)
+        public Task<ChartOpenResult> OpenAsync(
+            ChartProbe probe, bool fromDecryptedSource, int patternIndex = 0)
         {
             IOpenFile handler = HandlerFor(probe);
             if (handler == null)
@@ -211,6 +229,12 @@ namespace DJMaxEditor.Studio.Documents
             {
                 pt.SourceOverride = fromDecryptedSource ? probe.Data : null;
                 pt.FromEncryptedSource = fromDecryptedSource;
+            }
+
+            TechOpenFile tech = handler as TechOpenFile;
+            if (tech != null)
+            {
+                tech.SelectedPatternIndex = Math.Max(0, patternIndex);
             }
 
             string path = probe.Path;

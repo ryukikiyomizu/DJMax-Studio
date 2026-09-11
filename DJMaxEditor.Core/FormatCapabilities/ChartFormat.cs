@@ -30,6 +30,12 @@ namespace DJMaxEditor.Files.FormatDetection
         /// </summary>
         Bmson,
 
+        /// <summary>
+        /// TECHMANIA native track file (track.tech, format version "3"): JSON container of
+        /// patterns with pipe-packed note strings, imported onto the TECHNIKA layout.
+        /// </summary>
+        TechmaniaTrack,
+
         /// <summary>A file that matches no known chart signature.</summary>
         Unknown,
 

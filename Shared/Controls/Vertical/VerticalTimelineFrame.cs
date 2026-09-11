@@ -96,6 +96,24 @@ namespace DJMaxEditor.Controls.Vertical
         /// </remarks>
         public const double MinimumItemHeight = 3.0;
 
+        /// <summary>
+        /// Longest time span (in virtual ticks) that still draws as a note *head* rather than
+        /// a duration-bearing body. A tap placed by the editor carries the event default of six
+        /// ticks (36 virtual ticks) even though it has no musical length, and every imported
+        /// head note is at or below it; anything longer is a real hold/drag/roll.
+        /// </summary>
+        public const double HeadSpanVirtualTicks = 36.0;
+
+        /// <summary>
+        /// Constant screen thickness of a head note at the neutral note-height setting,
+        /// independent of the zoom. It equals what a default tap spanned at zoom 1.0
+        /// (36 virtual ticks at <see cref="VerticalTimelineViewModel.BasePixelsPerTick"/>),
+        /// which freezes the shipped look while taking the head off the time map - moving
+        /// the note-speed (zoom) slider changes spacing, never head thickness.
+        /// </summary>
+        public const double DefaultHeadHeight =
+            HeadSpanVirtualTicks * VerticalTimelineViewModel.BasePixelsPerTick;
+
         private readonly ReadOnlyCollection<VerticalPlacedItem> _items;
 
         private VerticalTimelineFrame(
@@ -222,7 +240,22 @@ namespace DJMaxEditor.Controls.Vertical
                     VerticalColumn column = projection.Layout.Columns[item.RowIndex];
                     double startY = coordinates.TickToY(item.StartTick, originTick);
                     double endY = coordinates.TickToY(item.EndTick, originTick);
-                    double itemHeight = Math.Max(minimumItemHeight, Math.Abs(endY - startY));
+
+                    // Head notes draw a *constant* screen thickness so note speed - the time
+                    // zoom - cannot change how tall a tap looks: zoom stretches the gaps
+                    // between notes, while the head stays put. Only real duration-bearing
+                    // events follow the tick map, and even those keep the minimum floor when
+                    // zoomed far out. The note-height preference scales the head.
+                    double spanTicks = Math.Abs(item.EndTick - item.StartTick);
+                    double itemHeight;
+                    if (spanTicks <= HeadSpanVirtualTicks)
+                    {
+                        itemHeight = DefaultHeadHeight * noteThickness;
+                    }
+                    else
+                    {
+                        itemHeight = Math.Max(minimumItemHeight, Math.Abs(endY - startY));
+                    }
                     // The note head is always at StartTick, so upward time puts it at the
                     // *bottom* edge of the bar and the sustain grows above it. Taking a plain
                     // Min here would instead anchor a zero-duration tap's 3px bar below its
@@ -265,12 +298,14 @@ namespace DJMaxEditor.Controls.Vertical
                 : Layout.ColumnAtNativeX(nativeX);
             int tick = Coordinates.YToTick(y, OriginTick);
 
+            bool onsetAtBottom =
+                Coordinates.TimeDirection == VerticalTimeDirection.Upward;
             VerticalPlacedItem hit = null;
             if (y >= Coordinates.RulerHeight)
             {
                 for (int i = _items.Count - 1; i >= 0; i--)
                 {
-                    if (_items[i].Contains(x, y))
+                    if (HitContainsNote(_items[i], x, y, onsetAtBottom))
                     {
                         hit = _items[i];
                         break;
@@ -279,6 +314,39 @@ namespace DJMaxEditor.Controls.Vertical
             }
 
             return new VerticalHitResult(column, tick, hit);
+        }
+
+        /// <summary>
+        /// Whether a pointer lands on a note for interaction purposes. The placement rect is
+        /// the note's *timing* band - at normal zoom only a sliver along the time axis - while
+        /// the drawn head glyph is roughly as tall as the lane is wide (a square arcade sheet
+        /// scaled to the lane) and half of it overhangs the onset edge. Testing the sliver alone
+        /// made the visible middle of every head unclickable, so a note could not be pressed or
+        /// dragged even though it was clearly under the pointer. The hit band grows along time
+        /// by half a lane width past the onset edge, which is the glyph's own extent; the lane
+        /// axis and marquee geometry keep using the exact placement rect.
+        /// </summary>
+        private static bool HitContainsNote(
+            VerticalPlacedItem placed, double x, double y, bool onsetAtBottom)
+        {
+            if (x < placed.Left || x >= placed.Right)
+            {
+                return false;
+            }
+
+            if (y >= placed.Top && y < placed.Bottom)
+            {
+                return true;
+            }
+
+            // Only the onset side overhangs: downward time puts the onset at the cell top,
+            // upward time at the bottom.
+            double overhang = placed.Width * 0.5;
+            if (onsetAtBottom)
+            {
+                return y >= placed.Bottom && y < placed.Bottom + overhang;
+            }
+            return y >= placed.Top - overhang && y < placed.Top;
         }
     }
 }

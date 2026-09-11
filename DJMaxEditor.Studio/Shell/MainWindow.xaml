@@ -312,7 +312,7 @@
                         </Grid>
                         <Slider x:Name="NoteSpeedSlider" Minimum="0.05" Maximum="8.0" Value="0.55"
                                 ValueChanged="OnNoteSpeedChanged"
-                                ToolTip="How fast the chart moves along the time axis" />
+                                ToolTip="How fast the chart moves along the time axis. Note heads keep a constant thickness; only spacing and long-note bodies change." />
 
                         <Grid Margin="0,6,0,0">
                             <Grid.ColumnDefinitions>
@@ -340,38 +340,82 @@
                         <StackPanel Margin="10,8,10,10">
                             <TextBlock Text="NOTE KIND" Style="{StaticResource Text.Section}" />
                         <UniformGrid x:Name="NotePaletteGrid" Columns="2" Margin="0,4,0,0">
+                            <!-- Each button wears the same arcade frame the timeline draws for the
+                                 note, so the palette previews exactly what placement paints.
+                                 Icons are sliced in code (see LoadPaletteIcons) so the BAML never
+                                 has to parse a pack URI into a CroppedBitmap at load time. -->
                             <ToggleButton x:Name="PaletteTap"
-                                          Height="26" Margin="0,2,2,2" IsChecked="True"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2" IsChecked="True"
                                           Click="OnPalettePick" Tag="0"
-                                          ToolTip="Tap note (short press)">Tap</ToggleButton>
+                                          ToolTip="Tap note (short press)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconTap" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Tap" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteDrag"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="0|long"
-                                          ToolTip="Drag note: slide, starts long">Drag</ToggleButton>
+                                          ToolTip="Drag note: slide, starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconDrag" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Drag" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteChain"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="5"
-                                          ToolTip="Chain head (attribute 5)">Chain</ToggleButton>
+                                          ToolTip="Chain head (attribute 5)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconChain" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Chain" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteChainNode"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="6"
-                                          ToolTip="Chain node (attribute 6)">Chain node</ToggleButton>
+                                          ToolTip="Chain node (attribute 6)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconChainNode" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Chain node" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteHold"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="12|long"
-                                          ToolTip="Hold note (attribute 12), starts long">Hold</ToggleButton>
+                                          ToolTip="Hold note (attribute 12), starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconHold" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Hold" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeat"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="10|long"
-                                          ToolTip="Repeat-hold head (attribute 10), starts long">Repeat hold</ToggleButton>
+                                          ToolTip="Repeat-hold head (attribute 10), starts long">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeatHold" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat hold" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatTap"
-                                          Height="26" Margin="0,2,2,2"
+                                          Height="28" Margin="0,2,2,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="10"
-                                          ToolTip="Repeat head (attribute 10)">Repeat</ToggleButton>
+                                          ToolTip="Repeat head (attribute 10)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeat" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatRoll"
-                                          Height="26" Margin="2,2,0,2"
+                                          Height="28" Margin="2,2,0,2" Padding="6,2"
                                           Click="OnPalettePick" Tag="11"
-                                          ToolTip="Repeating roll note (attribute 11)">Repeat roll</ToggleButton>
+                                          ToolTip="Repeating roll note (attribute 11)">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Image x:Name="PaletteIconRepeatRoll" Width="18" Height="18" Stretch="Uniform"/>
+                                    <TextBlock Text="Repeat roll" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
                         </UniformGrid>
                         </StackPanel>
                     </StackPanel>
@@ -562,6 +606,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="26" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="{StaticResource Brush.Raised}"
                                 BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1">
@@ -581,10 +626,64 @@
                                            TextTrimming="CharacterEllipsis" Margin="10,0,8,0" />
                             </Grid>
                         </Border>
+                        <!-- TECHNIKA-only effector strip. The arcade offers these on the pre-song
+                             effector screen: a scroll-direction effector (clockwise default,
+                             inverse counter-clockwise, both-left, both-right), note faders
+                             (fade in / fade out), timeline blink/blind, and measurement guides
+                             are an editor aid rather than an arcade effector. Scroll direction
+                             rebuilds the projection; the rest are renderer state. -->
+                        <Border Grid.Row="1" x:Name="TechnikaEffectorStrip"
+                                Visibility="Collapsed"
+                                Background="{StaticResource Brush.Raised}"
+                                BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1"
+                                Padding="0,3">
+                            <!-- The right dock can be narrower than the controls; clipping them
+                                 would hide an effector with no gesture back to it. -->
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled">
+                                <StackPanel Orientation="Horizontal" Margin="8,0">
+                                    <TextBlock Text="SCROLL" Style="{StaticResource Text.Section}"
+                                               Margin="0,0,4,0" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaScrollCombo" Width="80" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaScrollChanged"
+                                              ToolTip="Scroll direction effector: CW is the arcade default; CCW is the inverse; LL/RR sweep both halves one way">
+                                        <ComboBoxItem Content="CW" />
+                                        <ComboBoxItem Content="CCW" />
+                                        <ComboBoxItem Content="LL" />
+                                        <ComboBoxItem Content="RR" />
+                                    </ComboBox>
+                                    <TextBlock Text="NOTES" Style="{StaticResource Text.Section}"
+                                               Margin="12,0,4,0" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaFaderCombo" Width="92" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaFaderChanged"
+                                              ToolTip="Note fader effector: fade notes in as the sweep approaches, or out before it reaches them">
+                                        <ComboBoxItem Content="OFF" />
+                                        <ComboBoxItem Content="FADE IN" />
+                                        <ComboBoxItem Content="FADE IN 2" />
+                                        <ComboBoxItem Content="FADE OUT" />
+                                        <ComboBoxItem Content="FADE OUT 2" />
+                                    </ComboBox>
+                                    <TextBlock Text="LINE" Style="{StaticResource Text.Section}"
+                                               Margin="12,0,4,0" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="TechnikaLineCombo" Width="84" SelectedIndex="0"
+                                              SelectionChanged="OnTechnikaLineChanged"
+                                              ToolTip="Timeline effector: flash the sweep (blink) or hide it altogether (blind)">
+                                        <ComboBoxItem Content="ON" />
+                                        <ComboBoxItem Content="BLINK" />
+                                        <ComboBoxItem Content="BLINK 2" />
+                                        <ComboBoxItem Content="BLIND" />
+                                    </ComboBox>
+                                    <CheckBox x:Name="TechnikaGuidesCheck" Margin="12,0,0,0"
+                                              VerticalAlignment="Center" Content="GUIDES"
+                                              Click="OnTechnikaGuidesChanged"
+                                              ToolTip="Draw scan margins, lane centre rules and the arcade HUD cells - measurement aids, not gameplay" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
                         <!-- No fixed height: the view measures itself to the arcade's 1280x768
                              aspect, so the panel is exactly as tall as the dock is wide and never
                              shows letterbox bars. -->
-                        <Border Grid.Row="1" x:Name="PlayfieldHost"
+                        <Border Grid.Row="2" x:Name="PlayfieldHost"
                                 Background="Black" ClipToBounds="True" />
                     </Grid>
 

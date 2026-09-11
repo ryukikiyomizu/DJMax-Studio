@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -97,6 +98,51 @@ namespace DJMaxEditor.Studio.Timeline
                 ShowNoteLabels = options.Labels,
                 ViewModel = viewModel
             };
+
+            // Optional headless exercise of the real mouse gesture: a surface press on a note,
+            // a series of drag points across lanes and through time, and a release, through the
+            // same internal surface API the mouse handlers call.
+            if (options.MouseDrag != null)
+            {
+                canvas.Measure(new Size(options.Width, options.Height));
+                canvas.Arrange(new Rect(0, 0, options.Width, options.Height));
+                canvas.UpdateLayout();
+                int mouseExit = RunMouseDrag(canvas, viewModel, model,
+                    options.MouseDrag, options, report);
+                if (mouseExit != 0)
+                {
+                    Write(outputDirectory, report);
+                    return mouseExit;
+                }
+            }
+
+            // Optional headless exercise of the note-drag path: select one note and run the
+            // same public nudge the arrow keys (and the drag gesture's column math) use, so a
+            // rendered shot can show where the note ends up.
+            if (options.Drag != null)
+            {
+                canvas.Measure(new Size(options.Width, options.Height));
+                canvas.Arrange(new Rect(0, 0, options.Width, options.Height));
+                canvas.UpdateLayout();
+
+                EventData picked = PickEvent(model, options.Drag.Lane, options.Drag.Tick);
+                if (picked != null)
+                {
+                    document.Selection.Replace(new[] { picked });
+                    for (int i = 0; i < options.Drag.Times; i++)
+                    {
+                        bool moved = canvas.NudgeSelection(options.Drag.Dx, options.Drag.Dy);
+                        report.AppendFormat(CultureInfo.InvariantCulture,
+                            "drag nudge {0}: x={1} y={2} moved={3} -> track={4} tick={5}",
+                            i, options.Drag.Dx, options.Drag.Dy, moved,
+                            picked.TrackId, picked.Tick).AppendLine();
+                    }
+                }
+                else
+                {
+                    report.AppendLine("drag: no note found at the requested lane/tick");
+                }
+            }
 
             // `ticks=` is given in the chart's own raw ticks, the same units the sibling playfield
             // probe takes and the same ones the report prints, so a tick read off one report can be
@@ -237,6 +283,158 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
+        /// Drives the canvas's own press/drag/release surface API to move one note: the exact
+        /// gesture a mouse performs, with no WPF input plumbing. A mismatch returns an exit
+        /// code so CI can fail the probe.
+        /// </summary>
+        private static int RunMouseDrag(
+            StudioVerticalCanvas canvas,
+            VerticalTimelineViewModel viewModel,
+            PlayerData model,
+            Options.MouseDragSpec spec,
+            Options options,
+            StringBuilder report)
+        {
+            EventData picked = PickEvent(model, spec.Lane, spec.Tick);
+            if (picked == null)
+            {
+                report.AppendLine("mouse drag: no note found at the requested lane/tick");
+                return 6;
+            }
+
+            // Scroll the note into view before asking the frame for it: the shot's requested
+            // tick is the *destination*, so without this the pressed note would be off-window.
+            viewModel.ScrollToTick(spec.Tick * EventData.VirtualTickSize);
+            canvas.Measure(new Size(options.Width, options.Height));
+            canvas.Arrange(new Rect(0, 0, options.Width, options.Height));
+            canvas.UpdateLayout();
+            VerticalTimelineFrame frame = canvas.Frame;
+
+            VerticalPlacedItem startItem = null;
+            foreach (VerticalPlacedItem placed in frame.Items)
+            {
+                if (placed.Item.SourceEvent == picked)
+                {
+                    startItem = placed;
+                    break;
+                }
+            }
+            if (startItem == null)
+            {
+                report.AppendLine("mouse drag: pressed note is not in the visible frame");
+                return 6;
+            }
+
+            // Note-capable columns in display order, mirroring StudioVerticalCanvas.
+            var lanes = new List<VerticalColumn>();
+            foreach (VerticalColumn column in frame.Layout.Columns)
+            {
+                switch (column.Kind)
+                {
+                    case VerticalColumnKind.SideLeft:
+                    case VerticalColumnKind.ShoulderLeft:
+                    case VerticalColumnKind.Button:
+                    case VerticalColumnKind.ShoulderRight:
+                    case VerticalColumnKind.SideRight:
+                    case VerticalColumnKind.Overflow:
+                        lanes.Add(column);
+                        break;
+                }
+            }
+            int startColumn = lanes.FindIndex(c => c.SourceTrackId == (int)picked.TrackId);
+            int targetColumn = startColumn + spec.ColumnDelta;
+            if (startColumn < 0 || targetColumn < 0 || targetColumn >= lanes.Count)
+            {
+                report.AppendFormat(CultureInfo.InvariantCulture,
+                    "mouse drag: lane target out of range (start={0}, delta={1}, count={2})",
+                    startColumn, spec.ColumnDelta, lanes.Count).AppendLine();
+                return 6;
+            }
+
+            var coords = frame.Coordinates;
+            bool upward = coords.TimeDirection == VerticalTimeDirection.Upward;
+            double startY = upward ? startItem.Bottom : startItem.Top;
+            Point start = new Point(startItem.Left + (startItem.Width / 2.0), startY);
+
+            VerticalColumn targetLane = lanes[targetColumn];
+            int targetVirtualTick = picked.VirtualTick +
+                (spec.RawTickDelta * EventData.VirtualTickSize);
+            double targetX = coords.NativeXToScreen(
+                targetLane.NativeLeft + (targetLane.Width / 2.0), frame.OriginNativeX);
+            double targetY = coords.TickToY(targetVirtualTick, frame.OriginTick);
+            var target = new Point(targetX, targetY);
+
+            report.AppendFormat(CultureInfo.InvariantCulture,
+                "mouse drag: from track {0} tick {1} at ({2:F1},{3:F1}) to track {4} tick {5} at ({6:F1},{7:F1})",
+                picked.TrackId, picked.Tick, start.X, start.Y,
+                targetLane.SourceTrackId, targetVirtualTick / EventData.VirtualTickSize,
+                target.X, target.Y).AppendLine();
+
+            VerticalHitResult pressHit = frame.HitTest(start.X, start.Y);
+            canvas.SurfacePress(start, false);
+            report.AppendFormat(CultureInfo.InvariantCulture,
+                "mouse drag: press hit column={0} kind={1} item={2} armed={3} selected={4}",
+                pressHit.HasColumn ? pressHit.Column.SourceTrackId.ToString() : "(none)",
+                pressHit.HasColumn ? pressHit.Column.Kind.ToString() : "-",
+                pressHit.HasItem, canvas.IsNoteMoveArmed,
+                viewModel.Document.Selection.Count).AppendLine();
+            const int steps = 6;
+            for (int i = 1; i <= steps; i++)
+            {
+                // Well past the 3px arm threshold on the first step.
+                var point = new Point(
+                    start.X + ((target.X - start.X) * i / steps),
+                    start.Y + ((target.Y - start.Y) * i / steps));
+                canvas.SurfaceDrag(point);
+                canvas.Measure(new Size(options.Width, options.Height));
+                canvas.Arrange(new Rect(0, 0, options.Width, options.Height));
+                canvas.UpdateLayout();
+                report.AppendFormat(CultureInfo.InvariantCulture,
+                    "    step {0}: track={1} tick={2}", i, picked.TrackId, picked.Tick)
+                    .AppendLine();
+            }
+            canvas.SurfaceRelease();
+
+            bool laneOk = picked.TrackId == (uint)targetLane.SourceTrackId;
+            bool tickOk = picked.Tick == targetVirtualTick / EventData.VirtualTickSize;
+            report.AppendFormat(CultureInfo.InvariantCulture,
+                "mouse drag result: track={0} (want {1}, {2}) rawTick={3} (want {4}, {5})",
+                picked.TrackId, targetLane.SourceTrackId, laneOk ? "ok" : "MISMATCH",
+                picked.Tick, targetVirtualTick / EventData.VirtualTickSize,
+                tickOk ? "ok" : "MISMATCH").AppendLine();
+            return laneOk && tickOk ? 0 : 6;
+        }
+
+        /// <summary>
+        /// The note nearest the requested raw tick on one track, for the headless drag test.
+        /// </summary>
+        private static EventData PickEvent(PlayerData model, int trackIndex, int rawTick)
+        {
+            if (model == null || trackIndex < 0 ||
+                trackIndex >= model.Tracks.Count)
+            {
+                return null;
+            }
+            TrackData track = model.Tracks.GetTrackAtIndex((uint)trackIndex);
+            EventData best = null;
+            int bestDistance = int.MaxValue;
+            foreach (EventData evt in track.Events)
+            {
+                if (evt.EventType != EventType.Note)
+                {
+                    continue;
+                }
+                int distance = Math.Abs(evt.Tick - rawTick);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = evt;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
         /// One line per placed item, naming the three gates that decide art versus rectangle
         /// alongside the pieces the kind resolved to.
         /// </summary>
@@ -350,6 +548,25 @@ namespace DJMaxEditor.Studio.Timeline
             public VerticalTimeDirection Direction = VerticalTimeDirection.Upward;
             public bool Assets = true;
             public bool Labels;
+            public DragSpec Drag;
+            public MouseDragSpec MouseDrag;
+
+            public sealed class DragSpec
+            {
+                public int Lane;
+                public int Tick;
+                public int Dx;
+                public int Dy;
+                public int Times = 1;
+            }
+
+            public sealed class MouseDragSpec
+            {
+                public int Lane;
+                public int Tick;
+                public int ColumnDelta;
+                public int RawTickDelta;
+            }
 
             public static Options Parse(string[] args, int first)
             {
@@ -361,6 +578,59 @@ namespace DJMaxEditor.Studio.Timeline
                         Match(arg, "height=", ref options.Height) ||
                         Match(arg, "zoom=", ref options.Zoom))
                     {
+                        continue;
+                    }
+
+                    if (arg.StartsWith("drag=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string[] parts = arg.Substring("drag=".Length).Split(',');
+                        var values = new List<int>();
+                        foreach (string part in parts)
+                        {
+                            int value;
+                            if (int.TryParse(part.Trim(), NumberStyles.Integer,
+                                    CultureInfo.InvariantCulture, out value))
+                            {
+                                values.Add(value);
+                            }
+                        }
+                        if (values.Count >= 4)
+                        {
+                            options.Drag = new DragSpec
+                            {
+                                Lane = values[0],
+                                Tick = values[1],
+                                Dx = values[2],
+                                Dy = values[3],
+                                Times = values.Count >= 5 ? values[4] : 1
+                            };
+                        }
+                        continue;
+                    }
+
+                    if (arg.StartsWith("mouse=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string[] parts = arg.Substring("mouse=".Length).Split(',');
+                        var values = new List<int>();
+                        foreach (string part in parts)
+                        {
+                            int value;
+                            if (int.TryParse(part.Trim(), NumberStyles.Integer,
+                                    CultureInfo.InvariantCulture, out value))
+                            {
+                                values.Add(value);
+                            }
+                        }
+                        if (values.Count >= 4)
+                        {
+                            options.MouseDrag = new MouseDragSpec
+                            {
+                                Lane = values[0],
+                                Tick = values[1],
+                                ColumnDelta = values[2],
+                                RawTickDelta = values[3]
+                            };
+                        }
                         continue;
                     }
 

@@ -28,12 +28,43 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Check XAML thickness literals
+        # WPF compiles Margin/Padding/BorderThickness strings to BAML without
+        # validating the token count, then ThicknessConverter throws at window
+        # load: a three-value literal (e.g. "0,0,4") takes MainWindow down at
+        # startup despite a green build. Thickness accepts 1, 2 or 4 values.
+        shell: bash
+        run: |
+          set -e
+          bad=$(grep -rnE '(Margin|Padding|BorderThickness)="[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+"' --include='*.xaml' . || true)
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "::error::XAML thickness must have 1, 2 or 4 values, never 3 (runtime XamlParseException)"
+            exit 1
+          fi
+          echo "No malformed thickness literals."
+
       - name: Build (Debug)
         run: dotnet build DJMaxEditor.sln -c Debug --nologo -flp:"logfile=build-debug.log;verbosity=normal"
 
       - name: Build (Release)
         if: success()
         run: dotnet build DJMaxEditor.sln -c Release --nologo -flp:"logfile=build-release.log;verbosity=normal"
+
+      - name: Publish Studio (win-x64, framework-dependent)
+        if: success()
+        run: >
+          dotnet publish DJMaxEditor.Studio/DJMaxEditor.Studio.csproj
+          -c Release -r win-x64 --self-contained false
+          -o publish/studio
+
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DJMaxStudio-win-x64
+          path: publish/studio
+          retention-days: 30
 
       - name: Emit build errors as annotations
         if: failure()
@@ -107,6 +138,13 @@ jobs:
               <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
+              <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
+              <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" />
+              <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
+              <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
+              <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
@@ -117,12 +155,20 @@ jobs:
           SMOKE_CSPROJ_EOF
           cat > smoke/Program.cs <<'SMOKE_PROG_EOF'
           using System;
+          using System.Collections.Generic;
           using System.IO;
           using System.Linq;
           using System.Text;
+          using System.Text.Json.Nodes;
           using DJMaxEditor.DJMax;
+          using DJMaxEditor.Editor;
+          using DJMaxEditor.Files;
           using DJMaxEditor.Files.bms;
+          using DJMaxEditor.Files.Tech;
           using DJMaxEditor.Files.FormatDetection;
+          using DJMaxEditor.Preview;
+          using DJMaxEditor.Controls.Vertical;
+          using DJMaxEditor.Controls.TimelineV2;
           int checks = 0;
           void Check(bool condition, string what)
           {
@@ -196,17 +242,480 @@ jobs:
           var detectedBms = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(bms.ToString()), ".bms");
           Check(detectedBms.Format == ChartFormat.BmsClassic && detectedBms.IsOpenable,
                 "detector still identifies classic BMS");
+
+          // TECHMANIA track.tech (format v3): every note family, extended fields, a drag
+          // with node-derived duration, a tempo event, an end-of-scan marker, and notes
+          // on invisible keysound lanes 5 and 7 (4 and 6 stay empty to test compaction).
+          string tech = @"{
+            ""version"": ""3"",
+            ""trackMetadata"": { ""guid"":""t"", ""title"":""T"", ""artist"":""A"", ""genre"":""G"",
+              ""additionalCredits"":""thx"", ""eyecatchImage"":""eye.png"",
+              ""previewTrack"":""prev.ogg"", ""previewStartTime"":1.5, ""previewEndTime"":4,
+              ""previewBga"":""prev.mp4"", ""autoOrderPatterns"":true },
+            ""patterns"": [ {
+              ""patternMetadata"": { ""guid"":""p"", ""patternName"":""NM"", ""level"":7,
+                ""controlScheme"":1, ""playableLanes"":4, ""author"":""mapper"",
+                ""backingTrack"":""audio.ogg"", ""backImage"":""bg.png"", ""bga"":""bga.mp4"",
+                ""bgaOffset"":0.25, ""waitForEndOfBga"":true, ""playBgaOnLoop"":true,
+                ""firstBeatOffset"":-0.5, ""initBpm"":128, ""bps"":2 },
+              ""bpmEvents"": [ { ""pulse"": 960, ""bpm"": 140 } ],
+              ""timeStops"": [ { ""pulse"": 480, ""duration"": 120 } ],
+              ""packedNotes"": [
+                ""Basic|0|0|"",
+                ""ChainHead|240|0|a.ogg"",
+                ""ChainNode|480|0|a.ogg"",
+                ""ChainNode|720|0|a.ogg"",
+                ""RepeatHead|240|1|b.ogg"",
+                ""Repeat|480|1|b.ogg"",
+                ""Repeat|720|1|b.ogg"",
+                ""E|Basic|960|2|80|-50|0|c|d.ogg"",
+                ""E|Basic|1920|0|100|0|1|"",
+                ""Basic|3000|5|extra5.ogg"",
+                ""Basic|3120|7|extra7.ogg""
+              ],
+              ""packedHoldNotes"": [
+                ""Hold|1200|0|480|h.ogg"",
+                ""E|RepeatHeadHold|1200|1|600|100|0|0|rh.ogg"",
+                ""RepeatHold|1800|1|300|""
+              ],
+              ""packedDragNotes"": [
+                { ""packedNote"": ""Drag|2160|3|d.ogg"",
+                  ""packedNodes"": [ ""0|0|0|0|120|0.25"", ""480|0|-120|-0.25|0|0"" ] },
+                { ""packedNote"": ""E|Drag|2640|3|100|0|1|d2.ogg"",
+                  ""packedNodes"": [ ""0|0|0|0|0|0"", ""120|-0.5|0|0|0|0"", ""360|0|0|0|0|0"" ] }
+              ]
+            }]
+          }";
+          var detectedTech = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(tech), ".tech");
+          Check(detectedTech.Format == ChartFormat.TechmaniaTrack && detectedTech.IsOpenable,
+                "detector identifies a TECHMANIA track");
+          PlayerData techChart = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(tech));
+          Check(techChart.SourceFormat == ChartFormat.TechmaniaTrack, "import stamps TechmaniaTrack");
+          Check(Math.Abs(techChart.Tempo - 128f) < 0.01f, "initBpm becomes chart tempo");
+          // Container metadata is retained for the save-back round trip.
+          var techMeta = techChart.TechMetadata;
+          Check(techMeta != null && techMeta.Title == "T" && techMeta.Artist == "A"
+                && techMeta.Genre == "G", "track metadata is retained");
+          Check(techMeta.PatternName == "NM" && techMeta.Level == 7
+                && techMeta.ControlScheme == 1 && techMeta.Author == "mapper",
+                "pattern metadata is retained");
+          Check(techMeta.BackingTrack == "audio.ogg" && techMeta.Bga == "bga.mp4"
+                && Math.Abs(techMeta.FirstBeatOffset - -0.5) < 0.001,
+                "AV and offset metadata is retained");
+          Check(techMeta.Bps == 2, "beats-per-scan is retained, got " + techMeta.Bps);
+          Check(techMeta.TimeStops.Count == 1 && techMeta.TimeStops[0].Pulse == 480
+                && techMeta.TimeStops[0].Duration == 120, "time stop is retained");
+          // The declared bps drives the TECHNIKA projection rather than a fixed four.
+          var techProjection = GameplayPreviewProjector.Project(
+              techChart, GameplayPreviewProfile.Technika);
+          Check(techProjection.BeatsPerScan == 2,
+                "projection honors the .tech beats-per-scan");
+          Check(techChart.Tracks.Count == 12, "four lanes, four markers, tempo, two "
+                + "keysound overflow tracks and the backing trigger, got "
+                + techChart.Tracks.Count);
+          // The fixture names a backingTrack, so a synth BGM trigger joins at track 11.
+          Check(techChart.TechMetadata.BackingTrackModelTrack == 11,
+                "the synth backing trigger takes the next overflow track");
+          // Format lanes 5 and 7 compact onto model tracks 9 and 10; empty format lanes
+          // 4 and 6 create no track and no column.
+          Check(techChart.TechMetadata.FormatLaneByTrack[9] == 5
+                && techChart.TechMetadata.FormatLaneByTrack[10] == 7,
+                "overflow tracks remember their format lanes");
+          var x9 = techChart.Tracks.GetTrackAtIndex(9).Events.ToList();
+          var x10 = techChart.Tracks.GetTrackAtIndex(10).Events.ToList();
+          Check(x9.Count == 1 && x9[0].Tick == 600 && x9[0].Instrument.Name == "extra5.ogg"
+                && x10.Count == 1 && x10[0].Tick == 624,
+                "invisible keysound lanes import as compacted overflow tracks");
+          // The timeline columns for those tracks name the in-game format lane.
+          var overflowLabels = new Dictionary<int, string>();
+          foreach (KeyValuePair<int, int> map in techChart.TechMetadata.FormatLaneByTrack)
+              overflowLabels[map.Key] = "lane " + (map.Value + 1);
+          var techLayout = VerticalTrackLayout.ForMode(
+              VerticalTrackLayout.TechnikaMode, new[] { 9, 10 }, overflowLabels);
+          VerticalColumn lane6 = techLayout.ColumnForSourceTrack(9);
+          VerticalColumn lane8 = techLayout.ColumnForSourceTrack(10);
+          Check(lane6 != null && lane6.Name == "lane 6"
+                && lane8 != null && lane8.Name == "lane 8",
+                "overflow columns show their format lane, not the model track id");
+          var t0 = techChart.Tracks.GetTrackAtIndex(0).Events.ToList();
+          // Five authored notes plus the end-of-scan flagged basic, which is both a real
+          // lane-0 note and the trigger for a marker on track 4.
+          Check(t0.Count == 6, "lane 0 holds 6 notes, got " + t0.Count);
+          Check(t0[0].Attribute == 0 && t0[0].Tick == 0, "basic sits at pulse 0");
+          Check(t0[1].Attribute == 5 && t0[1].Tick == 48, "chain head lands at tick 48");
+          Check(t0[2].Attribute == 6 && t0[3].Attribute == 6, "chain nodes keep attribute 6");
+          Check(t0[4].Attribute == 12 && t0[4].Tick == 240 && t0[4].Duration == 96,
+                "hold lands at tick 240 with a 2-beat (96 tick) body");
+          Check(t0[5].Attribute == 0 && t0[5].Tick == 384,
+                "end-of-scan flagged note stays a real note on its lane");
+          var t1 = techChart.Tracks.GetTrackAtIndex(1).Events.ToList();
+          Check(t1[0].Attribute == 10 && t1[1].Attribute == 11 && t1[2].Attribute == 11,
+                "repeat head then attribute-11 ticks");
+          Check(t1[3].Attribute == 10 && t1[3].Duration == 120, "repeat head hold duration");
+          Check(t1[4].Attribute == 11 && t1[4].Duration == 60, "repeat hold duration");
+          var t2 = techChart.Tracks.GetTrackAtIndex(2).Events.ToList();
+          Check(t2.Count == 1 && t2[0].Volume == 80, "extended volume survives");
+          Check(t2[0].Pan == 32 && t2[0].Instrument.Name == "c|d.ogg",
+                "extended pan maps to the 0..127 byte and the keysound keeps its pipe");
+          var t3 = techChart.Tracks.GetTrackAtIndex(3).Events.ToList();
+          Check(t3.Count == 2 && t3[0].Attribute == 0 && t3[0].Tick == 432
+                && t3[0].Duration == 96, "drag is attribute 0 with node-derived duration");
+          Check(t3[1].Attribute == 0 && t3[1].Tick == 528 && t3[1].Duration == 64
+                && t3[1].Instrument.Name == "d2.ogg",
+                "extended B-spline drag keeps head, keysound and interpolated duration");
+          var eos = techChart.Tracks.GetTrackAtIndex(4).Events.ToList();
+          Check(eos.Count == 1 && eos[0].Attribute == 100 && eos[0].Tick == 384,
+                "end-of-scan flag becomes an attribute-100 marker on track 4");
+          var tm = techChart.Tracks.GetTrackAtIndex(8).Events.ToList();
+          Check(tm.Count == 1 && tm[0].EventType == EventType.Tempo
+                && Math.Abs(tm[0].Tempo - 140f) < 0.01f, "BPM event lands on the tempo track");
+          Check(techChart.Instruments.Count(i => i.Name == "a.ogg") == 1,
+                "a repeated keysound filename shares one instrument");
+          Check(techChart.Tracks.GetTrackAtIndex(5).Events.Count() == 0,
+                "an empty marker lane still has its track");
+          // The series classifier also groups the members of one chain or repeat, which is
+          // what the timeline's yellow/purple connector lines walk.
+          var series = TechnikaSeriesClassifier.Build(techChart);
+          var sChains = series.Runs.Where(r => r.IsChain).ToList();
+          var sRepeats = series.Runs.Where(r => !r.IsChain).ToList();
+          Check(sChains.Count == 1 && sChains[0].Members.Count == 3,
+                "the fixture's chain head and two chain nodes form one 3-member chain run");
+          Check(sRepeats.Count == 2
+                && sRepeats.OrderBy(r => r.Members.Count).Select(r => r.Members.Count)
+                    .SequenceEqual(new[] { 2, 3 }),
+                "the head/two-tick series and the held pair form two repeat runs, got "
+                + sRepeats.Count + " of sizes ["
+                + string.Join(",", sRepeats.Select(r => r.Members.Count)) + "]");
+          Check(sRepeats.All(r => r.LineKind == TechnikaNoteKind.Repeat)
+                && sChains[0].LineKind == TechnikaNoteKind.ChainNode,
+                "run line kinds name the connector colour families");
+          // A hand-built series: chain head absorbs two plain taps crossing lanes before its
+          // explicit close; repeat head, two more head-marked ticks, then the close.
+          var sp = new PlayerData();
+          var sl0 = new TrackData(0) { TrackName = "0" };
+          var sl1 = new TrackData(1) { TrackName = "1" };
+          sp.Tracks.AddTrack(sl0);
+          sp.Tracks.AddTrack(sl1);
+          EventData SN(TrackData track, int tick, byte attr)
+          {
+              var e = new EventData { EventType = EventType.Note, Tick = tick, Attribute = attr };
+              track.AddEvent(e);
+              return e;
+          }
+          EventData chainHead = SN(sl1, 0, 5);
+          EventData joint1 = SN(sl0, 10, 0);
+          EventData joint2 = SN(sl0, 20, 0);
+          EventData chainClose = SN(sl1, 30, 6);
+          EventData repHead = SN(sl0, 100, 10);
+          EventData repTick1 = SN(sl0, 120, 10);
+          EventData repTick2 = SN(sl0, 140, 10);
+          EventData repClose = SN(sl0, 160, 11);
+          var built = TechnikaSeriesClassifier.Build(sp);
+          var bChain = built.Runs.Single(r => r.IsChain);
+          var bRepeat = built.Runs.Single(r => !r.IsChain);
+          Check(bChain.Members.SequenceEqual(
+                new[] { chainHead, joint1, joint2, chainClose }),
+                "chain run walks head, two absorbed cross-lane taps, close");
+          Check(bRepeat.Members.SequenceEqual(
+                new[] { repHead, repTick1, repTick2, repClose }),
+                "repeat run walks head, two downgraded ticks, close");
+          Check(built.Kinds[joint1] == TechnikaNoteKind.ChainNode
+                && built.Kinds[joint2] == TechnikaNoteKind.ChainNode
+                && built.Kinds[repTick1] == TechnikaNoteKind.Repeat
+                && built.Kinds[repTick2] == TechnikaNoteKind.Repeat,
+                "absorbed taps paint as chain nodes and later heads as repeat ticks");
+
+          // Drag-move: the editor drags notes by column position across the playable lanes
+          // plus overflow, which skips the model's marker/tempo track gap (4..8) instead of
+          // shifting a raw track index onto an annotation track.
+          for (uint extra = 2; extra <= 10; extra++)
+              sp.Tracks.AddTrack(new TrackData(extra) { TrackName = extra.ToString() });
+          var doc = new EditorDocumentContext(sp, "sp.tech");
+          doc.Selection.Replace(new[] { chainHead, joint1, joint2, chainClose });
+          var laneMap = new Dictionary<uint, uint> { [0u] = 9u, [1u] = 10u };
+          Check(doc.Edits.MoveSelectionTo(laneMap, 120, null),
+                "a drag move applies explicit per-track destinations plus a time delta");
+          Check(joint1.TrackId == 9 && joint2.TrackId == 9
+                && chainHead.TrackId == 10 && chainClose.TrackId == 10,
+                "notes cross the 4..8 marker/tempo gap onto overflow tracks");
+          Check(joint1.VirtualTick == 180 && chainHead.VirtualTick == 120,
+                "the move applies the same 120 virtual ticks to every selected note");
+          doc.UndoManager.Undo();
+          Check(joint1.TrackId == 0 && chainHead.TrackId == 1 && joint1.VirtualTick == 60,
+                "a drag move is one undoable action");
+          doc.UndoManager.Redo();
+          var backMap = new Dictionary<uint, uint> { [9u] = 0u, [10u] = 1u };
+          var back = doc.Edits.MoveSelectionTo(backMap, 0, null);
+          Check(joint1.TrackId == 0 && chainHead.TrackId == 1,
+                "explicit destinations move notes back across the gap");
+          Check(!doc.Edits.MoveSelectionTo(new Dictionary<uint, uint>(), -100000, null),
+                "a move before tick zero is rejected for the whole selection");
+          var outOfLane = new Dictionary<uint, uint> { [0u] = 99u };
+          Check(!doc.Edits.MoveSelectionTo(outOfLane, 0, null),
+                "a move onto a nonexistent track is rejected");
+
+          bool oldRejected = false;
+          try { TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes("{ \"version\": \"2\", \"patterns\": [] }")); }
+          catch (ChartLoadException ex) { oldRejected = ex.Kind == ChartLoadError.UnsupportedFormat; }
+          Check(oldRejected, "format v2 is rejected with UnsupportedFormat");
+
+          // Round trip: write the imported chart back out and import the result again.
+          string techOut = TechmaniaChartSerializer.Serialize(techChart);
+          var detectedRound = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(techOut), ".tech");
+          Check(detectedRound.Format == ChartFormat.TechmaniaTrack,
+                "the re-serialized file still detects as TECHMANIA");
+          Check(techOut.Contains("\"version\": \"3\""), "written file declares format v3");
+          Check(techOut.Contains("Basic|0|0|"), "a compact basic is packed without extended fields");
+          Check(techOut.Contains("E|Basic|1920|0|100|0|1|"),
+                "the end-of-scan note is packed extended with the flag");
+          Check(techOut.Contains("E|Basic|960|2|80|-50|0|c|d.ogg"),
+                "extended volume/pan and the pipe-bearing keysound survive packing");
+          Check(techOut.Contains("Hold|1200|0|480|h.ogg") &&
+                techOut.Contains("RepeatHold|1800|1|300|"),
+                "holds keep their pulse durations");
+          Check(techOut.Contains("\"packedDragNotes\""), "drags land in the drag table");
+          // Untouched drags keep their authored shape verbatim: the bezier drag's
+          // off-line control points ...
+          Check(techOut.Contains("120|0.25") && techOut.Contains("-120|-0.25"),
+                "an untouched bezier drag keeps its control points");
+          // ... its lane-crossing B-spline sibling's curve-type head and anchors ...
+          Check(techOut.Contains("E|Drag|2640|3|100|0|1|d2.ogg")
+                && techOut.Contains("120|-0.5|0|0|0|0"),
+                "an untouched B-spline drag keeps its curve type and anchors");
+          // ... while a freshly authored (no retained raw json) drag is rebuilt straight.
+          var blankDrag = new PlayerData();
+          var dt = new TrackData(0) { TrackName = "lane 1" };
+          dt.AddEvent(new EventData { EventType = EventType.Note, VirtualTick = 0,
+              VirtualDuration = 288 });
+          blankDrag.Tracks.AddTrack(dt);
+          string blankDragOut = TechmaniaChartSerializer.Serialize(blankDrag);
+          Check(blankDragOut.Contains("\"packedNote\": \"Drag|0|0|\"")
+                && blankDragOut.Contains("120|0") && blankDragOut.Contains("240|0|-120|0|0|0"),
+                "a newly authored drag is built as a straight 240-pulse drag");
+          PlayerData roundTech = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(techOut));
+          Check(roundTech.Tracks.Count == 12,
+                "round trip keeps four lanes, four markers, tempo, two keysound "
+                + "overflow tracks and the backing trigger");
+          Check(techOut.Contains("Basic|3000|5|extra5.ogg")
+                && techOut.Contains("Basic|3120|7|extra7.ogg"),
+                "overflow notes are written back to their original format lanes");
+          Check(techOut.Contains("\"backingTrack\": \"audio.ogg\"")
+                && !techOut.Contains("|audio.ogg"),
+                "the backing file stays in metadata, not in the packed note tables");
+          Check(roundTech.TechMetadata.FormatLaneByTrack[9] == 5
+                && roundTech.Tracks.GetTrackAtIndex(9).Events.First().Tick == 600,
+                "overflow track identity survives the full round trip");
+          Check(roundTech.Tracks.GetTrackAtIndex(0).Events.Count() == 6,
+                "lane 0 note count survives the round trip");
+          var rt1 = roundTech.Tracks.GetTrackAtIndex(1).Events.ToList();
+          Check(rt1[3].Attribute == 10 && rt1[3].Duration == 120 &&
+                rt1[4].Attribute == 11 && rt1[4].Duration == 60,
+                "repeat hold timings survive the round trip");
+          var rt3 = roundTech.Tracks.GetTrackAtIndex(3).Events.ToList();
+          Check(rt3.Count == 2 && rt3[0].Tick == 432 && rt3[0].Duration == 96,
+                "bezier drag timing survives the round trip");
+          // Extended B-spline drag: field 6 of E|Drag is the curve type, never an
+          // end-of-scan flag; the 3-node B-spline length is (p[n-2] + 5*p[n-1]) / 6
+          // = (120 + 5*360) / 6 = 320 pulses.
+          Check(rt3[1].Tick == 528 && rt3[1].Duration == 64,
+                "B-spline drag head and interpolated duration survive");
+          int markerTotal = 0;
+          for (int mk = 4; mk <= 7; mk++)
+              markerTotal += roundTech.Tracks.GetTrackAtIndex((uint)mk).Events.Count();
+          Check(markerTotal == 1,
+                "a B-spline drag's curve type never becomes an end-of-scan marker");
+          var rtEos = roundTech.Tracks.GetTrackAtIndex(4).Events.ToList();
+          Check(rtEos.Count == 1 && rtEos[0].Attribute == 100 && rtEos[0].Tick == 384,
+                "end-of-scan marker survives the round trip");
+          var rtTempo = roundTech.Tracks.GetTrackAtIndex(8).Events.ToList();
+          Check(rtTempo.Count == 1 && Math.Abs(rtTempo[0].Tempo - 140f) < 0.01f,
+                "tempo event survives the round trip");
+          // Container metadata survives the write-back.
+          Check(techOut.Contains("\"guid\": \"t\"") && techOut.Contains("\"guid\": \"p\""),
+                "track and pattern GUIDs are written back");
+          Check(techOut.Contains("\"bps\": 2"), "beats-per-scan is written back");
+          Check(techOut.Contains("\"controlScheme\": 1") && techOut.Contains("\"level\": 7"),
+                "pattern metadata is written back");
+          Check(techOut.Contains("\"pulse\": 480") && techOut.Contains("\"duration\": 120"),
+                "time stops are written back");
+          // Every media filename the .tech names (the files live beside the .tech and
+          // are referenced by bare name, never embedded) is written back verbatim.
+          Check(techOut.Contains("audio.ogg") && techOut.Contains("bg.png")
+                && techOut.Contains("bga.mp4") && techOut.Contains("eye.png")
+                && techOut.Contains("prev.ogg") && techOut.Contains("prev.mp4"),
+                "backing track, back image, BGA, eyecatch and preview filenames survive");
+          var roundMeta = roundTech.TechMetadata;
+          Check(roundMeta != null && roundMeta.Title == "T" && roundMeta.PatternName == "NM"
+                && roundMeta.Bps == 2 && roundMeta.TimeStops.Count == 1,
+                "metadata survives the full round trip");
+          Check(techOut.IndexOf("ChainHead", StringComparison.Ordinal) >= 0 &&
+                techOut.IndexOf("ChainNode", StringComparison.Ordinal) >= 0,
+                "chain members are packed by name");
+          // Freshly authored notes use the model defaults (volume 127 / pan 64), which must
+          // come out as TECHMANIA defaults in the compact form.
+          var blank = new PlayerData();
+          var t = new TrackData(0) { TrackName = "lane 1" };
+          t.AddEvent(new EventData { EventType = EventType.Note, VirtualTick = 0 });
+          blank.Tracks.AddTrack(t);
+          string blankOut = TechmaniaChartSerializer.Serialize(blank);
+          Check(blankOut.Contains("Basic|0|0|") && !blankOut.Contains("E|Basic"),
+                "model-default volume/pan pack as a compact note");
+
+          // Multi-difficulty container: stitch a second, untouched pattern (MX) behind
+          // the opened one (NM). The editor edits slot 0; slot 1 must come back verbatim.
+          var multiDoc = JsonNode.Parse(tech);
+          multiDoc["patterns"].AsArray().Add(JsonNode.Parse(
+              "{\"patternMetadata\":{\"guid\":\"p2\",\"patternName\":\"MX\",\"author\":\"other\","
+              + "\"initBpm\":100,\"bps\":4},\"packedNotes\":[\"Basic|0|1|mx.ogg\"],"
+              + "\"packedHoldNotes\":[],\"packedDragNotes\":[]}"));
+          string multiTech = multiDoc.ToJsonString();
+          PlayerData multiChart = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiTech));
+          var mm = multiChart.TechMetadata;
+          Check(mm.ActivePatternIndex == 0 && mm.SiblingPatterns.Count == 1
+                && mm.SiblingPatterns[0].Index == 1,
+                "only the first pattern opens; the other is retained as a sibling");
+          string multiOut = TechmaniaChartSerializer.Serialize(multiChart);
+          Check(multiOut.Contains("\"patternName\": \"MX\"") &&
+                multiOut.Contains("Basic|0|1|mx.ogg"),
+                "the unedited sibling difficulty is written back verbatim");
+          PlayerData multiRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiOut));
+          Check(multiRound.TechMetadata.SiblingPatterns.Count == 1
+                && multiRound.TechMetadata.SiblingPatterns[0].Json.Contains("mx.ogg"),
+                "sibling difficulty survives a second round trip");
+
+          // Asking for pattern slot 1 opens MX instead, and slot 0 becomes the sibling.
+          PlayerData multiMx = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiTech), 1);
+          var mmm = multiMx.TechMetadata;
+          Check(mmm.ActivePatternIndex == 1 && mmm.PatternName == "MX"
+                && mmm.SiblingPatterns.Count == 1 && mmm.SiblingPatterns[0].Index == 0,
+                "requesting pattern index 1 opens the MX difficulty");
+          string mxOut = TechmaniaChartSerializer.Serialize(multiMx);
+          Check(mxOut.Contains("\"patternName\": \"MX\"")
+                && mxOut.Contains("\"patternName\": \"NM\"")
+                && mxOut.Contains("Basic|0|1|mx.ogg"),
+                "editing a chosen difficulty slot keeps both difficulties in order");
+
+          var listing = TechmaniaChartSerializer.ListPatterns(
+              Encoding.UTF8.GetBytes(multiTech));
+          Check(listing.Count == 2 && listing[0].Name == "NM"
+                && listing[1].Name == "MX" && listing[1].Index == 1,
+                "pattern enumerator lists every difficulty with its slot");
+
+          // Real shipped charts: a 3-lane single-pattern file and a two-difficulty
+          // container, both with null metadata, fingerprints and legacy overrides.
+          byte[] realBytes = File.ReadAllBytes(Path.Combine("smoke", "umapyoi.tech"));
+          PlayerData real = TechmaniaChartSerializer.Parse(realBytes);
+          var rm = real.TechMetadata;
+          Check(rm != null && rm.Title == "umapyoi" && rm.PlayableLanes == 3
+                && rm.PatternName == "NM", "real 3-lane chart opens with its metadata");
+          Check(rm.Bga == "umapyoiprebga.mp4" && rm.WaitForEndOfBga
+                && rm.SiblingPatterns.Count == 0,
+                "real chart AV metadata is retained with no sibling patterns");
+          Check(real.Tracks.GetTrackAtIndex(3).Events.Count() == 1,
+                "real chart keeps the lane-3 preview note");
+          // umapyoi triggers the song from the hidden lane note itself; no backingTrack
+          // is named, so no synth trigger is created.
+          Check(rm.BackingTrackModelTrack == -1 && string.IsNullOrEmpty(rm.BackingTrack),
+                "the hidden-lane trigger style needs no synthesized backing track");
+          // The preview note sits one lane past the playable 3; the playfield must stay
+          // 3 lanes wide and never draw it, while the editor keeps the track on disk.
+          var realProjection = GameplayPreviewProjector.Project(
+              real, GameplayPreviewProfile.Technika);
+          Check(realProjection.LaneCount == 3
+                && realProjection.Notes.All(n => n.Lane < 3),
+                "invisible keysound lanes never widen or draw on the playfield");
+          string realOut = TechmaniaChartSerializer.Serialize(real);
+          Check(realOut.Contains("legacyRulesetOverride")
+                && realOut.Contains("legacySetlistOverride"),
+                "legacy overrides ride through on the edited pattern");
+          Check(!realOut.Contains("fingerprint"),
+                "the stale fingerprint is dropped so the game recomputes it");
+          Check(realOut.Contains("umapyoiprebgm.ogg")
+                && realOut.Contains("\"playableLanes\": 3"),
+                "keysound reference and 3-lane setup survive the real round trip");
+          // The real chart's drag ends one lane over (anchor "240|1"); it must not be
+          // rebuilt as a vertical drag when the note is untouched.
+          Check(realOut.Contains("240|1|0|0|0|0"),
+                "a lane-crossing drag anchor rides through verbatim");
+          PlayerData realRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(realOut));
+          Check(realRound.TechMetadata.PlayableLanes == 3
+                && realRound.TechMetadata.PatternName == "NM",
+                "real chart reopens at 3 lanes after save-back");
+
+          byte[] twoBytes = File.ReadAllBytes(
+              Path.Combine("smoke", "crimes-two-patterns.tech"));
+          PlayerData two = TechmaniaChartSerializer.Parse(twoBytes);
+          Check(two.TechMetadata.SiblingPatterns.Count == 1
+                && two.TechMetadata.PatternName == "MX",
+                "real two-difficulty file opens MX and keeps New pattern as a sibling");
+          // Soundtrack-only chart: all taps are silent, the full song is in backingTrack.
+          // Import synthesizes a tick-0 trigger on its own overflow track so the editor
+          // transport plays it.
+          string mxBacking = "Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav";
+          int bgmTrack = two.TechMetadata.BackingTrackModelTrack;
+          // MX has one hidden-lane note on format lane 5 (model track 9), so the
+          // backing trigger takes the next slot, model track 10.
+          Check(bgmTrack == 10, "a backing-only chart gets a synth trigger past its extras");
+          var bgm = two.Tracks.GetTrackAtIndex((uint)bgmTrack).Events.ToList();
+          Check(bgm.Count == 1 && bgm[0].Tick == 0
+                && bgm[0].Instrument.Name == mxBacking,
+                "the backing file is attached as a single tick-0 keysound trigger");
+          string twoOut = TechmaniaChartSerializer.Serialize(two);
+          Check(twoOut.Contains("\"patternName\": \"New pattern\"")
+                && twoOut.Contains("800x800cc.jpg"),
+                "real second difficulty and eyecatch reference are written back");
+          // Each difficulty names its own media, sitting beside the .tech as bare
+          // filenames - the opened slot keeps its backing track (spaces/parens/.wav),
+          // the untouched sibling keeps its different backing track verbatim, and the
+          // shared BGA name is present too.
+          Check(twoOut.Contains("Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav"),
+                "the opened difficulty keeps its own backing track filename");
+          Check(twoOut.Contains("\"backingTrack\": \"Crime_and_Punishment.wav\""),
+                "the sibling difficulty keeps its own backing track filename");
+          Check(twoOut.Contains("0419.mp4"),
+                "the background video filename is written back");
+          // The synth trigger is scaffolding: the wav stays in patternMetadata and no
+          // packed note ever carries it (the original taps really are silent).
+          Check(twoOut.Contains("\"backingTrack\": \"" + mxBacking + "\""),
+                "the backing track filename stays in pattern metadata");
+          Check(!twoOut.Contains("|" + mxBacking),
+                "the synth backing trigger is never written as a packed note");
+          PlayerData twoRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(twoOut));
+          Check(twoRound.TechMetadata.BackingTrackModelTrack == 10,
+                "reopening re-synthesizes the backing trigger at the same track");
+          Check(twoRound.TechMetadata.SiblingPatterns.Count == 1
+                && twoRound.TechMetadata.SiblingPatterns[0].Json.Contains(
+                    "\"patternName\": \"New pattern\""),
+                "real two-difficulty file survives a second round trip");
+          Check(twoRound.TechMetadata.BackingTrack ==
+                "Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav"
+                && twoRound.TechMetadata.Bga == "0419.mp4"
+                && twoRound.TechMetadata.EyecatchImage == "800x800cc.jpg",
+                "the reopened chart remembers every media filename");
+
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;
           SMOKE_PROG_EOF
+          # Real-world charts shipped with the repo: a 3-lane single-pattern file and a
+          # two-difficulty container, both with null metadata, fingerprints and overrides.
+          cp test-fixtures/tech/*.tech smoke/
           ls -la smoke/
       - name: Run smoke test
         shell: pwsh
         run: |
           $out = dotnet run --project smoke -c Debug 2>&1
-          $out | ForEach-Object { Write-Host $_ }
+          $out | Tee-Object -FilePath smoke-run.log | ForEach-Object { Write-Host $_ }
           $code = $LASTEXITCODE
           if ($code -ne 0) {
-            $out | Select-Object -Last 25 | ForEach-Object { Write-Output "::error::$_" }
+            # The exception trace lands on stderr and PowerShell merges it ahead of
+            # the buffered stdout, so a plain tail hides it; grep it out explicitly.
+            Select-String -Path smoke-run.log -Pattern 'assert failed|Exception|error [A-Z]+[0-9]+' |
+              Select-Object -First 20 |
+              ForEach-Object { Write-Output ("::error::" + $_.Line) }
             exit $code
           }

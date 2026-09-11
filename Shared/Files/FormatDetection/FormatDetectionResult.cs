@@ -51,7 +51,8 @@ namespace DJMaxEditor.Files.FormatDetection
             Format == ChartFormat.TrailerRespectV ||
             Format == ChartFormat.CyclonXml ||
             Format == ChartFormat.BmsClassic ||
-            Format == ChartFormat.Bmson;
+            Format == ChartFormat.Bmson ||
+            Format == ChartFormat.TechmaniaTrack;
 
         public override string ToString()
         {
