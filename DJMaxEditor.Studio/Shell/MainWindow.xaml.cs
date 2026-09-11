@@ -472,6 +472,7 @@ namespace DJMaxEditor.Studio.Shell
             NoteSpeedReadout.Text = timeline.NoteSpeed.ToString("0.00", CultureInfo.InvariantCulture);
             _viewModel.TrySetTimeZoom(
                 (float)(timeline.NoteSpeed / VerticalTimelineViewModel.BasePixelsPerTick));
+            PushPlayfieldNoteSpeed(timeline.NoteSpeed);
 
             NoteHeightSlider.Value = timeline.NoteThickness;
             NoteHeightReadout.Text = timeline.NoteThickness.ToString("0.00", CultureInfo.InvariantCulture);
@@ -2697,9 +2698,24 @@ namespace DJMaxEditor.Studio.Shell
             }
             NoteSpeedReadout.Text = e.NewValue.ToString("0.00", CultureInfo.InvariantCulture);
             _viewModel.TrySetTimeZoom((float)(e.NewValue / VerticalTimelineViewModel.BasePixelsPerTick));
+            PushPlayfieldNoteSpeed(e.NewValue);
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
             RefreshStatus();
+        }
+
+        /// <summary>
+        /// Pushes the timeline's Note Speed slider onto the RESPECT gear as scroll speed.
+        /// Proportional around the two defaults - the slider's 0.55 px/tick reproduces the
+        /// game's own 4.5 - so the playfield keeps the pace the timeline shows. Clamped to
+        /// [1, 24]: wider than that the field drowns in measures at the slow end and holds
+        /// less than a beat at the fast end.
+        /// </summary>
+        private void PushPlayfieldNoteSpeed(double slider)
+        {
+            double speed = RespectGameplayLayout.DefaultNoteSpeed *
+                (slider / VerticalTimelineViewModel.BasePixelsPerTick);
+            _respectPlayfield.NoteSpeed = (float)Math.Max(1.0, Math.Min(24.0, speed));
         }
 
         /// <summary>
@@ -2731,6 +2747,9 @@ namespace DJMaxEditor.Studio.Shell
             {
                 _syncingNoteSpeed = false;
             }
+            // Wheel zooms land here rather than in the slider handler (which this echo
+            // suppresses), so the gear follows them from here.
+            PushPlayfieldNoteSpeed(NoteSpeedSlider.Value);
             RefreshStatus();
         }
 

@@ -51,8 +51,34 @@ namespace DJMaxEditor.Studio.Preview
         /// <summary>Environment override for the owner's gear folder, for keeping it elsewhere.</summary>
         private const string PathVariable = "DJMAX_EDITOR_RESPECT_ASSETS";
 
-        /// <summary>Note speed the frame is built with. RESPECT's own default is 4.5.</summary>
-        private const float NoteSpeed = RespectGameplayLayout.DefaultNoteSpeed;
+        /// <summary>
+        /// Note speed the frame is built with. Pushed by the shell from the timeline's Note
+        /// Speed slider, so the gear scrolls with the chart's on-screen pace; RESPECT's own
+        /// 4.5 is what it rests at. Assigning while bound re-syncs the current playhead, so a
+        /// slider drag re-flows the field live instead of waiting for the next pump tick.
+        /// Non-positive values fall back to the default - the layout throws on those.
+        /// </summary>
+        public float NoteSpeed
+        {
+            get { return _noteSpeed; }
+            set
+            {
+                float speed = value <= 0 || float.IsNaN(value) || float.IsInfinity(value)
+                    ? RespectGameplayLayout.DefaultNoteSpeed
+                    : value;
+                if (speed == _noteSpeed)
+                {
+                    return;
+                }
+                _noteSpeed = speed;
+                if (HasPlayfield)
+                {
+                    Sync(_lastSyncTick);
+                }
+            }
+        }
+
+        private float _noteSpeed = RespectGameplayLayout.DefaultNoteSpeed;
 
         /// <summary>
         /// Height of the bottom deck as a fraction of the playfield's 1080-native height. 244 is
@@ -69,6 +95,7 @@ namespace DJMaxEditor.Studio.Preview
 
         private GameplayPreviewProjection _projection;
         private GameplayPreviewFrame _frame;
+        private int _lastSyncTick;
         private RespectGearArt _gear;
         private RespectLanePlan[] _lanes = new RespectLanePlan[0];
         private int _glassLaneCount = -1;
@@ -133,6 +160,9 @@ namespace DJMaxEditor.Studio.Preview
         {
             _projection = projection;
             _frame = null;
+            // The live speed re-sync answers against this; a fresh bind starts at zero, not
+            // at whatever tick the previous document was parked on.
+            _lastSyncTick = 0;
             _lanes = BuildLanePlan(projection);
             _glassLaneCount = -1;
             // Eager, not at first paint: the panel header asks GearSourceLabel immediately after
@@ -162,8 +192,9 @@ namespace DJMaxEditor.Studio.Preview
                 return;
             }
 
+            _lastSyncTick = playheadVirtualTick;
             int tick = playheadVirtualTick / EventData.VirtualTickSize;
-            _frame = _projection.CreateRenderableFrame(tick, NoteSpeed);
+            _frame = _projection.CreateRenderableFrame(tick, _noteSpeed);
             using (DrawingContext dc = _field.RenderOpen())
             {
                 dc.DrawRectangle(Brushes.Transparent, null,
