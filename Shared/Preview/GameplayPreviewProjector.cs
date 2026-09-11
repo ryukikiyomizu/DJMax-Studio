@@ -1054,62 +1054,79 @@ namespace DJMaxEditor.Preview
             IList<ProjectedGameplayNote> notes,
             IList<string> diagnostics)
         {
-            bool open = false;
-            int headPulse = -1;
-            var implicitNodes = new List<ProjectedGameplayNote>();
-
+            // Pass 1 - spans, delimited purely from the explicit typing. A .tech chains one
+            // ChainHead through every ChainNode that follows (the waypoints cross lanes), and
+            // the next head starts the next span; there is no single closing node. The legacy
+            // dialect's span ends at its one node. Streaming "first node closes" chopped a real
+            // dozen-node chain into a pair plus eleven orphans - and closing on any other-family
+            // note killed a chain that shares a tick with, say, a repeat head in another lane.
+            var heads = new List<ProjectedGameplayNote>();
+            var spanEnd = new List<int>();
+            var spanNodePulses = new List<HashSet<int>>();
+            int openSpan = -1;
             foreach (ProjectedGameplayNote note in notes)
             {
                 if (note.Kind == GameplayPreviewNoteKind.ChainHead)
                 {
-                    open = true;
-                    headPulse = note.Pulse;
-                    implicitNodes.Clear();
+                    heads.Add(note);
+                    spanEnd.Add(note.Pulse);
+                    spanNodePulses.Add(new HashSet<int>());
+                    openSpan = heads.Count - 1;
+                }
+                else if (note.Kind == GameplayPreviewNoteKind.ChainNode)
+                {
+                    if (openSpan < 0)
+                    {
+                        diagnostics.Add("Orphan chain node at tick " + note.Source.Tick + ".");
+                        continue;
+                    }
+                    spanEnd[openSpan] = note.Pulse;
+                    spanNodePulses[openSpan].Add(note.Pulse);
+                }
+            }
+
+            // Pass 2 - the legacy dialect traces its path through ordinary taps that the file
+            // never re-tagged: absorb the basics strictly inside a span, except taps on a
+            // node's own pulse, which are real taps in another lane sharing the waypoint's tick.
+            openSpan = -1;
+            int noteIndex = 0;
+            foreach (ProjectedGameplayNote note in notes)
+            {
+                if (note.Kind == GameplayPreviewNoteKind.ChainHead)
+                {
+                    // The heads list follows the same walk order, so a pointer is enough.
+                    while (noteIndex < heads.Count && heads[noteIndex] != note)
+                    {
+                        noteIndex++;
+                    }
+                    openSpan = noteIndex < heads.Count ? noteIndex : -1;
+                    noteIndex++;
                     continue;
                 }
 
                 if (note.Kind == GameplayPreviewNoteKind.ChainNode)
                 {
-                    if (!open)
-                    {
-                        diagnostics.Add("Orphan chain node at tick " + note.Source.Tick + ".");
-                        continue;
-                    }
-
-                    // A tap sharing any node's pulse is that node's neighbour in another lane, not
-                    // a joint - hand it back before the path extends through this node.
-                    foreach (ProjectedGameplayNote implicitNode in
-                        implicitNodes.Where(node => node.Pulse == note.Pulse))
-                    {
-                        implicitNode.Kind = GameplayPreviewNoteKind.Basic;
-                        implicitNode.IsImplicitChainNode = false;
-                    }
-                    // A .tech tags every waypoint as a ChainNode - there is no single closing
-                    // node, so the path stays open for the next node. The legacy single-node
-                    // dialect still works: it simply has no following node.
+                    // Explicit waypoint: nothing to absorb or hand back here.
                     continue;
                 }
 
-                if (open && note.Kind == GameplayPreviewNoteKind.Basic &&
-                    note.Pulse > headPulse)
+                if (openSpan >= 0 && note.Kind == GameplayPreviewNoteKind.Basic &&
+                    note.Pulse > heads[openSpan].Pulse &&
+                    note.Pulse <= spanEnd[openSpan] &&
+                    !spanNodePulses[openSpan].Contains(note.Pulse))
                 {
                     note.Kind = GameplayPreviewNoteKind.ChainNode;
                     note.IsImplicitChainNode = true;
-                    implicitNodes.Add(note);
-                    continue;
-                }
-
-                if (open && note.Kind != GameplayPreviewNoteKind.ChainNode)
-                {
-                    // A note of another family ends the path; the next head opens the next one.
-                    open = false;
-                    implicitNodes.Clear();
                 }
             }
 
-            if (open)
+            for (int i = 0; i < heads.Count; i++)
             {
-                diagnostics.Add("Unclosed chain beginning at pulse " + headPulse + ".");
+                if (spanEnd[i] == heads[i].Pulse)
+                {
+                    diagnostics.Add(
+                        "Unclosed chain beginning at pulse " + heads[i].Pulse + ".");
+                }
             }
         }
 

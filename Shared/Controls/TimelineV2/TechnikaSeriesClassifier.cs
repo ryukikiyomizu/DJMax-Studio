@@ -138,37 +138,59 @@ namespace DJMaxEditor.Controls.TimelineV2
             TechnikaSeriesMap map, List<SeriesNote> notes)
         {
             Dictionary<EventData, TechnikaNoteKind> kinds = map.Kinds;
-            bool open = false;
-            EventData head = null;
+
+            // Pass 1 - spans. A chain can only be delimited from the explicit typing: each
+            // ChainHead opens a span that runs through every following ChainNode, and ends at
+            // the last such node (a .tech tags all waypoints explicitly) or at the next head.
+            // Streaming "first node closes" was the legacy single-close dialect and chopped a
+            // real dozen-node chain into one pair plus eleven orphans.
+            var spans = new List<ChainSpan>();
+            ChainSpan currentSpan = null;
+            foreach (SeriesNote note in notes)
+            {
+                if (note.Kind == TechnikaNoteKind.ChainHead)
+                {
+                    currentSpan = new ChainSpan(note.Event);
+                    spans.Add(currentSpan);
+                }
+                else if (note.Kind == TechnikaNoteKind.ChainNode && currentSpan != null)
+                {
+                    currentSpan.EndTick = note.Event.Tick;
+                    currentSpan.NodeTicks.Add(note.Event.Tick);
+                }
+            }
+
+            // Pass 2 - painted kinds and run membership. Ordinary taps strictly inside a span
+            // are the legacy dialect's untagged joints; a tap on a node's own tick is a real
+            // tap in another lane and gets handed back.
             TechnikaSeriesRun run = null;
-            List<SeriesNote> absorbed = new List<SeriesNote>();
+            ChainSpan span = null;
+            var absorbed = new List<SeriesNote>();
 
             foreach (SeriesNote note in notes)
             {
                 TechnikaNoteKind kind = note.Kind;
+
                 if (kind == TechnikaNoteKind.ChainHead)
                 {
-                    open = true;
-                    head = note.Event;
-                    absorbed.Clear();
+                    span = FindSpan(spans, note.Event);
                     run = new TechnikaSeriesRun(TechnikaNoteKind.ChainNode);
                     run.Members.Add(note.Event);
                     map.Runs.Add(run);
+                    absorbed.Clear();
                     kinds[note.Event] = kind;
                     continue;
                 }
 
                 if (kind == TechnikaNoteKind.ChainNode)
                 {
-                    if (!open)
+                    if (span == null || run == null)
                     {
                         // Orphan node: paint as a node anyway, but it joins nothing.
                         kinds[note.Event] = kind;
                         continue;
                     }
 
-                    // A tap sharing a node's tick is that note's neighbour in another lane, not a
-                    // joint - the projector hands those back before extending the path.
                     int nodeTick = note.Event.Tick;
                     for (int i = absorbed.Count - 1; i >= 0; i--)
                     {
@@ -180,30 +202,51 @@ namespace DJMaxEditor.Controls.TimelineV2
                     }
                     run.Members.Add(note.Event);
                     kinds[note.Event] = kind;
-                    // Unlike the legacy single-close model, more nodes may follow - the path stays
-                    // open until a non-chain note or the next head.
                     continue;
                 }
 
-                if (open && kind == TechnikaNoteKind.Basic && note.Event.Tick > head.Tick)
+                if (kind == TechnikaNoteKind.Basic && span != null)
                 {
-                    absorbed.Add(note);
-                    run.Members.Add(note.Event);
-                    kinds[note.Event] = TechnikaNoteKind.ChainNode;
-                    continue;
-                }
-
-                if (open && kind != TechnikaNoteKind.ChainNode)
-                {
-                    // Hold, drag, repeat or tap at the head's own tick ends the path.
-                    open = false;
-                    head = null;
-                    run = null;
-                    absorbed.Clear();
+                    int tick = note.Event.Tick;
+                    if (tick > span.HeadTick && tick <= span.EndTick &&
+                        !span.NodeTicks.Contains(tick))
+                    {
+                        absorbed.Add(note);
+                        run.Members.Add(note.Event);
+                        kinds[note.Event] = TechnikaNoteKind.ChainNode;
+                        continue;
+                    }
                 }
 
                 kinds[note.Event] = kind;
             }
+        }
+
+        private static ChainSpan FindSpan(List<ChainSpan> spans, EventData head)
+        {
+            foreach (ChainSpan span in spans)
+            {
+                if (span.Head == head)
+                {
+                    return span;
+                }
+            }
+            return null;
+        }
+
+        private sealed class ChainSpan
+        {
+            public ChainSpan(EventData head)
+            {
+                Head = head;
+                EndTick = head.Tick;
+            }
+
+            public EventData Head { get; private set; }
+            public int HeadTick { get { return Head.Tick; } }
+            public int EndTick { get; set; }
+            public HashSet<int> NodeTicks { get; private set; }
+                = new HashSet<int>();
         }
 
         /// <summary>
