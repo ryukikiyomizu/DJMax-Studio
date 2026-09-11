@@ -139,6 +139,8 @@ jobs:
               <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
+              <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
@@ -313,6 +315,51 @@ jobs:
           try { TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes("{ \"version\": \"2\", \"patterns\": [] }")); }
           catch (ChartLoadException ex) { oldRejected = ex.Kind == ChartLoadError.UnsupportedFormat; }
           Check(oldRejected, "format v2 is rejected with UnsupportedFormat");
+
+          // Round trip: write the imported chart back out and import the result again.
+          string techOut = TechmaniaChartSerializer.Serialize(techChart);
+          var detectedRound = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(techOut), ".tech");
+          Check(detectedRound.Format == ChartFormat.TechmaniaTrack,
+                "the re-serialized file still detects as TECHMANIA");
+          Check(techOut.Contains("\"version\": \"3\""), "written file declares format v3");
+          Check(techOut.Contains("Basic|0|0|"), "a compact basic is packed without extended fields");
+          Check(techOut.Contains("E|Basic|1920|0|100|0|1|"),
+                "the end-of-scan note is packed extended with the flag");
+          Check(techOut.Contains("E|Basic|960|2|80|-50|0|c|d.ogg"),
+                "extended volume/pan and the pipe-bearing keysound survive packing");
+          Check(techOut.Contains("Hold|1200|0|480|h.ogg") &&
+                techOut.Contains("RepeatHold|1800|1|300|"),
+                "holds keep their pulse durations");
+          Check(techOut.Contains("\"packedDragNotes\""), "drags land in the drag table");
+          PlayerData roundTech = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(techOut));
+          Check(roundTech.Tracks.Count == 9, "round trip keeps four lane, four marker, tempo tracks");
+          Check(roundTech.Tracks.GetTrackAtIndex(0).Events.Count() == 6,
+                "lane 0 note count survives the round trip");
+          var rt1 = roundTech.Tracks.GetTrackAtIndex(1).Events.ToList();
+          Check(rt1[3].Attribute == 10 && rt1[3].Duration == 120 &&
+                rt1[4].Attribute == 11 && rt1[4].Duration == 60,
+                "repeat hold timings survive the round trip");
+          var rt3 = roundTech.Tracks.GetTrackAtIndex(3).Events.ToList();
+          Check(rt3.Count == 1 && rt3[0].Tick == 432 && rt3[0].Duration == 96,
+                "drag timing survives the round trip");
+          var rtEos = roundTech.Tracks.GetTrackAtIndex(4).Events.ToList();
+          Check(rtEos.Count == 1 && rtEos[0].Attribute == 100 && rtEos[0].Tick == 384,
+                "end-of-scan marker survives the round trip");
+          var rtTempo = roundTech.Tracks.GetTrackAtIndex(8).Events.ToList();
+          Check(rtTempo.Count == 1 && Math.Abs(rtTempo[0].Tempo - 140f) < 0.01f,
+                "tempo event survives the round trip");
+          Check(techOut.IndexOf("ChainHead", StringComparison.Ordinal) >= 0 &&
+                techOut.IndexOf("ChainNode", StringComparison.Ordinal) >= 0,
+                "chain members are packed by name");
+          // Freshly authored notes use the model defaults (volume 127 / pan 64), which must
+          // come out as TECHMANIA defaults in the compact form.
+          var blank = new PlayerData();
+          var t = new TrackData(0) { TrackName = "lane 1" };
+          t.AddEvent(new EventData { EventType = EventType.Note, VirtualTick = 0 });
+          blank.Tracks.AddTrack(t);
+          string blankOut = TechmaniaChartSerializer.Serialize(blank);
+          Check(blankOut.Contains("Basic|0|0|") && !blankOut.Contains("E|Basic"),
+                "model-default volume/pan pack as a compact note");
 
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;

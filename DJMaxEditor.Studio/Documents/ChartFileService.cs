@@ -94,6 +94,7 @@ namespace DJMaxEditor.Studio.Documents
             _save.Register(new TQSaveFile());
             _save.Register(new BMESaveFile());
             _save.Register(new BmsonSaveFile());
+            _save.Register(new DJMaxEditor.Files.Tech.TechSaveFile());
         }
 
         public string OpenFilter

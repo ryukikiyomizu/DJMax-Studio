@@ -41,7 +41,7 @@ namespace DJMaxEditor.Files.Tech
     /// byte fields. Volume/pan and the end-of-scan flag do survive.
     /// </para>
     /// </summary>
-    internal static class TechmaniaChartSerializer
+    internal static partial class TechmaniaChartSerializer
     {
         /// <summary>The format version this reader understands (TECHMANIA 1.0 onward).</summary>
         public const string SupportedVersion = "3";
