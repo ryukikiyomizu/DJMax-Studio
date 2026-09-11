@@ -135,6 +135,24 @@ namespace DJMaxEditor.Studio.Timeline
         private double _panOriginTick;
         private double _panOriginNativeX;
 
+        // Note-move gesture. Armed by a Select-tool press that landed on a note; the move only
+        // starts once the pointer crosses MoveThreshold, so a plain click (select + keysound
+        // preview) never nudges a note. Everything until then is the click/marquee path.
+        private bool _moveArmed;
+        private bool _moveActive;
+        private Point _moveStart;
+        private EventData _moveAnchor;
+        private int _moveAnchorColumn;
+        private int _moveAnchorTick;
+        private int _moveAppliedColumnShift;
+        private int _moveAppliedTickDelta;
+        private object _moveGroupKey;
+        private List<uint> _moveColumns;
+        private List<MoveEntry> _moveEntries;
+
+        /// <summary>Pointer travel that turns a press-on-note into a move drag, in device px.</summary>
+        private const double MoveThreshold = 3.0;
+
         public StudioVerticalCanvas()
         {
             _layers = new VisualCollection(this);
@@ -1555,6 +1573,11 @@ namespace DJMaxEditor.Studio.Timeline
 
             if (_dragging && Tool == ToolMode.Select)
             {
+                if (_moveArmed)
+                {
+                    UpdateNoteMove(point);
+                    return;
+                }
                 _marquee = new Rect(_dragOrigin, point);
                 DrawOverlay();
                 return;
@@ -1574,7 +1597,11 @@ namespace DJMaxEditor.Studio.Timeline
                 ReleaseMouseCapture();
             }
 
-            if (_marquee.HasValue)
+            // A move gesture owns this press: no marquee selection is committed.
+            bool moved = _moveActive;
+            CancelMove();
+
+            if (!moved && _marquee.HasValue)
             {
                 CommitMarquee(_marquee.Value);
                 _marquee = null;
@@ -1749,9 +1776,7 @@ namespace DJMaxEditor.Studio.Timeline
             switch (Tool)
             {
                 case ToolMode.Select:
-                    _viewModel.SelectAt(point.X, point.Y, additive);
-                    RaiseNoteClickedAt(point);
-                    RaiseInteractionCompleted();
+                    HandleSelectPress(point, additive);
                     break;
 
                 case ToolMode.Addition:
@@ -1770,6 +1795,364 @@ namespace DJMaxEditor.Studio.Timeline
                     RaiseInteractionCompleted();
                     break;
             }
+        }
+
+        /// <summary>
+        /// A Select-tool press. A press on a movable note arms a drag (moving the whole
+        /// selection when the press landed inside one, otherwise the one note just selected);
+        /// every other press is the plain select/click the marquee path expects.
+        /// </summary>
+        private void HandleSelectPress(Point point, bool additive)
+        {
+            VerticalHitResult hit = _frame.HitTest(point.X, point.Y);
+            if (!additive && hit.HasItem && IsMovableNoteHit(hit))
+            {
+                EditorDocumentContext document = _viewModel.Document;
+                EventData pressed = hit.Item.Item.SourceEvent;
+                bool selectionReady = document != null && document.Selection != null &&
+                    document.Selection.Contains(pressed);
+
+                // The first press on an unselected note makes it the selection; pressing inside
+                // an existing selection keeps the whole group so one drag moves it together.
+                if (!selectionReady)
+                {
+                    _viewModel.SelectAt(point.X, point.Y, false);
+                }
+                ArmMove(point, pressed);
+            }
+            else
+            {
+                CancelMove();
+                _viewModel.SelectAt(point.X, point.Y, additive);
+            }
+
+            RaiseNoteClickedAt(point);
+            RaiseInteractionCompleted();
+        }
+
+        /// <summary>
+        /// True when a press on this hit may start a note move: a gameplay/authoring column
+        /// (never an end-of-scan marker or other annotation column) carrying a Note event.
+        /// </summary>
+        private static bool IsMovableNoteHit(VerticalHitResult hit)
+        {
+            if (hit == null || !hit.HasItem || hit.Item.Item == null ||
+                hit.Item.Item.SourceEvent == null)
+            {
+                return false;
+            }
+            return hit.Item.Item.SourceEvent.EventType == EventType.Note &&
+                CanReceiveNotes(hit.Column);
+        }
+
+        /// <summary>
+        /// Columns a note may be dragged from or onto: the playable lanes and the overflow
+        /// authoring columns. Marker, tempo, MR and BGA columns are annotation and stay out.
+        /// </summary>
+        private static bool CanReceiveNotes(VerticalColumn column)
+        {
+            if (column == null || column.SourceTrackId < 0)
+            {
+                return false;
+            }
+            switch (column.Kind)
+            {
+                case VerticalColumnKind.SideLeft:
+                case VerticalColumnKind.ShoulderLeft:
+                case VerticalColumnKind.Button:
+                case VerticalColumnKind.ShoulderRight:
+                case VerticalColumnKind.SideRight:
+                case VerticalColumnKind.Overflow:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private void ArmMove(Point point, EventData anchor)
+        {
+            EditorDocumentContext document = _viewModel != null ? _viewModel.Document : null;
+            if (document == null || document.Edits == null || document.Selection == null ||
+                !document.Capabilities.CanEdit || anchor == null)
+            {
+                return;
+            }
+            // Only move a homogeneous note selection: a marquee that also caught marker or
+            // tempo annotation must not drag those between tracks.
+            foreach (EventData selected in document.Selection.Items)
+            {
+                if (selected.EventType != EventType.Note)
+                {
+                    return;
+                }
+            }
+
+            // Note-capable columns in display order, mapped by column position rather than
+            // model track index so the marker/tempo gap is skipped, not traversed.
+            _moveColumns = NoteMoveColumns();
+
+            int anchorColumn = _moveColumns.IndexOf(anchor.TrackId);
+            if (anchorColumn < 0)
+            {
+                return;
+            }
+
+            _moveEntries = new List<MoveEntry>();
+            foreach (EventData selected in document.Selection.Items)
+            {
+                int column = _moveColumns.IndexOf(selected.TrackId);
+                if (column < 0)
+                {
+                    // The selection reaches a column notes cannot live on (a marquee that also
+                    // caught an end-of-scan marker). Drop the gesture rather than relocate an
+                    // annotation onto a playable lane.
+                    _moveColumns = null;
+                    return;
+                }
+                _moveEntries.Add(new MoveEntry(selected, column, selected.VirtualTick));
+            }
+
+            _moveArmed = true;
+            _moveActive = false;
+            _moveStart = point;
+            _moveAnchor = anchor;
+            _moveAnchorColumn = anchorColumn;
+            _moveAnchorTick = anchor.VirtualTick;
+            _moveAppliedColumnShift = 0;
+            _moveAppliedTickDelta = 0;
+            // One key per gesture merges the per-frame moves into one undo entry.
+            _moveGroupKey = new object();
+        }
+
+        private void CancelMove()
+        {
+            _moveArmed = false;
+            _moveActive = false;
+            _moveAnchor = null;
+            _moveGroupKey = null;
+            _moveColumns = null;
+            _moveEntries = null;
+        }
+
+        /// <summary>One selected event's position at the moment a move gesture armed.</summary>
+        private sealed class MoveEntry
+        {
+            public MoveEntry(EventData item, int column, int virtualTick)
+            {
+                Item = item;
+                OriginalColumn = column;
+                OriginalTick = virtualTick;
+            }
+
+            public EventData Item { get; private set; }
+            public int OriginalColumn { get; private set; }
+            public int OriginalTick { get; private set; }
+        }
+
+        /// <summary>
+        /// Drives the armed note move from the current pointer: time delta from the travel
+        /// along the tick axis (grid-snapped from the anchor), lane delta from the column
+        /// under the pointer. Applied as incremental moves so one gesture is one undo entry,
+        /// and the edit controller rejects a frame wholesale if any selected note would leave
+        /// the chart's tracks or go before tick zero.
+        /// </summary>
+        private void UpdateNoteMove(Point point)
+        {
+            if (!_moveArmed || _frame == null || _moveAnchor == null)
+            {
+                return;
+            }
+
+            double deltaX = point.X - _moveStart.X;
+            double deltaY = point.Y - _moveStart.Y;
+            if (!_moveActive &&
+                Math.Abs(deltaX) < MoveThreshold && Math.Abs(deltaY) < MoveThreshold)
+            {
+                return;
+            }
+            _moveActive = true;
+
+            VerticalCoordinateSystem coords = _frame.Coordinates;
+            int startPointerTick = coords.YToTick(_moveStart.Y, _frame.OriginTick);
+            int pointerTick = coords.YToTick(point.Y, _frame.OriginTick);
+            int desiredAnchorTick =
+                SnapTick(_moveAnchorTick + (pointerTick - startPointerTick));
+            int tickDelta = desiredAnchorTick - _moveAnchorTick;
+
+            // Column shift from the note-capable column under the pointer, counted in visible
+            // columns so the marker/tempo track gap is skipped. Stays put while the pointer is
+            // over something that is not a lane (gutter, ruler, marker column).
+            int columnShift = _moveAppliedColumnShift;
+            VerticalHitResult hover = _frame.HitTest(point.X, point.Y);
+            if (hover.HasColumn)
+            {
+                int hoverColumn = _moveColumns.IndexOf((uint)hover.Column.SourceTrackId);
+                if (hoverColumn >= 0)
+                {
+                    columnShift = hoverColumn - _moveAnchorColumn;
+                }
+            }
+
+            int incrementTick = tickDelta - _moveAppliedTickDelta;
+
+            // Per-item destination lanes from each entry's column at arm time, stated against
+            // each item's CURRENT track so the undo action can chain into the previous frame.
+            // A shift that would push any member past the first or last lane is blocked for the
+            // whole frame (rather than clamped, which would stack notes onto one column).
+            var trackByCurrent = new Dictionary<uint, uint>();
+            int columnCount = _moveColumns.Count;
+            foreach (MoveEntry entry in _moveEntries)
+            {
+                int targetColumn = entry.OriginalColumn + columnShift;
+                if (targetColumn < 0 || targetColumn > columnCount - 1)
+                {
+                    trackByCurrent.Clear();
+                    columnShift = _moveAppliedColumnShift;
+                    break;
+                }
+                uint destinationTrack = _moveColumns[targetColumn];
+                if (destinationTrack != entry.Item.TrackId)
+                {
+                    trackByCurrent[entry.Item.TrackId] = destinationTrack;
+                }
+            }
+
+            if (incrementTick == 0 && trackByCurrent.Count == 0)
+            {
+                return;
+            }
+
+            EditorDocumentContext document = _viewModel.Document;
+            if (document != null &&
+                document.Edits.MoveSelectionTo(
+                    trackByCurrent, incrementTick, _moveGroupKey))
+            {
+                _moveAppliedColumnShift = columnShift;
+                _moveAppliedTickDelta = tickDelta;
+                _viewModel.Rebuild();
+                InvalidateBand();
+                RaiseInteractionCompleted();
+            }
+        }
+
+        /// <summary>
+        /// Columns notes can be dragged between, in left-to-right display order: playable lanes
+        /// and overflow authoring columns only - annotation columns are excluded, as is the
+        /// synthesized backing-track trigger a soundtrack-only .tech creates (that track is
+        /// never written back, so parking a note on it would lose the note on save).
+        /// </summary>
+        private List<uint> NoteMoveColumns()
+        {
+            var columns = new List<uint>();
+            if (_frame == null)
+            {
+                return columns;
+            }
+
+            int backingTrack = -1;
+            if (_viewModel != null && _viewModel.Document != null &&
+                _viewModel.Document.Model != null &&
+                _viewModel.Document.Model.TechMetadata != null)
+            {
+                backingTrack = _viewModel.Document.Model.TechMetadata.BackingTrackModelTrack;
+            }
+
+            foreach (VerticalColumn column in _frame.Layout.Columns)
+            {
+                if (CanReceiveNotes(column) && column.SourceTrackId != backingTrack)
+                {
+                    columns.Add((uint)column.SourceTrackId);
+                }
+            }
+            return columns;
+        }
+
+        /// <summary>
+        /// The keyboard companion to a move drag: shifts the current selection by the signed
+        /// number of lanes along the screen X axis and grid steps along the screen Y axis
+        /// (right/down positive). The orientation swap and the inverse-scroll flip are resolved
+        /// here, so the caller just hands over which arrow was pressed. Answers false when there
+        /// is nothing movable or the nudge would leave the field, leaving the key unhandled.
+        /// </summary>
+        public bool NudgeSelection(int screenAxisX, int screenAxisY)
+        {
+            if (_frame == null || _viewModel == null)
+            {
+                return false;
+            }
+            EditorDocumentContext document = _viewModel.Document;
+            if (document == null || document.Edits == null || document.Selection == null ||
+                document.Selection.Count == 0)
+            {
+                return false;
+            }
+
+            int columnSteps;
+            int screenTimeSteps;
+            if (_orientation == TimelineOrientation.Horizontal)
+            {
+                // Transposed: screen X is time, screen Y is lanes (unflipped: down = next lane).
+                columnSteps = screenAxisY;
+                screenTimeSteps = screenAxisX;
+            }
+            else
+            {
+                columnSteps = screenAxisX;
+                screenTimeSteps = screenAxisY;
+            }
+
+            // Upward time puts later ticks toward the top, so a downward keypress must go earlier.
+            int timeSign = _frame.Coordinates.TimeDirection == VerticalTimeDirection.Upward
+                ? -1
+                : 1;
+            int tickDelta = (int)Math.Round(
+                screenTimeSteps * timeSign * ScrubStepTicks(), MidpointRounding.AwayFromZero);
+
+            List<uint> columns = NoteMoveColumns();
+
+            var trackByCurrent = new Dictionary<uint, uint>();
+            if (columnSteps != 0)
+            {
+                foreach (EventData selected in document.Selection.Items)
+                {
+                    if (selected.EventType != EventType.Note)
+                    {
+                        return false;
+                    }
+                    int index = columns.IndexOf(selected.TrackId);
+                    int target = index + columnSteps;
+                    if (index < 0 || target < 0 || target >= columns.Count)
+                    {
+                        return false;
+                    }
+                    if (columns[target] != selected.TrackId)
+                    {
+                        trackByCurrent[selected.TrackId] = columns[target];
+                    }
+                }
+            }
+
+            if (tickDelta == 0 && trackByCurrent.Count == 0)
+            {
+                return false;
+            }
+
+            if (!document.Edits.MoveSelectionTo(trackByCurrent, tickDelta, NudgeGroupKey))
+            {
+                return false;
+            }
+
+            _viewModel.Rebuild();
+            InvalidateBand();
+            RaiseInteractionCompleted();
+            return true;
+        }
+
+        private object _nudgeGroupKey;
+
+        private object NudgeGroupKey
+        {
+            get { return _nudgeGroupKey ?? (_nudgeGroupKey = new object()); }
         }
 
         /// <summary>

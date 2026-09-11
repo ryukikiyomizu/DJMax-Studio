@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Undo.Action;
 
@@ -33,19 +33,65 @@ namespace DJMaxEditor.Editor
 
         public bool MoveSelection(int trackDelta, int virtualTickDelta, object undoGroupKey)
         {
-            if ((trackDelta == 0 && virtualTickDelta == 0) ||
-                !CanMutateSelection())
+            var trackByCurrent = new Dictionary<uint, uint>();
+            foreach (EventData item in _document.Selection.Items)
+            {
+                long destinationTrack = (long)item.TrackId + trackDelta;
+                if (destinationTrack < 0 || destinationTrack > uint.MaxValue)
+                {
+                    return false;
+                }
+                trackByCurrent[item.TrackId] = (uint)destinationTrack;
+            }
+            return MoveSelectionTo(trackByCurrent, virtualTickDelta, undoGroupKey);
+        }
+
+        /// <summary>
+        /// Drag-move variant: each currently occupied track is mapped to an explicit
+        /// destination track rather than shifted by a constant index. Required because model
+        /// track indices are not contiguous on screen - end-of-scan markers and the tempo
+        /// track sit between the playable lanes and the overflow authoring columns - so a
+        /// one-column pointer move must skip that gap instead of adding one track index and
+        /// dropping a note onto a marker track. <paramref name="destinationTrackByCurrentTrack"/>
+        /// need only mention tracks whose notes change lanes; identity is assumed otherwise.
+        /// </summary>
+        public bool MoveSelectionTo(
+            IDictionary<uint, uint> destinationTrackByCurrentTrack,
+            int virtualTickDelta,
+            object undoGroupKey)
+        {
+            if (virtualTickDelta == 0 &&
+                (destinationTrackByCurrentTrack == null ||
+                 destinationTrackByCurrentTrack.Count == 0))
+            {
+                return false;
+            }
+
+            if (!CanMutateSelection())
             {
                 return false;
             }
 
             var moves = new List<MoveEventsAction.EventMove>();
+            bool anyLaneChange = false;
             foreach (EventData item in _document.Selection.Items)
             {
-                long destinationTrack = (long)item.TrackId + trackDelta;
+                uint destinationTrack = item.TrackId;
+                if (destinationTrackByCurrentTrack != null)
+                {
+                    uint mapped;
+                    if (destinationTrackByCurrentTrack.TryGetValue(item.TrackId, out mapped))
+                    {
+                        destinationTrack = mapped;
+                        if (mapped != item.TrackId)
+                        {
+                            anyLaneChange = true;
+                        }
+                    }
+                }
+
                 long destinationTick = (long)item.VirtualTick + virtualTickDelta;
-                if (destinationTrack < 0 ||
-                    destinationTrack >= _document.Model.Tracks.Count ||
+                if (destinationTrack >= _document.Model.Tracks.Count ||
                     destinationTick < 0 ||
                     destinationTick > int.MaxValue)
                 {
@@ -56,8 +102,13 @@ namespace DJMaxEditor.Editor
                     item,
                     item.TrackId,
                     item.VirtualTick,
-                    (uint)destinationTrack,
+                    destinationTrack,
                     (int)destinationTick));
+            }
+
+            if (virtualTickDelta == 0 && !anyLaneChange)
+            {
+                return false;
             }
 
             _undo.ExecAction(new MoveEventsAction(_document.Model, moves, undoGroupKey));

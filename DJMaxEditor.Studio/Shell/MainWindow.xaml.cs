@@ -2117,7 +2117,41 @@ namespace DJMaxEditor.Studio.Shell
                     OnZoomOut(this, null);
                     e.Handled = true;
                     break;
+
+                // Drag-move by keyboard: arrows move the selection one lane and one grid step,
+                // in screen directions regardless of orientation or inverse scroll. A slider,
+                // combo or text box with focus keeps the keys for its own use.
+                case Key.Left:
+                case Key.Right:
+                case Key.Up:
+                case Key.Down:
+                    if (!ArrowKeyWantedByFocusedControl())
+                    {
+                        int x = e.Key == Key.Left ? -1 : (e.Key == Key.Right ? 1 : 0);
+                        int y = e.Key == Key.Up ? -1 : (e.Key == Key.Down ? 1 : 0);
+                        e.Handled = _canvas.NudgeSelection(x, y);
+                    }
+                    break;
             }
+        }
+
+        /// <summary>
+        /// True when the focused control consumes the arrow keys itself (a slider steps, a combo
+        /// or list moves its selection, a text box moves the caret). Nudging notes must not steal
+        /// the keys there.
+        /// </summary>
+        private static bool ArrowKeyWantedByFocusedControl()
+        {
+            if (Keyboard.FocusedElement is System.Windows.DependencyObject focused)
+            {
+                if (focused is System.Windows.Controls.TextBox ||
+                    focused is System.Windows.Controls.Primitives.RangeBase ||
+                    focused is System.Windows.Controls.Primitives.Selector)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void SetTool(ToolMode tool)

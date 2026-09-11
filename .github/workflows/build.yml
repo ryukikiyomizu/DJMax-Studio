@@ -161,6 +161,7 @@ jobs:
           using System.Text;
           using System.Text.Json.Nodes;
           using DJMaxEditor.DJMax;
+          using DJMaxEditor.Editor;
           using DJMaxEditor.Files;
           using DJMaxEditor.Files.bms;
           using DJMaxEditor.Files.Tech;
@@ -423,6 +424,35 @@ jobs:
                 && built.Kinds[repTick1] == TechnikaNoteKind.Repeat
                 && built.Kinds[repTick2] == TechnikaNoteKind.Repeat,
                 "absorbed taps paint as chain nodes and later heads as repeat ticks");
+
+          // Drag-move: the editor drags notes by column position across the playable lanes
+          // plus overflow, which skips the model's marker/tempo track gap (4..8) instead of
+          // shifting a raw track index onto an annotation track.
+          for (uint extra = 2; extra <= 10; extra++)
+              sp.Tracks.AddTrack(new TrackData(extra) { TrackName = extra.ToString() });
+          var doc = new EditorDocumentContext(sp, "sp.tech");
+          doc.Selection.Replace(new[] { chainHead, joint1, joint2, chainClose });
+          var laneMap = new Dictionary<uint, uint> { [0u] = 9u, [1u] = 10u };
+          Check(doc.Edits.MoveSelectionTo(laneMap, 120, null),
+                "a drag move applies explicit per-track destinations plus a time delta");
+          Check(joint1.TrackId == 9 && joint2.TrackId == 9
+                && chainHead.TrackId == 10 && chainClose.TrackId == 10,
+                "notes cross the 4..8 marker/tempo gap onto overflow tracks");
+          Check(joint1.VirtualTick == 180 && chainHead.VirtualTick == 120,
+                "the move applies the same 120 virtual ticks to every selected note");
+          doc.UndoManager.Undo();
+          Check(joint1.TrackId == 0 && chainHead.TrackId == 1 && joint1.VirtualTick == 60,
+                "a drag move is one undoable action");
+          doc.UndoManager.Redo();
+          var backMap = new Dictionary<uint, uint> { [9u] = 0u, [10u] = 1u };
+          var back = doc.Edits.MoveSelectionTo(backMap, 0, null);
+          Check(joint1.TrackId == 0 && chainHead.TrackId == 1,
+                "explicit destinations move notes back across the gap");
+          Check(!doc.Edits.MoveSelectionTo(new Dictionary<uint, uint>(), -100000, null),
+                "a move before tick zero is rejected for the whole selection");
+          var outOfLane = new Dictionary<uint, uint> { [0u] = 99u };
+          Check(!doc.Edits.MoveSelectionTo(outOfLane, 0, null),
+                "a move onto a nonexistent track is rejected");
 
           bool oldRejected = false;
           try { TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes("{ \"version\": \"2\", \"patterns\": [] }")); }
