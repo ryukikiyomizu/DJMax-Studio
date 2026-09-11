@@ -217,10 +217,20 @@ namespace DJMaxEditor.Controls.Vertical
             }
         }
 
-        /// <summary>The floor height a zero-duration note is drawn with, after the thickness scale.</summary>
+        /// <summary>The floor a long-note body keeps when zoomed far out, after the thickness scale.</summary>
         public double MinimumNoteHeight
         {
             get { return VerticalTimelineFrame.MinimumItemHeight * _noteThickness; }
+        }
+
+        /// <summary>
+        /// Constant screen thickness of a head note (tap, chain joint, repeat tick), after the
+        /// thickness scale and deliberately independent of <see cref="PixelsPerTick"/>: the head
+        /// is a glyph, not a span of time, so zooming for note speed never changes its height.
+        /// </summary>
+        public double NoteHeadHeight
+        {
+            get { return VerticalTimelineFrame.DefaultHeadHeight * _noteThickness; }
         }
 
         /// <summary>

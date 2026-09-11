@@ -312,7 +312,7 @@
                         </Grid>
                         <Slider x:Name="NoteSpeedSlider" Minimum="0.05" Maximum="8.0" Value="0.55"
                                 ValueChanged="OnNoteSpeedChanged"
-                                ToolTip="How fast the chart moves along the time axis" />
+                                ToolTip="How fast the chart moves along the time axis. Note heads keep a constant thickness; only spacing and long-note bodies change." />
 
                         <Grid Margin="0,6,0,0">
                             <Grid.ColumnDefinitions>

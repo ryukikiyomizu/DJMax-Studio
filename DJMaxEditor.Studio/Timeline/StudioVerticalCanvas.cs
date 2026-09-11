@@ -1312,7 +1312,9 @@ namespace DJMaxEditor.Studio.Timeline
             double y = coords.TickToY(snapped, frame.OriginTick);
             double left = coords.NativeXToScreen(hit.Column.NativeLeft, frame.OriginNativeX);
             double width = hit.Column.Width * coords.ColumnScale;
-            double height = Math.Max(_viewModel.MinimumNoteHeight, GridStepPixels());
+            // The rubber-band preview matches what a head note actually lands as: a constant
+            // thickness the zoom cannot change, or the grid step when that is larger.
+            double height = Math.Max(_viewModel.NoteHeadHeight, GridStepPixels());
 
             double top = coords.TimeDirection == VerticalTimeDirection.Upward ? y - height : y;
             return new Rect(Math.Round(left) + 0.5, Math.Round(top) + 0.5,
@@ -1323,7 +1325,7 @@ namespace DJMaxEditor.Studio.Timeline
         {
             if (_frame == null || Grid == null || Grid.IsFree)
             {
-                return _viewModel.MinimumNoteHeight;
+                return _viewModel.NoteHeadHeight;
             }
             return Grid.StepTicks(TicksPerMeasure()) * _frame.Coordinates.PixelsPerTick;
         }

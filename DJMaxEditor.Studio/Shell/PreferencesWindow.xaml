@@ -314,7 +314,7 @@
                             <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
-                                       Text="Pixels per tick - how fast the chart moves. 0.55 is the surface's own base scale, so it is a zoom factor of exactly 1." />
+                                       Text="Pixels per tick - how fast the chart moves. 0.55 is the surface's own base scale, so it is a zoom factor of exactly 1. Zooming changes the gaps between notes and the length of long-note bodies; note heads keep a constant screen thickness." />
 
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
