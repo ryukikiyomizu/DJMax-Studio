@@ -1884,10 +1884,10 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// True when a press on this hit may start a note move: a gameplay/authoring column -
-        /// playable lanes, overflow authoring columns, and the BGA SYNC timing column -
-        /// carrying a Note event. End-of-scan markers, MR and BG stay unarmed: markers are
-        /// flags owned by their lanes, not notes.
+        /// True when a press on this hit may start a move drag: a movable column - every track
+        /// except TECHNIKA's end-of-scan markers - carrying a movable event. Markers stay
+        /// unarmed: a marker's track is its lane pairing, not a lane, so a cross-track drag
+        /// would reassign a scan instead of moving a note.
         /// </summary>
         private static bool IsMovableNoteHit(VerticalHitResult hit)
         {
@@ -1896,19 +1896,34 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 return false;
             }
-            return hit.Item.Item.SourceEvent.EventType == EventType.Note &&
+            return IsMovableEventType(hit.Item.Item.SourceEvent.EventType) &&
                 CanReceiveNotes(hit.Column);
         }
 
         /// <summary>
+        /// Event types a drag or lane-nudge may carry between tracks: plain notes and the
+        /// opaque beat flags the BGA-era aux tracks carry. Nothing in the editor binds a beat
+        /// flag to its lane (nothing reads <c>EventData.Beat</c> at all), so it travels like a
+        /// note. Tempo and volume stay pinned to their tracks: a BPM change dropped on a key
+        /// lane would corrupt the tempo map, and volume automation belongs to its lane - both
+        /// still slide in time under the Up/Down nudge, which never changes tracks.
+        /// </summary>
+        private static bool IsMovableEventType(EventType type)
+        {
+            return type == EventType.Note || type == EventType.Beat;
+        }
+
+        /// <summary>
         /// Columns a note may be dragged from or onto: the playable lanes, the overflow
-        /// authoring columns, and the BGA SYNC timing column. BGA SYNC is the
-        /// timing-authoring exception - its switches are placed against the music exactly
-        /// like notes, and are already creatable, selectable and deletable on this surface,
-        /// so locking only the drag was inconsistent. Scan markers, MR and BG stay out:
-        /// markers are flags owned by their lanes, and the master reference must not slip
-        /// in time. (The BMS "BPM" column reuses the BgaSync kind; its tempo events are not
-        /// Notes, so they still never arm a move - only Notes travel through this gate.)
+        /// authoring columns, and every aux track - BGA SYNC, MR and BG. Aux content is
+        /// authored against the music exactly like notes (creatable, selectable, deletable
+        /// and time-nudgeable on this surface already), so the drag treats all tracks but one
+        /// the same. The exception is TECHNIKA's end-of-scan markers: a marker's track IS its
+        /// meaning (tracks 4-7 pair with lanes 0-3), so a cross-track drag would reassign a
+        /// scan or strand a note on a flag track - while Up/Down already slides markers in
+        /// time. (The BMS "BPM" column reuses the BgaSync kind and "BGM" the Background kind;
+        /// tempo events are not a movable type, so they still never arm a move - only notes
+        /// and beat flags travel through this gate.)
         /// </summary>
         private static bool CanReceiveNotes(VerticalColumn column)
         {
@@ -1925,6 +1940,8 @@ namespace DJMaxEditor.Studio.Timeline
                 case VerticalColumnKind.SideRight:
                 case VerticalColumnKind.Overflow:
                 case VerticalColumnKind.BgaSync:
+                case VerticalColumnKind.Mr:
+                case VerticalColumnKind.Background:
                     return true;
                 default:
                     return false;
@@ -1939,11 +1956,12 @@ namespace DJMaxEditor.Studio.Timeline
             {
                 return;
             }
-            // Only move a homogeneous note selection: a marquee that also caught marker or
-            // tempo annotation must not drag those between tracks.
+            // Only move a homogeneous movable selection (notes and beat flags): a marquee
+            // that also caught tempo or volume automation must not drag those between
+            // tracks.
             foreach (EventData selected in document.Selection.Items)
             {
-                if (selected.EventType != EventType.Note)
+                if (!IsMovableEventType(selected.EventType))
                 {
                     return;
                 }
@@ -2099,11 +2117,11 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// Columns notes can be dragged between, in left-to-right display order: playable lanes,
-        /// overflow authoring columns, and the BGA SYNC timing column. Annotation columns are
-        /// excluded, as is the synthesized backing-track trigger a soundtrack-only .tech
-        /// creates (that track is never written back, so parking a note on it would lose the
-        /// note on save).
+        /// Columns notes can be dragged between, in left-to-right display order: every track
+        /// except TECHNIKA's end-of-scan markers (a marker's track is its lane pairing - see
+        /// CanReceiveNotes), and except the synthesized backing-track trigger a
+        /// soundtrack-only .tech creates (that track is never written back, so parking a note
+        /// on it would lose the note on save).
         /// </summary>
         private List<uint> NoteMoveColumns()
         {
@@ -2177,9 +2195,11 @@ namespace DJMaxEditor.Studio.Timeline
             var trackByCurrent = new Dictionary<uint, uint>();
             if (columnSteps != 0)
             {
+                // Lane steps carry the same movable-type rule as a mouse drag: notes and
+                // beat flags travel, tempo and volume automation stay on their tracks.
                 foreach (EventData selected in document.Selection.Items)
                 {
-                    if (selected.EventType != EventType.Note)
+                    if (!IsMovableEventType(selected.EventType))
                     {
                         return false;
                     }
