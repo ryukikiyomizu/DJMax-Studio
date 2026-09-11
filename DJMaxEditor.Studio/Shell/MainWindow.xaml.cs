@@ -2740,7 +2740,8 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
             if (_chartFormat != ChartFormat.PtffDecrypted &&
-                _chartFormat != ChartFormat.PtffEncryptedTechnika)
+                _chartFormat != ChartFormat.PtffEncryptedTechnika &&
+                _chartFormat != ChartFormat.TechmaniaTrack)
             {
                 return;
             }
@@ -2839,7 +2840,8 @@ namespace DJMaxEditor.Studio.Shell
             _chartFormat = format;
 
             bool technika = format == ChartFormat.PtffDecrypted ||
-                format == ChartFormat.PtffEncryptedTechnika;
+                format == ChartFormat.PtffEncryptedTechnika ||
+                format == ChartFormat.TechmaniaTrack;
             bool respectV = format == ChartFormat.TrailerRespectV;
             bool bms = format == ChartFormat.BmsClassic || format == ChartFormat.Bmson;
 

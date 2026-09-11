@@ -159,6 +159,16 @@ namespace DJMaxEditor.Preview
                     "PTFF can contain TECHNIKA or Trilogy data. Confirm the TECHNIKA profile.");
             }
 
+            if (format == ChartFormat.TechmaniaTrack)
+            {
+                // A TECHMANIA track.tech is the fan TECHNIKA format by construction, so its
+                // profile is not merely inferred - no confirmation prompt is warranted.
+                return new GameplayPreviewProfileSuggestion(
+                    GameplayPreviewProfile.Technika,
+                    true,
+                    "TECHMANIA track file; the TECHNIKA profile is certain.");
+            }
+
             return new GameplayPreviewProfileSuggestion(
                 GameplayPreviewProfile.Generic,
                 false,

@@ -138,6 +138,7 @@ jobs:
               <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
               <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
+              <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
@@ -152,7 +153,9 @@ jobs:
           using System.Linq;
           using System.Text;
           using DJMaxEditor.DJMax;
+          using DJMaxEditor.Files;
           using DJMaxEditor.Files.bms;
+          using DJMaxEditor.Files.Tech;
           using DJMaxEditor.Files.FormatDetection;
           int checks = 0;
           void Check(bool condition, string what)
@@ -227,6 +230,90 @@ jobs:
           var detectedBms = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(bms.ToString()), ".bms");
           Check(detectedBms.Format == ChartFormat.BmsClassic && detectedBms.IsOpenable,
                 "detector still identifies classic BMS");
+
+          // TECHMANIA track.tech (format v3): every note family, extended fields, a drag
+          // with node-derived duration, a tempo event and an end-of-scan marker.
+          string tech = @"{
+            ""version"": ""3"",
+            ""trackMetadata"": { ""guid"":""t"", ""title"":""T"", ""artist"":""A"", ""genre"":"""",
+              ""additionalCredits"":"""", ""eyecatchImage"":"""", ""previewTrack"":"""",
+              ""previewStartTime"":0, ""previewEndTime"":0, ""previewBga"":"""" },
+            ""patterns"": [ {
+              ""patternMetadata"": { ""guid"":""p"", ""patternName"":""NM"", ""level"":1,
+                ""controlScheme"":0, ""playableLanes"":4, ""author"":"""",
+                ""backingTrack"":""audio.ogg"", ""backImage"":"""", ""bga"":"""",
+                ""bgaOffset"":0, ""waitForEndOfBga"":false, ""playBgaOnLoop"":false,
+                ""firstBeatOffset"":0, ""initBpm"":128, ""bps"":4 },
+              ""bpmEvents"": [ { ""pulse"": 960, ""bpm"": 140 } ],
+              ""timeStops"": [],
+              ""packedNotes"": [
+                ""Basic|0|0|"",
+                ""ChainHead|240|0|a.ogg"",
+                ""ChainNode|480|0|a.ogg"",
+                ""ChainNode|720|0|a.ogg"",
+                ""RepeatHead|240|1|b.ogg"",
+                ""Repeat|480|1|b.ogg"",
+                ""Repeat|720|1|b.ogg"",
+                ""E|Basic|960|2|80|-50|0|c|d.ogg"",
+                ""E|Basic|1920|0|100|0|1|""
+              ],
+              ""packedHoldNotes"": [
+                ""Hold|1200|0|480|h.ogg"",
+                ""E|RepeatHeadHold|1200|1|600|100|0|0|rh.ogg"",
+                ""RepeatHold|1800|1|300|""
+              ],
+              ""packedDragNotes"": [
+                { ""packedNote"": ""Drag|2160|3|d.ogg"",
+                  ""packedNodes"": [ ""0|0|0|0|120|0.25"", ""480|0|-120|-0.25|0|0"" ] }
+              ]
+            }]
+          }";
+          var detectedTech = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(tech), ".tech");
+          Check(detectedTech.Format == ChartFormat.TechmaniaTrack && detectedTech.IsOpenable,
+                "detector identifies a TECHMANIA track");
+          PlayerData techChart = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(tech));
+          Check(techChart.SourceFormat == ChartFormat.TechmaniaTrack, "import stamps TechmaniaTrack");
+          Check(Math.Abs(techChart.Tempo - 128f) < 0.01f, "initBpm becomes chart tempo");
+          Check(techChart.Tracks.Count == 9, "four lane, four marker and one tempo track, got "
+                + techChart.Tracks.Count);
+          var t0 = techChart.Tracks.GetTrackAtIndex(0).Events.ToList();
+          // Five authored notes plus the end-of-scan flagged basic, which is both a real
+          // lane-0 note and the trigger for a marker on track 4.
+          Check(t0.Count == 6, "lane 0 holds 6 notes, got " + t0.Count);
+          Check(t0[0].Attribute == 0 && t0[0].Tick == 0, "basic sits at pulse 0");
+          Check(t0[1].Attribute == 5 && t0[1].Tick == 48, "chain head lands at tick 48");
+          Check(t0[2].Attribute == 6 && t0[3].Attribute == 6, "chain nodes keep attribute 6");
+          Check(t0[4].Attribute == 12 && t0[4].Tick == 240 && t0[4].Duration == 96,
+                "hold lands at tick 240 with a 2-beat (96 tick) body");
+          Check(t0[5].Attribute == 0 && t0[5].Tick == 384,
+                "end-of-scan flagged note stays a real note on its lane");
+          var t1 = techChart.Tracks.GetTrackAtIndex(1).Events.ToList();
+          Check(t1[0].Attribute == 10 && t1[1].Attribute == 11 && t1[2].Attribute == 11,
+                "repeat head then attribute-11 ticks");
+          Check(t1[3].Attribute == 10 && t1[3].Duration == 120, "repeat head hold duration");
+          Check(t1[4].Attribute == 11 && t1[4].Duration == 60, "repeat hold duration");
+          var t2 = techChart.Tracks.GetTrackAtIndex(2).Events.ToList();
+          Check(t2.Count == 1 && t2[0].Volume == 80, "extended volume survives");
+          Check(t2[0].Pan == 32 && t2[0].Instrument.Name == "c|d.ogg",
+                "extended pan maps to the 0..127 byte and the keysound keeps its pipe");
+          var t3 = techChart.Tracks.GetTrackAtIndex(3).Events.ToList();
+          Check(t3.Count == 1 && t3[0].Attribute == 0 && t3[0].Tick == 432
+                && t3[0].Duration == 96, "drag is attribute 0 with node-derived duration");
+          var eos = techChart.Tracks.GetTrackAtIndex(4).Events.ToList();
+          Check(eos.Count == 1 && eos[0].Attribute == 100 && eos[0].Tick == 384,
+                "end-of-scan flag becomes an attribute-100 marker on track 4");
+          var tm = techChart.Tracks.GetTrackAtIndex(8).Events.ToList();
+          Check(tm.Count == 1 && tm[0].EventType == EventType.Tempo
+                && Math.Abs(tm[0].Tempo - 140f) < 0.01f, "BPM event lands on the tempo track");
+          Check(techChart.Instruments.Count(i => i.Name == "a.ogg") == 1,
+                "a repeated keysound filename shares one instrument");
+          Check(techChart.Tracks.GetTrackAtIndex(5).Events.Count() == 0,
+                "an empty marker lane still has its track");
+          bool oldRejected = false;
+          try { TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes("{ \"version\": \"2\", \"patterns\": [] }")); }
+          catch (ChartLoadException ex) { oldRejected = ex.Kind == ChartLoadError.UnsupportedFormat; }
+          Check(oldRejected, "format v2 is rejected with UnsupportedFormat");
+
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;
           SMOKE_PROG_EOF

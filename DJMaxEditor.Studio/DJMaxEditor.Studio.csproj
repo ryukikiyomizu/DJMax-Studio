@@ -146,6 +146,8 @@
     <Compile Include="..\Shared\Files\SaveHandler.cs" Link="Shared\Files\SaveHandler.cs" />
     <Compile Include="..\Shared\Files\bms\BmsOpenFile.cs" Link="Shared\Files\BmsOpenFile.cs" />
     <Compile Include="..\Shared\Files\bms\BmsonOpenFile.cs" Link="Shared\Files\BmsonOpenFile.cs" />
+    <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" Link="Shared\Files\TechmaniaChartSerializer.cs" />
+    <Compile Include="..\Shared\Files\tech\TechOpenFile.cs" Link="Shared\Files\TechOpenFile.cs" />
     <Compile Include="..\Shared\Files\bms\BMESaveFile.cs" Link="Shared\Files\BmeSaveFile.cs" />
     <Compile Include="..\Shared\Files\bms\BmsonSaveFile.cs" Link="Shared\Files\BmsonSaveFile.cs" />
     <Compile Include="..\Shared\Files\bytes\TQOpenFile.cs" Link="Shared\Files\TQOpenFile.cs" />

@@ -64,6 +64,15 @@ namespace DJMaxEditor.Files.FormatDetection
                     false, false, bmsonEvidence);
             }
 
+            // (4b) TECHMANIA track.tech - JSON carrying trackMetadata/patterns and pipe-packed
+            //      note tables. Distinct markers from bmson, so the order cannot misroute one.
+            string techEvidence;
+            if (LooksLikeTechmania(data, out techEvidence))
+            {
+                return new FormatDetectionResult(ChartFormat.TechmaniaTrack, DetectionConfidence.High,
+                    false, false, techEvidence);
+            }
+
             if (StartsWith(data, PtffMagic))
             {
                 return ClassifyPtff(data);
@@ -79,7 +88,8 @@ namespace DJMaxEditor.Files.FormatDetection
             var hint = string.IsNullOrEmpty(extensionHint) ? "" : $"; extension '{extensionHint}'";
             return new FormatDetectionResult(ChartFormat.Unknown, DetectionConfidence.None,
                 false, false, $"first bytes {Hex(data, 0, 8)}{hint}",
-                "File does not match PTFF, encrypted Technika, Respect V trailer, classic BMS, or XML.");
+                "File does not match PTFF, encrypted Technika, Respect V trailer, classic BMS, " +
+                "bmson/TECHMANIA JSON, or XML.");
         }
 
         private static bool LooksLikeClassicBms(byte[] data, out string evidence)
@@ -144,6 +154,35 @@ namespace DJMaxEditor.Files.FormatDetection
             if (head.IndexOf("\"bmson_notes\"", StringComparison.Ordinal) >= 0)
             {
                 evidence = "JSON object with pre-v1 bmson \"bmson_notes\"";
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// A TECHMANIA track.tech is UTF-8 JSON: an object with <c>trackMetadata</c> and a
+        /// <c>patterns</c> array whose pattern objects carry the pipe-packed note tables
+        /// (<c>packedNotes</c>, <c>packedHoldNotes</c> or <c>packedDragNotes</c>). Those table
+        /// names appear nowhere in bmson, so they are the positive marker; the container keys
+        /// are corroboration rather than the test. Like the bmson check this is textual over
+        /// the first megabyte, and a genuinely malformed file is left to the parser to reject.
+        /// </summary>
+        private static bool LooksLikeTechmania(byte[] d, out string evidence)
+        {
+            evidence = null;
+            int i = 0;
+            if (d.Length >= 3 && d[0] == 0xEF && d[1] == 0xBB && d[2] == 0xBF) i = 3;
+            while (i < d.Length && (d[i] == 0x20 || d[i] == 0x09 || d[i] == 0x0D || d[i] == 0x0A)) i++;
+            if (i >= d.Length || d[i] != (byte)'{') return false;
+
+            int limit = Math.Min(d.Length, 1024 * 1024);
+            string head = System.Text.Encoding.UTF8.GetString(d, i, limit - i);
+            bool hasPackedNotes = head.IndexOf("\"packedNotes\"", StringComparison.Ordinal) >= 0 ||
+                head.IndexOf("\"packedHoldNotes\"", StringComparison.Ordinal) >= 0 ||
+                head.IndexOf("\"packedDragNotes\"", StringComparison.Ordinal) >= 0;
+            if (hasPackedNotes && head.IndexOf("\"patternMetadata\"", StringComparison.Ordinal) >= 0)
+            {
+                evidence = "JSON object with TECHMANIA patternMetadata + packed note tables";
                 return true;
             }
             return false;
