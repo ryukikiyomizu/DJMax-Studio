@@ -16,8 +16,6 @@ namespace DJMaxEditor.Files.bms
     {
         private const int Resolution = 1440;
         private const int PulsePerVirtualTick = 5;
-        private static readonly string[] DefaultChannels =
-            { "11", "12", "13", "14", "15", "16", "18", "19" };
 
         public static bool ShouldUseForClassicBmsOverflow(PlayerData player)
         {
@@ -30,9 +28,11 @@ namespace DJMaxEditor.Files.bms
 
             BmsMetadata metadata = player.BmsMetadata ?? new BmsMetadata();
             Dictionary<uint, string> channels = ResolveTrackChannels(player);
-            int playableLaneCount = channels.Values.Select(ChannelToLane)
-                .Where(x => x > 0).DefaultIfEmpty(0).Max();
-            string modeHint = playableLaneCount <= 5 ? "beat-5k" : "beat-7k";
+            // The PMS question is asked once, over the whole set: channel 22 is popn's key 6
+            // on a PMS chart and player 2's key 2 on a beat chart, so no single track can
+            // answer it alone.
+            bool pms = BmsonLaneMap.IsPmsShaped(channels.Values);
+            string modeHint = BmsonLaneMap.ModeHintForChannels(channels.Values);
 
             var notesByName = new Dictionary<string, List<BmsonNote>>(StringComparer.OrdinalIgnoreCase);
             var orderedNames = new List<string>();
@@ -43,7 +43,7 @@ namespace DJMaxEditor.Files.bms
             {
                 string channel;
                 if (!channels.TryGetValue(track.Idx, out channel)) channel = "01";
-                int lane = ChannelToLane(channel);
+                int lane = BmsonLaneMap.LaneForChannel(channel, pms);
 
                 foreach (EventData ev in track.Events)
                 {
@@ -146,21 +146,9 @@ namespace DJMaxEditor.Files.bms
                     player.BmsMetadata.TrackChannels.TryGetValue(track.Idx, out channel))
                     result[track.Idx] = channel;
                 else
-                    result[track.Idx] = next < DefaultChannels.Length ? DefaultChannels[next++] : "01";
+                    result[track.Idx] = BmsonLaneMap.FallbackChannel(next++);
             }
             return result;
-        }
-
-        private static int ChannelToLane(string channel)
-        {
-            if (string.IsNullOrWhiteSpace(channel)) return 0;
-            string normalized = channel.Trim().ToUpperInvariant();
-            if (normalized.Length != 2) return 0;
-            if (normalized[0] == '5') normalized = "1" + normalized.Substring(1);
-            if (normalized[0] != '1') return 0;
-            for (int i = 0; i < DefaultChannels.Length; i++)
-                if (DefaultChannels[i] == normalized) return i + 1;
-            return 0;
         }
 
         private static int CheckedPulse(int virtualTick)

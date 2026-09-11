@@ -155,6 +155,20 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private ChartFormat? _chartFormat;
 
+        /// <summary>
+        /// The default-layout preference last pushed into the toolbar picker and the view model.
+        ///
+        /// <para>
+        /// The toolbar's layout picker is a live override, while the preference is the default it
+        /// starts from - and <see cref="ApplySettings"/> runs on <em>every</em> preferences edit,
+        /// not just a layout change. Without this, forcing BMS on the toolbar and then picking the
+        /// IIDX theme (or dragging any preferences slider) silently snapped the layout back to
+        /// Auto, because pushing the unchanged default stomped the override. Only a preference
+        /// value that actually changed since the last push is pushed again.
+        /// </para>
+        /// </summary>
+        private int _appliedDefaultLayout = int.MinValue;
+
         private bool _pumpAttached;
         private int _lastPumpVirtualTick = -1;
         private bool _suppressComboEvents;
@@ -523,6 +537,15 @@ namespace DJMaxEditor.Studio.Shell
             {
                 return;
             }
+
+            // Only a changed preference pushes. ApplySettings runs on every preferences edit and
+            // every theme pick, and the toolbar picker is a live override - pushing an unchanged
+            // default here is what used to silently clear a forced layout.
+            if (format.DefaultLayoutMode == _appliedDefaultLayout)
+            {
+                return;
+            }
+            _appliedDefaultLayout = format.DefaultLayoutMode;
 
             List<PresetChoice> choices = PresetCombo.ItemsSource as List<PresetChoice>;
             if (choices == null)

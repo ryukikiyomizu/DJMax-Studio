@@ -70,10 +70,11 @@ namespace DJMaxEditor.Controls.Vertical
 
         /// <summary>
         /// Derives the layout from the chart: <see cref="VerticalTrackLayout.BmsMode"/> for a chart
-        /// read out of a .bms, <see cref="VerticalTrackLayout.TechnikaMode"/> for a TECHNIKA-shaped
-        /// one, otherwise the button mode using the same rule as the Respect BMS channel inference —
-        /// 8B when the shoulder tracks (10/11) carry notes, otherwise the highest used gameplay track
-        /// clamped to 4B-6B. Returns 0 when the chart has no gameplay notes at all.
+        /// read out of a .bms or .bmson, <see cref="VerticalTrackLayout.TechnikaMode"/> for a
+        /// TECHNIKA-shaped one, otherwise the button mode using the same rule as the Respect BMS
+        /// channel inference — 8B when the shoulder tracks (10/11) carry notes, otherwise the
+        /// highest used gameplay track clamped to 4B-6B. Returns 0 when the chart has no gameplay
+        /// notes at all.
         /// </summary>
         public static int DetectMode(PlayerData model)
         {
@@ -111,21 +112,25 @@ namespace DJMaxEditor.Controls.Vertical
         }
 
         /// <summary>
-        /// Whether the chart came out of a classic BMS file and still carries the channel map the
-        /// reader built, which is what the BMS layout is drawn from.
+        /// Whether the chart came out of a BMS-family file - classic .bms or .bmson - and still
+        /// carries the channel map the reader built, which is what the BMS layout is drawn from.
         /// </summary>
         /// <remarks>
         /// Format evidence, not note placement, and deliberately so: BMS lane ids are channels, and
         /// no arrangement of notes on tracks 0-8 can tell a 7K+SC chart apart from a TECHNIKA one
-        /// (both put notes on track 0 and none on 9-11). <c>ChartFormat.BmsClassic</c> is only set by
-        /// the reader, and <c>BmsMetadata.TrackChannels</c> is only written there too - the BMS
-        /// *writer* reads that map and never fills it - so exporting a .pt to BMS cannot make a .pt
-        /// look like a BMS chart on reopen.
+        /// (both put notes on track 0 and none on 9-11). A bmson left out of this test is exactly
+        /// what that collision does in practice: a small one draws as TECHNIKA's four touch lanes
+        /// plus scan markers, and one with accompaniment past track 8 draws as an 8B button chart,
+        /// with playable lanes vanishing into the spacer and BGA SYNC columns. <c>ChartFormat</c>
+        /// is only set by the readers, and <c>BmsMetadata.TrackChannels</c> is only written there
+        /// too - the BMS *writers* read that map and never fill it - so exporting a .pt to BMS
+        /// cannot make a .pt look like a BMS chart on reopen.
         /// </remarks>
         public static bool IsBmsShaped(PlayerData model)
         {
             if (model == null) throw new ArgumentNullException("model");
-            return model.SourceFormat == ChartFormat.BmsClassic
+            return (model.SourceFormat == ChartFormat.BmsClassic ||
+                    model.SourceFormat == ChartFormat.Bmson)
                 && model.BmsMetadata != null
                 && model.BmsMetadata.TrackChannels.Count > 0;
         }
