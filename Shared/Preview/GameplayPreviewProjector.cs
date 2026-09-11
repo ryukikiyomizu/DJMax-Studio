@@ -4,6 +4,7 @@ using System.Linq;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Files.bms;
 using DJMaxEditor.Files.FormatDetection;
+using DJMaxEditor.Files.Tech;
 
 namespace DJMaxEditor.Preview
 {
@@ -304,6 +305,16 @@ namespace DJMaxEditor.Preview
         public int LaneCount { get; private set; }
 
         /// <summary>
+        /// Beats per scan the notes were placed with: four on real TECHNIKA .pt charts, and
+        /// the value a TECHMANIA .tech declares (2, 4, 8, 12 ...). Renderers that lay trails
+        /// or count beats per scan must read this rather than assume four.
+        /// </summary>
+        public int BeatsPerScan
+        {
+            get { return _beatsPerScan; }
+        }
+
+        /// <summary>
         /// The TECHNIKA scroll-direction effector this projection was placed under;
         /// <see cref="TechnikaScrollDirection.Clockwise"/> for the arcade default and for every
         /// non-TECHNIKA profile. Renderers read it to sweep the scanline, lay hold bodies and
@@ -515,6 +526,20 @@ namespace DJMaxEditor.Preview
         private const int DefaultBeatsPerScan = 4;
 
         /// <summary>
+        /// Beats per scan for the projection. Real TECHNIKA .pt charts are always four; a
+        /// TECHMANIA .tech declares its own (2, 4, 8, 12 ...) in pattern metadata, and the
+        /// scan boundary is what places every note, so a fixed four would pack a 2-bps chart
+        /// into half-length scans. Anything that declares none keeps the four-beat default.
+        /// </summary>
+        private static int BeatsPerScanFor(PlayerData model)
+        {
+            int bps = model != null && model.TechMetadata != null
+                ? model.TechMetadata.Bps
+                : DefaultBeatsPerScan;
+            return bps > 0 ? bps : DefaultBeatsPerScan;
+        }
+
+        /// <summary>
         /// Whether the timeline sweeps left-to-right (true) or right-to-left (false) over the
         /// named half under a scroll-direction effector. See
         /// <see cref="TechnikaScrollDirection"/> for the four arcade readings; this is the one
@@ -717,9 +742,10 @@ namespace DJMaxEditor.Preview
             ApplyEndOfScanMarkers(model, notes, ticksPerMeasure);
 
             int laneCount = DeriveLaneCount(notes);
+            int beatsPerScan = BeatsPerScanFor(model);
             foreach (ProjectedGameplayNote note in notes)
             {
-                PlaceTechnikaNote(note, laneCount, scrollDirection);
+                PlaceTechnikaNote(note, laneCount, beatsPerScan, scrollDirection);
             }
 
             return new GameplayPreviewProjection(
@@ -727,7 +753,7 @@ namespace DJMaxEditor.Preview
                 "TECHNIKA PROFILE  |  CONFIRMED TWO-WAY PROJECTION",
                 laneCount,
                 model.TickPerMinute,
-                DefaultBeatsPerScan,
+                BeatsPerScanFor(model),
                 model.Tempo,
                 notes,
                 diagnostics,
@@ -1149,14 +1175,16 @@ namespace DJMaxEditor.Preview
         private static void PlaceTechnikaNote(
             ProjectedGameplayNote note,
             int laneCount,
+            int beatsPerScan,
             TechnikaScrollDirection scrollDirection)
         {
-            double floatScan = note.Pulse / (double)(PulsesPerBeat * DefaultBeatsPerScan);
+            double pulsesPerScan = PulsesPerBeat * Math.Max(1, beatsPerScan);
+            double floatScan = note.Pulse / pulsesPerScan;
             int intScan = (int)Math.Floor(floatScan);
             if (note.EndOfScan &&
                 note.Kind != GameplayPreviewNoteKind.Drag &&
                 note.Pulse > 0 &&
-                note.Pulse % (PulsesPerBeat * DefaultBeatsPerScan) == 0)
+                note.Pulse % pulsesPerScan == 0)
             {
                 intScan--;
             }

@@ -69,18 +69,20 @@ namespace DJMaxEditor.Studio.Preview
     internal sealed class TechnikaPlayfieldView : FrameworkElement, IGameplayPlayfieldView
     {
         /// <summary>
-        /// Beats in one scan: the projector's <c>DefaultBeatsPerScan</c>, and the unit the countdown
-        /// counts in. See <see cref="PulsesPerScan"/> for why it is duplicated here.
+        /// Beats in one scan for the bound chart. Real TECHNIKA .pt charts scan four beats;
+        /// a TECHMANIA .tech declares its own length, so this reads the projection rather
+        /// than assuming. Falls back to the four-beat default before a projection is bound.
         /// </summary>
-        private const double BeatsPerScan = 4.0;
+        private double BeatsPerScan
+        {
+            get { return _projection != null ? _projection.BeatsPerScan : 4.0; }
+        }
 
-        /// <summary>
-        /// Pulses in one scan: <c>PulsesPerBeat * DefaultBeatsPerScan</c> from the projector.
-        /// Duplicated rather than exposed because it is the projector's private calibration, and
-        /// widening its API to share one constant would be the worse trade. If the projector ever
-        /// gains a per-chart scan length, this becomes a property read off the projection.
-        /// </summary>
-        private const double PulsesPerScan = 240.0 * BeatsPerScan;
+        /// <summary>Pulses in one scan: <c>PulsesPerBeat</c> (240) times <see cref="BeatsPerScan"/>.</summary>
+        private double PulsesPerScan
+        {
+            get { return 240.0 * BeatsPerScan; }
+        }
 
         /// <summary>
         /// Opacity of a note that belongs to the next scan and has not been handed over yet.
@@ -105,7 +107,9 @@ namespace DJMaxEditor.Studio.Preview
         /// rendered frame - which the pixel tests diff against fixed baselines.
         /// </para>
         /// </summary>
-        private const double ShineLoopsPerScan = 4.0;
+        /// <summary>Shine loops per scan - one per beat, so this equals the chart's beats per
+        /// scan (4 on standard charts, 2 on half-scan charts).</summary>
+        private double ShineLoopsPerScan { get { return BeatsPerScan; } }
 
         /// <summary>
         /// Phase at which the next scan's notes go Active and its scanline appears. The system

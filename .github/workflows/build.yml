@@ -141,6 +141,8 @@ jobs:
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
+              <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
+              <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
@@ -159,6 +161,7 @@ jobs:
           using DJMaxEditor.Files.bms;
           using DJMaxEditor.Files.Tech;
           using DJMaxEditor.Files.FormatDetection;
+          using DJMaxEditor.Preview;
           int checks = 0;
           void Check(bool condition, string what)
           {
@@ -237,17 +240,18 @@ jobs:
           // with node-derived duration, a tempo event and an end-of-scan marker.
           string tech = @"{
             ""version"": ""3"",
-            ""trackMetadata"": { ""guid"":""t"", ""title"":""T"", ""artist"":""A"", ""genre"":"""",
-              ""additionalCredits"":"""", ""eyecatchImage"":"""", ""previewTrack"":"""",
-              ""previewStartTime"":0, ""previewEndTime"":0, ""previewBga"":"""" },
+            ""trackMetadata"": { ""guid"":""t"", ""title"":""T"", ""artist"":""A"", ""genre"":""G"",
+              ""additionalCredits"":""thx"", ""eyecatchImage"":""eye.png"",
+              ""previewTrack"":""prev.ogg"", ""previewStartTime"":1.5, ""previewEndTime"":4,
+              ""previewBga"":""prev.mp4"", ""autoOrderPatterns"":true },
             ""patterns"": [ {
-              ""patternMetadata"": { ""guid"":""p"", ""patternName"":""NM"", ""level"":1,
-                ""controlScheme"":0, ""playableLanes"":4, ""author"":"""",
-                ""backingTrack"":""audio.ogg"", ""backImage"":"""", ""bga"":"""",
-                ""bgaOffset"":0, ""waitForEndOfBga"":false, ""playBgaOnLoop"":false,
-                ""firstBeatOffset"":0, ""initBpm"":128, ""bps"":4 },
+              ""patternMetadata"": { ""guid"":""p"", ""patternName"":""NM"", ""level"":7,
+                ""controlScheme"":1, ""playableLanes"":4, ""author"":""mapper"",
+                ""backingTrack"":""audio.ogg"", ""backImage"":""bg.png"", ""bga"":""bga.mp4"",
+                ""bgaOffset"":0.25, ""waitForEndOfBga"":true, ""playBgaOnLoop"":true,
+                ""firstBeatOffset"":-0.5, ""initBpm"":128, ""bps"":2 },
               ""bpmEvents"": [ { ""pulse"": 960, ""bpm"": 140 } ],
-              ""timeStops"": [],
+              ""timeStops"": [ { ""pulse"": 480, ""duration"": 120 } ],
               ""packedNotes"": [
                 ""Basic|0|0|"",
                 ""ChainHead|240|0|a.ogg"",
@@ -276,6 +280,22 @@ jobs:
           PlayerData techChart = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(tech));
           Check(techChart.SourceFormat == ChartFormat.TechmaniaTrack, "import stamps TechmaniaTrack");
           Check(Math.Abs(techChart.Tempo - 128f) < 0.01f, "initBpm becomes chart tempo");
+          // Container metadata is retained for the save-back round trip.
+          var tm = techChart.TechMetadata;
+          Check(tm != null && tm.Title == "T" && tm.Artist == "A" && tm.Genre == "G",
+                "track metadata is retained");
+          Check(tm.PatternName == "NM" && tm.Level == 7 && tm.ControlScheme == 1
+                && tm.Author == "mapper", "pattern metadata is retained");
+          Check(tm.BackingTrack == "audio.ogg" && tm.Bga == "bga.mp4"
+                && Math.Abs(tm.FirstBeatOffset - -0.5) < 0.001, "AV and offset metadata is retained");
+          Check(tm.Bps == 2, "beats-per-scan is retained, got " + (tm == null ? -1 : tm.Bps));
+          Check(tm.TimeStops.Count == 1 && tm.TimeStops[0].Pulse == 480
+                && tm.TimeStops[0].Duration == 120, "time stop is retained");
+          // The declared bps drives the TECHNIKA projection rather than a fixed four.
+          var techProjection = GameplayPreviewProjector.Project(
+              techChart, GameplayPreviewProfile.Technika);
+          Check(techProjection.BeatsPerScan == 2,
+                "projection honors the .tech beats-per-scan");
           Check(techChart.Tracks.Count == 9, "four lane, four marker and one tempo track, got "
                 + techChart.Tracks.Count);
           var t0 = techChart.Tracks.GetTrackAtIndex(0).Events.ToList();
@@ -348,6 +368,18 @@ jobs:
           var rtTempo = roundTech.Tracks.GetTrackAtIndex(8).Events.ToList();
           Check(rtTempo.Count == 1 && Math.Abs(rtTempo[0].Tempo - 140f) < 0.01f,
                 "tempo event survives the round trip");
+          // Container metadata survives the write-back.
+          Check(techOut.Contains("\"guid\": \"t\"") && techOut.Contains("\"guid\": \"p\""),
+                "track and pattern GUIDs are written back");
+          Check(techOut.Contains("\"bps\": 2"), "beats-per-scan is written back");
+          Check(techOut.Contains("\"controlScheme\": 1") && techOut.Contains("\"level\": 7"),
+                "pattern metadata is written back");
+          Check(techOut.Contains("\"pulse\": 480") && techOut.Contains("\"duration\": 120"),
+                "time stops are written back");
+          var rtm = roundTech.TechMetadata;
+          Check(rtm != null && rtm.Title == "T" && rtm.PatternName == "NM"
+                && rtm.Bps == 2 && rtm.TimeStops.Count == 1,
+                "metadata survives the full round trip");
           Check(techOut.IndexOf("ChainHead", StringComparison.Ordinal) >= 0 &&
                 techOut.IndexOf("ChainNode", StringComparison.Ordinal) >= 0,
                 "chain members are packed by name");

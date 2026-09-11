@@ -1,4 +1,4 @@
-﻿
+
 using System.ComponentModel;
 
 namespace DJMaxEditor.DJMax
@@ -21,6 +21,9 @@ namespace DJMaxEditor.DJMax
 
         /// <summary>Classic BMS headers, lane mappings, and variable-measure data retained for round trips.</summary>
         public Files.bms.BmsMetadata BmsMetadata { get; set; }
+
+        /// <summary>TECHMANIA track.tech container and pattern metadata retained for round trips.</summary>
+        public Files.Tech.TechMetadata TechMetadata { get; set; }
 
         public byte Version { get; set; }
 

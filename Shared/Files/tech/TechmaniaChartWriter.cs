@@ -31,9 +31,6 @@ namespace DJMaxEditor.Files.Tech
     /// </summary>
     internal static partial class TechmaniaChartSerializer
     {
-        // Reverse of the reader's grid: virtual tick (288/beat) back to pulse (240/beat).
-        private const int DefaultBeatsPerScan = 4;
-
         // The model byte defaults, matching the EventData constructor.
         private const byte ModelDefaultVolume = 127;
         private const byte ModelDefaultPan = 64;
@@ -132,28 +129,42 @@ namespace DJMaxEditor.Files.Tech
                 }
             }
 
+            TechMetadata retained = player.TechMetadata;
+
             var pattern = new PatternDto
             {
                 patternMetadata = new PatternMetadataDto
                 {
-                    guid = Guid.NewGuid().ToString(),
-                    patternName = string.Empty,
-                    level = 0,
-                    controlScheme = 0,
-                    playableLanes = LaneCount,
-                    author = string.Empty,
-                    backingTrack = string.Empty,
-                    backImage = string.Empty,
-                    bga = string.Empty,
-                    bgaOffset = 0,
-                    waitForEndOfBga = false,
-                    playBgaOnLoop = false,
-                    firstBeatOffset = 0,
+                    // Keep the imported pattern's identity and setup; a chart converted from
+                    // another container gets fresh defaults.
+                    guid = NonEmptyGuid(retained != null ? retained.PatternGuid : null),
+                    patternName = retained != null ? retained.PatternName : string.Empty,
+                    level = retained != null ? retained.Level : 0,
+                    controlScheme = retained != null ? retained.ControlScheme : 0,
+                    playableLanes = retained != null && retained.PlayableLanes >= 2
+                        ? retained.PlayableLanes
+                        : LaneCount,
+                    author = retained != null ? retained.Author : string.Empty,
+                    backingTrack = retained != null ? retained.BackingTrack : string.Empty,
+                    backImage = retained != null ? retained.BackImage : string.Empty,
+                    bga = retained != null ? retained.Bga : string.Empty,
+                    bgaOffset = retained != null ? retained.BgaOffset : 0,
+                    waitForEndOfBga = retained != null && retained.WaitForEndOfBga,
+                    playBgaOnLoop = retained != null && retained.PlayBgaOnLoop,
+                    firstBeatOffset = retained != null ? retained.FirstBeatOffset : 0,
                     initBpm = player.Tempo > 0 ? Math.Round(player.Tempo, 3) : 120.0,
-                    bps = DefaultBeatsPerScan
+                    bps = retained != null && retained.Bps > 0
+                        ? retained.Bps
+                        : DefaultBeatsPerScan
                 },
                 bpmEvents = CollectBpmEvents(player),
-                timeStops = new List<TimeStopDto>(),
+                timeStops = retained != null
+                    ? retained.TimeStops.Select(s => new TimeStopDto
+                    {
+                        pulse = s.Pulse,
+                        duration = s.Duration
+                    }).ToList()
+                    : new List<TimeStopDto>(),
                 packedNotes = packedNotes,
                 packedHoldNotes = packedHolds,
                 packedDragNotes = packedDrags
@@ -164,17 +175,18 @@ namespace DJMaxEditor.Files.Tech
                 version = SupportedVersion,
                 trackMetadata = new TrackMetadataDto
                 {
-                    guid = Guid.NewGuid().ToString(),
-                    title = string.Empty,
-                    artist = string.Empty,
-                    genre = string.Empty,
-                    additionalCredits = string.Empty,
-                    eyecatchImage = string.Empty,
-                    previewTrack = string.Empty,
-                    previewStartTime = 0,
-                    previewEndTime = 0,
-                    previewBga = string.Empty,
-                    autoOrderPatterns = false
+                    guid = NonEmptyGuid(retained != null ? retained.TrackGuid : null),
+                    title = retained != null ? retained.Title : string.Empty,
+                    artist = retained != null ? retained.Artist : string.Empty,
+                    genre = retained != null ? retained.Genre : string.Empty,
+                    additionalCredits = retained != null
+                        ? retained.AdditionalCredits : string.Empty,
+                    eyecatchImage = retained != null ? retained.EyecatchImage : string.Empty,
+                    previewTrack = retained != null ? retained.PreviewTrack : string.Empty,
+                    previewStartTime = retained != null ? retained.PreviewStartTime : 0,
+                    previewEndTime = retained != null ? retained.PreviewEndTime : 0,
+                    previewBga = retained != null ? retained.PreviewBga : string.Empty,
+                    autoOrderPatterns = retained != null && retained.AutoOrderPatterns
                 },
                 patterns = new List<PatternDto> { pattern }
             };
@@ -392,6 +404,11 @@ namespace DJMaxEditor.Files.Tech
         private static long Key(int lane, int pulse)
         {
             return ((long)lane << 32) | (uint)pulse;
+        }
+
+        private static string NonEmptyGuid(string guid)
+        {
+            return string.IsNullOrWhiteSpace(guid) ? Guid.NewGuid().ToString() : guid;
         }
 
         private static string Float(double value)

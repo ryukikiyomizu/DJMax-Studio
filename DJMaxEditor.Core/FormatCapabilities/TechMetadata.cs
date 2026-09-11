@@ -1,0 +1,81 @@
+using System;
+using System.Collections.Generic;
+
+namespace DJMaxEditor.Files.Tech
+{
+    /// <summary>
+    /// TECHMANIA track.tech information the generic DJMAX event model cannot otherwise
+    /// retain. Keeping this beside PlayerData makes .tech -> edit -> .tech preserve the
+    /// container's identity (GUIDs, titles), pattern setup (control scheme, lane count,
+    /// beats per scan) and fields the editor does not interpret but must not destroy
+    /// (time stops, AV file names, offsets). The importer fills it for the one pattern it
+    /// imports; the exporter writes it back when present.
+    /// </summary>
+    public sealed class TechMetadata
+    {
+        // ----- trackMetadata -----
+
+        public string TrackGuid { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Artist { get; set; } = "";
+        public string Genre { get; set; } = "";
+        public string AdditionalCredits { get; set; } = "";
+        public string EyecatchImage { get; set; } = "";
+        public string PreviewTrack { get; set; } = "";
+        public double PreviewStartTime { get; set; }
+        public double PreviewEndTime { get; set; }
+        public string PreviewBga { get; set; } = "";
+        public bool AutoOrderPatterns { get; set; }
+
+        // ----- patternMetadata (of the imported pattern) -----
+
+        public string PatternGuid { get; set; } = "";
+        public string PatternName { get; set; } = "";
+        public int Level { get; set; }
+
+        /// <summary>0 = Touch, 1 = Keys, 2 = KM (TECHMANIA's ControlScheme enum).</summary>
+        public int ControlScheme { get; set; }
+
+        /// <summary>Playable lanes, 2-4. The editor field always lays out four; this is
+        /// retained verbatim for save-back and read by the preview for scan timing.</summary>
+        public int PlayableLanes { get; set; } = 4;
+
+        public string Author { get; set; } = "";
+        public string BackingTrack { get; set; } = "";
+        public string BackImage { get; set; } = "";
+        public string Bga { get; set; } = "";
+        public double BgaOffset { get; set; }
+        public bool WaitForEndOfBga { get; set; }
+        public bool PlayBgaOnLoop { get; set; }
+
+        /// <summary>Seconds before beat 0. Retained verbatim; the editor does not apply it.</summary>
+        public double FirstBeatOffset { get; set; }
+
+        /// <summary>Beats per scan. 4 for normal charts; 2 and 8+ also exist.</summary>
+        public int Bps { get; set; } = 4;
+
+        /// <summary>Time stops ({ pulse, duration }) exactly as authored - the editor has no
+        /// time-stop semantics, so they round-trip untouched rather than becoming events.
+        /// Per the .tech specification pulse is in pulses and duration is counted in beats,
+        /// but both values are passed through verbatim and never interpreted here.</summary>
+        public List<TechTimeStop> TimeStops { get; } = new List<TechTimeStop>();
+    }
+
+    public sealed class TechTimeStop
+    {
+        public TechTimeStop()
+        {
+        }
+
+        public TechTimeStop(int pulse, int duration)
+        {
+            Pulse = pulse;
+            Duration = duration;
+        }
+
+        public int Pulse { get; set; }
+
+        /// <summary>Stop length in pulses.</summary>
+        public int Duration { get; set; }
+    }
+}

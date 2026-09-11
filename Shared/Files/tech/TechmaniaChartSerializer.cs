@@ -56,6 +56,9 @@ namespace DJMaxEditor.Files.Tech
         private const int FirstMarkerTrack = 4;
         private const int TempoTrack = 8;
 
+        /// <summary>Beats per scan when a pattern declares none (normal TECHNIKA charts).</summary>
+        private const int DefaultBeatsPerScan = 4;
+
         /// <summary>
         /// Parses a track.tech document's bytes into the shared model.
         /// </summary>
@@ -114,11 +117,26 @@ namespace DJMaxEditor.Files.Tech
                     "The TECHMANIA track contains no patterns.");
             }
 
+            var metadata = new TechMetadata
+            {
+                TrackGuid = TrackString(root, "guid"),
+                Title = TrackString(root, "title"),
+                Artist = TrackString(root, "artist"),
+                Genre = TrackString(root, "genre"),
+                AdditionalCredits = TrackString(root, "additionalCredits"),
+                EyecatchImage = TrackString(root, "eyecatchImage"),
+                PreviewTrack = TrackString(root, "previewTrack"),
+                PreviewStartTime = TrackDouble(root, "previewStartTime"),
+                PreviewEndTime = TrackDouble(root, "previewEndTime"),
+                PreviewBga = TrackString(root, "previewBga"),
+                AutoOrderPatterns = TrackBool(root, "autoOrderPatterns")
+            };
+
             // One model is one chart; take the first pattern deterministically.
-            return ParsePattern(patterns[0]);
+            return ParsePattern(patterns[0], metadata);
         }
 
-        private static PlayerData ParsePattern(JsonElement pattern)
+        private static PlayerData ParsePattern(JsonElement pattern, TechMetadata metadata)
         {
             JsonElement meta = ElementProperty(pattern, "patternMetadata");
             double initBpm = DoubleProperty(meta, "initBpm", 0);
@@ -127,12 +145,45 @@ namespace DJMaxEditor.Files.Tech
                 initBpm = 120;
             }
 
+            metadata.PatternGuid = StringProperty(meta, "guid") ?? string.Empty;
+            metadata.PatternName = StringProperty(meta, "patternName") ?? string.Empty;
+            metadata.Level = IntProperty(meta, "level", 0);
+            metadata.ControlScheme = IntProperty(meta, "controlScheme", 0);
+            metadata.PlayableLanes = Clamp(IntProperty(meta, "playableLanes", 4), 2, 4);
+            metadata.Author = StringProperty(meta, "author") ?? string.Empty;
+            metadata.BackingTrack = StringProperty(meta, "backingTrack") ?? string.Empty;
+            metadata.BackImage = StringProperty(meta, "backImage") ?? string.Empty;
+            metadata.Bga = StringProperty(meta, "bga") ?? string.Empty;
+            metadata.BgaOffset = DoubleProperty(meta, "bgaOffset", 0);
+            metadata.WaitForEndOfBga = BoolProperty(meta, "waitForEndOfBga");
+            metadata.PlayBgaOnLoop = BoolProperty(meta, "playBgaOnLoop");
+            metadata.FirstBeatOffset = DoubleProperty(meta, "firstBeatOffset", 0);
+            int bps = IntProperty(meta, "bps", DefaultBeatsPerScan);
+            metadata.Bps = bps > 0 ? bps : DefaultBeatsPerScan;
+
+            JsonElement timeStops;
+            if (pattern.TryGetProperty("timeStops", out timeStops) &&
+                timeStops.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement entry in timeStops.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+                    metadata.TimeStops.Add(new TechTimeStop(
+                        IntProperty(entry, "pulse", 0),
+                        Math.Max(0, IntProperty(entry, "duration", 0))));
+                }
+            }
+
             var player = new PlayerData
             {
                 TickPerMinute = 192,
                 Tempo = (float)initBpm,
                 SourceFormat = ChartFormat.TechmaniaTrack,
-                IsReadOnly = false
+                IsReadOnly = false,
+                TechMetadata = metadata
             };
 
             // Added in index order: TracksList.GetTrackAtIndex is list-position based, so the
@@ -586,6 +637,45 @@ namespace DJMaxEditor.Files.Tech
                 return value.GetString();
             }
             return null;
+        }
+
+        private static string TrackString(JsonElement root, string name)
+        {
+            JsonElement track;
+            return root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("trackMetadata", out track)
+                ? StringProperty(track, name) ?? string.Empty
+                : string.Empty;
+        }
+
+        private static double TrackDouble(JsonElement root, string name)
+        {
+            JsonElement track;
+            return root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("trackMetadata", out track)
+                ? DoubleProperty(track, name, 0)
+                : 0;
+        }
+
+        private static bool TrackBool(JsonElement root, string name)
+        {
+            JsonElement track;
+            return root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("trackMetadata", out track) &&
+                BoolProperty(track, name);
+        }
+
+        private static bool BoolProperty(JsonElement element, string name)
+        {
+            JsonElement value;
+            return element.ValueKind == JsonValueKind.Object &&
+                element.TryGetProperty(name, out value) &&
+                value.ValueKind == JsonValueKind.True;
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            return Math.Max(min, Math.Min(max, value));
         }
 
         private static JsonElement ElementProperty(JsonElement element, string name)
