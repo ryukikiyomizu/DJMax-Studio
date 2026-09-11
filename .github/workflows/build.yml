@@ -524,6 +524,10 @@ jobs:
                 "real chart AV metadata is retained with no sibling patterns");
           Check(real.Tracks.GetTrackAtIndex(3).Events.Count() == 1,
                 "real chart keeps the lane-3 preview note");
+          // umapyoi triggers the song from the hidden lane note itself; no backingTrack
+          // is named, so no synth trigger is created.
+          Check(rm.BackingTrackModelTrack == -1 && string.IsNullOrEmpty(rm.BackingTrack),
+                "the hidden-lane trigger style needs no synthesized backing track");
           // The preview note sits one lane past the playable 3; the playfield must stay
           // 3 lanes wide and never draw it, while the editor keeps the track on disk.
           var realProjection = GameplayPreviewProjector.Project(
@@ -556,6 +560,16 @@ jobs:
           Check(two.TechMetadata.SiblingPatterns.Count == 1
                 && two.TechMetadata.PatternName == "MX",
                 "real two-difficulty file opens MX and keeps New pattern as a sibling");
+          // Soundtrack-only chart: all taps are silent, the full song is in backingTrack.
+          // Import synthesizes a tick-0 trigger on its own overflow track so the editor
+          // transport plays it.
+          string mxBacking = "Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav";
+          int bgmTrack = two.TechMetadata.BackingTrackModelTrack;
+          Check(bgmTrack == 9, "a backing-only chart gets a synth trigger at track 9");
+          var bgm = two.Tracks.GetTrackAtIndex((uint)bgmTrack).Events.ToList();
+          Check(bgm.Count == 1 && bgm[0].Tick == 0
+                && bgm[0].Instrument.Name == mxBacking,
+                "the backing file is attached as a single tick-0 keysound trigger");
           string twoOut = TechmaniaChartSerializer.Serialize(two);
           Check(twoOut.Contains("\"patternName\": \"New pattern\"")
                 && twoOut.Contains("800x800cc.jpg"),
@@ -570,6 +584,14 @@ jobs:
                 "the sibling difficulty keeps its own backing track filename");
           Check(twoOut.Contains("0419.mp4"),
                 "the background video filename is written back");
+          // The synth trigger is scaffolding: the wav stays in patternMetadata and no
+          // packed note ever carries it (the original taps really are silent).
+          Check(twoOut.Contains("\"backingTrack\": \"" + mxBacking + "\""),
+                "the backing track filename stays in pattern metadata");
+          Check(!twoOut.Contains("|" + mxBacking),
+                "the synth backing trigger is never written as a packed note");
+          Check(twoRound.TechMetadata.BackingTrackModelTrack == 9,
+                "reopening re-synthesizes the backing trigger at the same track");
           PlayerData twoRound = TechmaniaChartSerializer.Parse(
               Encoding.UTF8.GetBytes(twoOut));
           Check(twoRound.TechMetadata.SiblingPatterns.Count == 1

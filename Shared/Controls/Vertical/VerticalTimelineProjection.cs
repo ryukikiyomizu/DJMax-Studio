@@ -338,6 +338,10 @@ namespace DJMaxEditor.Controls.Vertical
             {
                 labels[map.Key] = "lane " + (map.Value + 1);
             }
+            if (model.TechMetadata.BackingTrackModelTrack >= 0)
+            {
+                labels[model.TechMetadata.BackingTrackModelTrack] = "BGM";
+            }
             return labels;
         }
 

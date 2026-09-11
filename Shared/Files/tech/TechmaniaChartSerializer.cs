@@ -471,6 +471,46 @@ namespace DJMaxEditor.Files.Tech
                 overflowTrack++;
             }
 
+            // Soundtrack-only charts: every tap is silent and the full song lives in
+            // patternMetadata.backingTrack. The editor transport only plays keysounds on
+            // notes, so synthesize one tick-0 trigger on its own overflow track with the
+            // backing file as its instrument. The track is editor-only scaffolding: the
+            // writer skips it and keeps the filename in the pattern metadata. (Charts in the
+            // other style trigger the song themselves from a note on a hidden lane, which
+            // the code above already imports.)
+            if (!string.IsNullOrEmpty(metadata.BackingTrack))
+            {
+                if (overflowTrack > MaxModelTrackIndex)
+                {
+                    DiagnosticLog.Write("tech.import",
+                        "No free track for the backing track \"" + metadata.BackingTrack +
+                        "\"; it is kept in metadata but cannot be previewed.");
+                }
+                else
+                {
+                    InstrumentData backing;
+                    if (!instruments.TryGetValue(metadata.BackingTrack, out backing))
+                    {
+                        backing = AddInstrument(player, instruments,
+                            Math.Min(ushort.MaxValue, instruments.Count),
+                            metadata.BackingTrack);
+                    }
+                    TrackData backingTrackData =
+                        AddTrack(player, (uint)overflowTrack, "backing");
+                    backingTrackData.AddEvent(new EventData
+                    {
+                        EventType = EventType.Note,
+                        Attribute = 0,
+                        VirtualTick = 0,
+                        VirtualDuration = 0,
+                        Instrument = backing
+                    });
+                    metadata.BackingTrackModelTrack = overflowTrack;
+                    overflowTrack++;
+                    notes++;
+                }
+            }
+
             // Tempo events on track 8, the first overflow track, exactly as the BMS family does.
             var tempoEvents = new List<EventData>();
             JsonElement bpmEvents;

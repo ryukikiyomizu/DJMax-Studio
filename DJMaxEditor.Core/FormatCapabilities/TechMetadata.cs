@@ -66,6 +66,16 @@ namespace DJMaxEditor.Files.Tech
         public Dictionary<int, int> FormatLaneByTrack { get; }
             = new Dictionary<int, int>();
 
+        /// <summary>
+        /// Model track holding the synthesized start trigger for a soundtrack-only chart:
+        /// when the pattern names a <c>backingTrack</c> and its notes carry no keysounds,
+        /// import places one silent tap at tick 0 on this track with the backing file as
+        /// its instrument, so the editor's transport plays the full song. It is editor-only
+        /// scaffolding - the backing file stays in pattern metadata and the writer never
+        /// emits this track as a packed note. -1 when no such track was created.
+        /// </summary>
+        public int BackingTrackModelTrack { get; set; } = -1;
+
         /// <summary>The format lane a model track's notes belong to.</summary>
         public int FormatLaneForTrack(int trackIndex)
         {

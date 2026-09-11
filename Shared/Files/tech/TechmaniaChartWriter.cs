@@ -74,6 +74,13 @@ namespace DJMaxEditor.Files.Tech
                 {
                     continue;
                 }
+                // The synthesized backing-track trigger is editor-only scaffolding: the
+                // backing file stays in pattern metadata and must never appear as a packed
+                // note (the original chart deliberately had no such note).
+                if (retained != null && trackIndex == retained.BackingTrackModelTrack)
+                {
+                    continue;
+                }
                 // Overflow tracks only exist for an imported .tech, whose metadata carries
                 // their original format lane. A chart converted from another format keeps
                 // the historical behaviour: its four fixed lanes are all that is written.
