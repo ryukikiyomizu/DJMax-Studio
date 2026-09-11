@@ -281,16 +281,18 @@ jobs:
           Check(techChart.SourceFormat == ChartFormat.TechmaniaTrack, "import stamps TechmaniaTrack");
           Check(Math.Abs(techChart.Tempo - 128f) < 0.01f, "initBpm becomes chart tempo");
           // Container metadata is retained for the save-back round trip.
-          var tm = techChart.TechMetadata;
-          Check(tm != null && tm.Title == "T" && tm.Artist == "A" && tm.Genre == "G",
-                "track metadata is retained");
-          Check(tm.PatternName == "NM" && tm.Level == 7 && tm.ControlScheme == 1
-                && tm.Author == "mapper", "pattern metadata is retained");
-          Check(tm.BackingTrack == "audio.ogg" && tm.Bga == "bga.mp4"
-                && Math.Abs(tm.FirstBeatOffset - -0.5) < 0.001, "AV and offset metadata is retained");
-          Check(tm.Bps == 2, "beats-per-scan is retained, got " + (tm == null ? -1 : tm.Bps));
-          Check(tm.TimeStops.Count == 1 && tm.TimeStops[0].Pulse == 480
-                && tm.TimeStops[0].Duration == 120, "time stop is retained");
+          var techMeta = techChart.TechMetadata;
+          Check(techMeta != null && techMeta.Title == "T" && techMeta.Artist == "A"
+                && techMeta.Genre == "G", "track metadata is retained");
+          Check(techMeta.PatternName == "NM" && techMeta.Level == 7
+                && techMeta.ControlScheme == 1 && techMeta.Author == "mapper",
+                "pattern metadata is retained");
+          Check(techMeta.BackingTrack == "audio.ogg" && techMeta.Bga == "bga.mp4"
+                && Math.Abs(techMeta.FirstBeatOffset - -0.5) < 0.001,
+                "AV and offset metadata is retained");
+          Check(techMeta.Bps == 2, "beats-per-scan is retained, got " + techMeta.Bps);
+          Check(techMeta.TimeStops.Count == 1 && techMeta.TimeStops[0].Pulse == 480
+                && techMeta.TimeStops[0].Duration == 120, "time stop is retained");
           // The declared bps drives the TECHNIKA projection rather than a fixed four.
           var techProjection = GameplayPreviewProjector.Project(
               techChart, GameplayPreviewProfile.Technika);
@@ -376,9 +378,9 @@ jobs:
                 "pattern metadata is written back");
           Check(techOut.Contains("\"pulse\": 480") && techOut.Contains("\"duration\": 120"),
                 "time stops are written back");
-          var rtm = roundTech.TechMetadata;
-          Check(rtm != null && rtm.Title == "T" && rtm.PatternName == "NM"
-                && rtm.Bps == 2 && rtm.TimeStops.Count == 1,
+          var roundMeta = roundTech.TechMetadata;
+          Check(roundMeta != null && roundMeta.Title == "T" && roundMeta.PatternName == "NM"
+                && roundMeta.Bps == 2 && roundMeta.TimeStops.Count == 1,
                 "metadata survives the full round trip");
           Check(techOut.IndexOf("ChainHead", StringComparison.Ordinal) >= 0 &&
                 techOut.IndexOf("ChainNode", StringComparison.Ordinal) >= 0,
