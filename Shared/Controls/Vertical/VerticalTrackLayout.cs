@@ -437,9 +437,20 @@ namespace DJMaxEditor.Controls.Vertical
         /// </remarks>
         public static VerticalTrackLayout ForMode(int mode, IEnumerable<int> extraSourceTracks)
         {
+            return ForMode(mode, extraSourceTracks, null);
+        }
+
+        /// <summary>As the two-argument overload, with custom labels for overflow columns,
+        /// keyed by source track id. A .tech overflow column names its in-game format lane
+        /// rather than its compacted model track ("lane 6", not "TRK 9").</summary>
+        public static VerticalTrackLayout ForMode(
+            int mode,
+            IEnumerable<int> extraSourceTracks,
+            IDictionary<int, string> overflowLabels)
+        {
             if (IsTechnikaMode(mode))
             {
-                return TechnikaLayout(extraSourceTracks);
+                return TechnikaLayout(extraSourceTracks, overflowLabels);
             }
 
             // BMS columns come from the chart's channels, which a bare mode does not carry. Callers
@@ -516,7 +527,7 @@ namespace DJMaxEditor.Controls.Vertical
             }
 
             // Anything the chart authors outside the preset.
-            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks);
+            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks, overflowLabels);
 
             return new VerticalTrackLayout(mode, columns);
         }
@@ -565,7 +576,7 @@ namespace DJMaxEditor.Controls.Vertical
             }
 
             // Keysounds, accompaniment, and anything else the chart authors from track 8 up.
-            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks);
+            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks, overflowLabels);
 
             return new VerticalTrackLayout(TechnikaMode, columns);
         }
@@ -617,7 +628,7 @@ namespace DJMaxEditor.Controls.Vertical
                 left += plan.Width;
             }
 
-            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks);
+            AddOverflowColumns(columns, ref index, ref left, extraSourceTracks, null);
 
             return new VerticalTrackLayout(BmsMode, columns, BmsDisplayName(plans, pms));
         }
@@ -930,7 +941,8 @@ namespace DJMaxEditor.Controls.Vertical
             IList<VerticalColumn> columns,
             ref int index,
             ref int left,
-            IEnumerable<int> extraSourceTracks)
+            IEnumerable<int> extraSourceTracks,
+            IDictionary<int, string> overflowLabels)
         {
             if (extraSourceTracks == null)
             {
@@ -957,8 +969,15 @@ namespace DJMaxEditor.Controls.Vertical
 
             foreach (int sourceTrackId in extras)
             {
+                string label;
+                if (overflowLabels == null ||
+                    !overflowLabels.TryGetValue(sourceTrackId, out label) ||
+                    string.IsNullOrEmpty(label))
+                {
+                    label = "TRK " + sourceTrackId;
+                }
                 Add(columns, ref index, ref left, VerticalColumnKind.Overflow,
-                    VerticalColumnStyle.Utility, "TRK " + sourceTrackId, sourceTrackId,
+                    VerticalColumnStyle.Utility, label, sourceTrackId,
                     UtilityWidth, 0);
             }
         }

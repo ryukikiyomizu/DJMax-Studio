@@ -141,6 +141,7 @@ jobs:
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
+              <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
               <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
               <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
@@ -153,6 +154,7 @@ jobs:
           SMOKE_CSPROJ_EOF
           cat > smoke/Program.cs <<'SMOKE_PROG_EOF'
           using System;
+          using System.Collections.Generic;
           using System.IO;
           using System.Linq;
           using System.Text;
@@ -163,6 +165,7 @@ jobs:
           using DJMaxEditor.Files.Tech;
           using DJMaxEditor.Files.FormatDetection;
           using DJMaxEditor.Preview;
+          using DJMaxEditor.Controls.Vertical;
           int checks = 0;
           void Check(bool condition, string what)
           {
@@ -316,6 +319,17 @@ jobs:
           Check(x9.Count == 1 && x9[0].Tick == 600 && x9[0].Instrument.Name == "extra5.ogg"
                 && x10.Count == 1 && x10[0].Tick == 624,
                 "invisible keysound lanes import as compacted overflow tracks");
+          // The timeline columns for those tracks name the in-game format lane.
+          var overflowLabels = new Dictionary<int, string>();
+          foreach (KeyValuePair<int, int> map in techChart.TechMetadata.FormatLaneByTrack)
+              overflowLabels[map.Key] = "lane " + (map.Value + 1);
+          var techLayout = VerticalTrackLayout.ForMode(
+              VerticalTrackLayout.TechnikaMode, new[] { 9, 10 }, overflowLabels);
+          VerticalColumn lane6 = techLayout.ColumnForSourceTrack(9);
+          VerticalColumn lane8 = techLayout.ColumnForSourceTrack(10);
+          Check(lane6 != null && lane6.Name == "lane 6"
+                && lane8 != null && lane8.Name == "lane 8",
+                "overflow columns show their format lane, not the model track id");
           var t0 = techChart.Tracks.GetTrackAtIndex(0).Events.ToList();
           // Five authored notes plus the end-of-scan flagged basic, which is both a real
           // lane-0 note and the trigger for a marker on track 4.
