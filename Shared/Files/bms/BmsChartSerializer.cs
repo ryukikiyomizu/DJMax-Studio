@@ -688,6 +688,85 @@ namespace DJMaxEditor.Files.bms
             return result;
         }
 
+        /// <summary>
+        /// Infers BMS channels for a chart that has none - a DJMax button chart drawn under a
+        /// forced BMS layout - so it still draws keys and a turntable instead of a row of TRK
+        /// columns. Positional off the DPC track schema: SIDE L (2) is the turntable outside key
+        /// 1, the mains (3-8) are keys 1-6, SIDE R (9) is the key after the last main, the
+        /// shoulders (10/11) are the extra-limb input, and BGA SYNC (1), MR (22) and BG 1-18
+        /// (23-40) keep their timing/accompaniment roles as BPM and BGM.
+        /// </summary>
+        /// <remarks>
+        /// The main count is read independently of the shoulders, the way
+        /// <see cref="InferRespectTrackChannels"/> does: an 8B chart is 6 mains plus shoulders,
+        /// a 4BFX-style chart 4 mains plus shoulders, and reading "notes on 10/11" as 8B would
+        /// promote the latter onto two ghost keys. A 6B chart lands exactly on 7K+SC; 5B and 4B
+        /// on 6K+SC and 5K+SC; 8B on 7K+SC with both shoulders on the pedal role, because one
+        /// player's side has no ninth key. Two tracks sharing channel 17 draw two pedal columns -
+        /// the DP layout already does that for 17/27 - so nothing is hidden and no lane is renamed.
+        ///
+        /// Transient: the layout uses this and never writes it to <c>BmsMetadata</c>, so the
+        /// chart's own format is untouched and the writers keep seeing a chart with no channels.
+        /// </remarks>
+        internal static Dictionary<uint, string> InferButtonTrackChannels(PlayerData player)
+        {
+            var result = new Dictionary<uint, string>();
+            if (player == null)
+            {
+                return result;
+            }
+
+            var noteTracks = new HashSet<uint>();
+            foreach (TrackData track in player.Tracks)
+            {
+                foreach (EventData sourceEvent in track.Events)
+                {
+                    if (sourceEvent.EventType == EventType.Note)
+                    {
+                        noteTracks.Add(track.Idx);
+                        break;
+                    }
+                }
+            }
+
+            bool shoulders = noteTracks.Contains(10) || noteTracks.Contains(11);
+            uint highestMain = 0;
+            foreach (uint track in noteTracks)
+            {
+                if (track >= 3 && track <= 8 && track > highestMain)
+                {
+                    highestMain = track;
+                }
+            }
+            if (!shoulders && highestMain == 0)
+            {
+                return result;
+            }
+
+            // Keys 1-7 in channel ids: 11-15, then 18/19, because 16 is the turntable.
+            string[] keys = { "11", "12", "13", "14", "15", "18", "19" };
+            int mains = Math.Max(4, Math.Min(6, (int)highestMain - 2));
+            result[2] = "16";
+            for (int i = 0; i < mains; i++)
+            {
+                result[(uint)(3 + i)] = keys[i];
+            }
+            result[9] = keys[mains];
+            if (shoulders)
+            {
+                result[10] = "17";
+                result[11] = "17";
+            }
+
+            result[1] = "08";
+            result[22] = "01";
+            for (uint background = 23; background <= 40; background++)
+            {
+                result[background] = "01";
+            }
+            return result;
+        }
+
         private static string CanonicalPlayableChannel(string channel)
         {
             if (channel == null || channel.Length != 2) return null;

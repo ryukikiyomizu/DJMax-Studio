@@ -198,9 +198,11 @@ namespace DJMaxEditor.Controls.Vertical
             // its four lanes as the spacer, BGA SYNC, SIDE L and button1, so it gets its own layout
             // and every track from 8 up is appended in track order. BMS goes further still: its lane
             // ids are channels, so the layout is built from the chart's own channel map and only the
-            // tracks with no channel at all are appended.
+            // tracks with no channel at all are appended - and a chart with no channel map at all,
+            // a button chart under a forced BMS layout, gets its 7K+SC shape inferred from the
+            // button schema rather than a row of TRK columns.
             VerticalTrackLayout layout = VerticalTrackLayout.IsBmsMode(mode)
-                ? VerticalTrackLayout.ForBms(BmsTrackChannels(model), UnchanneledOccupiedTracks(model))
+                ? ForBmsProjection(model)
                 : VerticalTrackLayout.ForMode(
                     mode,
                     UnmappedOccupiedTracks(model, mode),
@@ -270,47 +272,25 @@ namespace DJMaxEditor.Controls.Vertical
         }
 
         /// <summary>
-        /// The chart's track-to-BMS-channel pairs in track order, for tracks that actually exist. A
-        /// metadata entry left behind by a deleted track is ignored, so the layout can never claim a
-        /// column for a track the model no longer has.
+        /// Builds the BMS layout for a chart: channel columns in playing order for the tracks the
+        /// effective channel map names, overflow columns for occupied tracks it does not. One pass
+        /// over the tracks feeds both lists, so a track can never land in both or in neither.
         /// </summary>
-        private static List<KeyValuePair<int, string>> BmsTrackChannels(PlayerData model)
+        private static VerticalTrackLayout ForBmsProjection(PlayerData model)
         {
+            Dictionary<uint, string> effective = EffectiveBmsChannels(model);
             var pairs = new List<KeyValuePair<int, string>>();
-            BmsMetadata metadata = model.BmsMetadata;
-            if (metadata == null)
-            {
-                return pairs;
-            }
-
-            foreach (TrackData track in model.Tracks)
-            {
-                string channel;
-                if (metadata.TrackChannels.TryGetValue(track.Idx, out channel) &&
-                    !string.IsNullOrEmpty(channel))
-                {
-                    pairs.Add(new KeyValuePair<int, string>((int)track.Idx, channel));
-                }
-            }
-            return pairs;
-        }
-
-        /// <summary>
-        /// Occupied tracks with no BMS channel, which the BMS layout appends as overflow columns.
-        /// Picking the BMS layout for a chart that is not BMS lands everything here - honest, and
-        /// still nothing hidden.
-        /// </summary>
-        private static List<int> UnchanneledOccupiedTracks(PlayerData model)
-        {
-            BmsMetadata metadata = model.BmsMetadata;
             var extras = new List<int>();
             foreach (TrackData track in model.Tracks)
             {
                 string channel;
-                if (metadata != null &&
-                    metadata.TrackChannels.TryGetValue(track.Idx, out channel) &&
+                if (effective.TryGetValue(track.Idx, out channel) &&
                     !string.IsNullOrEmpty(channel))
                 {
+                    // A metadata entry left behind by a deleted track never reaches here: only
+                    // tracks the model still has are visited, so the layout can never claim a
+                    // column for one it no longer has.
+                    pairs.Add(new KeyValuePair<int, string>((int)track.Idx, channel));
                     continue;
                 }
                 foreach (EventData sourceEvent in track.Events)
@@ -322,7 +302,30 @@ namespace DJMaxEditor.Controls.Vertical
                     }
                 }
             }
-            return extras;
+            return VerticalTrackLayout.ForBms(pairs, extras);
+        }
+
+        /// <summary>
+        /// The channel map the BMS layout is drawn from: the chart's own when it has one, the
+        /// button-schema inference when it has none at all. A .bms/.bmson keeps its authored
+        /// channels untouched; a button chart under a forced BMS layout gets SIDE L as the
+        /// turntable, mains and SIDE R as keys, and MR/BG as accompaniment - 7K+SC for 6B -
+        /// instead of a row of TRK columns. A TECHNIKA-shaped chart is the exception: four touch
+        /// lanes have no keys-and-turntable reading, and the button roles would scatter them, so
+        /// it keeps the plain overflow row where every lane stays in track order.
+        /// </summary>
+        private static Dictionary<uint, string> EffectiveBmsChannels(PlayerData model)
+        {
+            BmsMetadata metadata = model.BmsMetadata;
+            if (metadata != null && metadata.TrackChannels.Count > 0)
+            {
+                return metadata.TrackChannels;
+            }
+            if (IsTechnikaShaped(model))
+            {
+                return new Dictionary<uint, string>();
+            }
+            return BmsChartSerializer.InferButtonTrackChannels(model);
         }
 
         /// <summary>
