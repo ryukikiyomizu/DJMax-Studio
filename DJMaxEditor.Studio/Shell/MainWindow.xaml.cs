@@ -16,6 +16,7 @@ using DJMaxEditor.Diagnostics;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
 using DJMaxEditor.Files.FormatDetection;
+using DJMaxEditor.Files.Tech;
 using DJMaxEditor.Preview;
 using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Design;
@@ -869,6 +870,99 @@ namespace DJMaxEditor.Studio.Shell
         // Document
         // ===================================================================================
 
+        /// <summary>
+        /// The open-time chooser for a multi-difficulty track.tech. Returns the selected
+        /// pattern slot, or null when the user cancels. Double-clicking a row opens it.
+        /// </summary>
+        private int? ChooseTechPattern(IList<TechPatternInfo> patterns, string fileName)
+        {
+            var dialog = new Window
+            {
+                Title = "Open difficulty",
+                Width = 430,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Margin = new Thickness(0)
+            };
+
+            var root = new StackPanel { Margin = new Thickness(18) };
+            root.Children.Add(new TextBlock
+            {
+                Text = fileName + " contains " + patterns.Count + " difficulties.",
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+            root.Children.Add(new TextBlock
+            {
+                Text = "Choose the pattern to edit. Every other difficulty stays in the " +
+                       "container and is written back unchanged when you save.",
+                Foreground = SystemColors.GrayTextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+
+            var list = new ListBox
+            {
+                Height = Math.Min(220, 26 + patterns.Count * 24),
+                SelectedIndex = 0
+            };
+            foreach (TechPatternInfo info in patterns)
+            {
+                list.Items.Add(string.Format(CultureInfo.CurrentCulture,
+                    "{0,-14}  Level {1,-3}  {2} lanes",
+                    string.IsNullOrEmpty(info.Name) ? "(unnamed)" : info.Name,
+                    info.Level,
+                    info.PlayableLanes));
+            }
+            list.MouseDoubleClick += (sender, args) =>
+            {
+                if (list.SelectedIndex >= 0)
+                {
+                    dialog.DialogResult = true;
+                }
+            };
+            root.Children.Add(list);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0)
+            };
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                Width = 90,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsCancel = true
+            };
+            var openButton = new Button
+            {
+                Content = "Open",
+                Width = 90,
+                IsDefault = true
+            };
+            buttons.Children.Add(cancelButton);
+            buttons.Children.Add(openButton);
+            root.Children.Add(buttons);
+
+            int? chosen = null;
+            openButton.Click += (sender, args) =>
+            {
+                if (list.SelectedIndex >= 0)
+                {
+                    chosen = list.SelectedIndex;
+                    dialog.DialogResult = true;
+                }
+            };
+            dialog.Content = root;
+
+            return dialog.ShowDialog() == true ? chosen : null;
+        }
+
         private async System.Threading.Tasks.Task OpenPathAsync(string path)
         {
             string error;
@@ -908,12 +1002,27 @@ namespace DJMaxEditor.Studio.Shell
                 fromDecrypted = true;
             }
 
+            // A track.tech packs one pattern per difficulty; ask which one to open when the
+            // container holds several. The other slots are retained on save regardless.
+            int patternIndex = 0;
+            IList<TechPatternInfo> patterns = _files.EnumeratePatterns(probe);
+            if (patterns != null && patterns.Count > 1)
+            {
+                int? chosen = ChooseTechPattern(patterns, probe.FileName);
+                if (!chosen.HasValue)
+                {
+                    StatusHint.Text = string.Empty;
+                    return;
+                }
+                patternIndex = chosen.Value;
+            }
+
             StatusHint.Text = "Loading " + probe.FileName + "...";
             Cursor = Cursors.AppStarting;
             ChartOpenResult result;
             try
             {
-                result = await _files.OpenAsync(probe, fromDecrypted);
+                result = await _files.OpenAsync(probe, fromDecrypted, patternIndex);
             }
             finally
             {
