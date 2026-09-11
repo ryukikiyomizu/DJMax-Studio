@@ -151,6 +151,15 @@ namespace DJMaxEditor.Controls.Vertical
         {
             if (model == null) throw new ArgumentNullException("model");
 
+            // A TECHMANIA track.tech is unambiguously the TECHNIKA schema - format evidence
+            // beats note placement here, because its invisible keysound lanes compact onto
+            // overflow tracks 9+, which the PT-era structural test below reads as Portable
+            // side/shoulder tracks and would answer 8B on.
+            if (model.SourceFormat == ChartFormat.TechmaniaTrack)
+            {
+                return true;
+            }
+
             bool firstLane = false;
             foreach (TrackData track in model.Tracks)
             {

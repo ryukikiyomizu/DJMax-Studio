@@ -54,6 +54,25 @@ namespace DJMaxEditor.Files.Tech
         /// <summary>Beats per scan. 4 for normal charts; 2 and 8+ also exist.</summary>
         public int Bps { get; set; } = 4;
 
+        /// <summary>
+        /// Maps an editor overflow track index (model tracks 9..50) to the .tech format
+        /// lane it was imported from. Lanes 0-3 are the fixed playable lanes and are not
+        /// present; a note authored on format lane 4 or higher is an invisible/autoplay
+        /// keysound lane (the format allows lanes up to 63), so each occupied lane is
+        /// compacted onto the next free model track and this map remembers its origin so
+        /// the writer can emit the same lane on save. Unused format lanes get no track and
+        /// no column.
+        /// </summary>
+        public Dictionary<int, int> FormatLaneByTrack { get; }
+            = new Dictionary<int, int>();
+
+        /// <summary>The format lane a model track's notes belong to.</summary>
+        public int FormatLaneForTrack(int trackIndex)
+        {
+            int lane;
+            return FormatLaneByTrack.TryGetValue(trackIndex, out lane) ? lane : trackIndex;
+        }
+
         /// <summary>Time stops ({ pulse, duration }) exactly as authored - the editor has no
         /// time-stop semantics, so they round-trip untouched rather than becoming events.
         /// Per the .tech specification pulse is in pulses and duration is counted in beats,

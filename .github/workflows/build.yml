@@ -262,7 +262,11 @@ jobs:
                 ""Repeat|480|1|b.ogg"",
                 ""Repeat|720|1|b.ogg"",
                 ""E|Basic|960|2|80|-50|0|c|d.ogg"",
-                ""E|Basic|1920|0|100|0|1|""
+                ""E|Basic|1920|0|100|0|1|"",
+                // Invisible/autoplay keysound lanes beyond the playable lanes: lanes
+                // 4 and 6 stay empty, only 5 and 7 must get compacted overflow tracks.
+                ""Basic|3000|5|extra5.ogg"",
+                ""Basic|3120|7|extra7.ogg""
               ],
               ""packedHoldNotes"": [
                 ""Hold|1200|0|480|h.ogg"",
@@ -301,8 +305,18 @@ jobs:
               techChart, GameplayPreviewProfile.Technika);
           Check(techProjection.BeatsPerScan == 2,
                 "projection honors the .tech beats-per-scan");
-          Check(techChart.Tracks.Count == 9, "four lane, four marker and one tempo track, got "
-                + techChart.Tracks.Count);
+          Check(techChart.Tracks.Count == 11, "four lanes, four markers, tempo and two "
+                + "overflow tracks, got " + techChart.Tracks.Count);
+          // Format lanes 5 and 7 compact onto model tracks 9 and 10; empty format lanes
+          // 4 and 6 create no track and no column.
+          Check(techChart.TechMetadata.FormatLaneByTrack[9] == 5
+                && techChart.TechMetadata.FormatLaneByTrack[10] == 7,
+                "overflow tracks remember their format lanes");
+          var x9 = techChart.Tracks.GetTrackAtIndex(9).Events.ToList();
+          var x10 = techChart.Tracks.GetTrackAtIndex(10).Events.ToList();
+          Check(x9.Count == 1 && x9[0].Tick == 600 && x9[0].Instrument.Name == "extra5.ogg"
+                && x10.Count == 1 && x10[0].Tick == 624,
+                "invisible keysound lanes import as compacted overflow tracks");
           var t0 = techChart.Tracks.GetTrackAtIndex(0).Events.ToList();
           // Five authored notes plus the end-of-scan flagged basic, which is both a real
           // lane-0 note and the trigger for a marker on track 4.
@@ -378,7 +392,14 @@ jobs:
                 && blankDragOut.Contains("120|0") && blankDragOut.Contains("240|0|-120|0|0|0"),
                 "a newly authored drag is built as a straight 240-pulse drag");
           PlayerData roundTech = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(techOut));
-          Check(roundTech.Tracks.Count == 9, "round trip keeps four lane, four marker, tempo tracks");
+          Check(roundTech.Tracks.Count == 11,
+                "round trip keeps four lanes, four markers, tempo and two overflow tracks");
+          Check(techOut.Contains("Basic|3000|5|extra5.ogg")
+                && techOut.Contains("Basic|3120|7|extra7.ogg"),
+                "overflow notes are written back to their original format lanes");
+          Check(roundTech.TechMetadata.FormatLaneByTrack[9] == 5
+                && roundTech.Tracks.GetTrackAtIndex(9).Events.First().Tick == 600,
+                "overflow track identity survives the full round trip");
           Check(roundTech.Tracks.GetTrackAtIndex(0).Events.Count() == 6,
                 "lane 0 note count survives the round trip");
           var rt1 = roundTech.Tracks.GetTrackAtIndex(1).Events.ToList();
@@ -490,6 +511,13 @@ jobs:
                 "real chart AV metadata is retained with no sibling patterns");
           Check(real.Tracks.GetTrackAtIndex(3).Events.Count() == 1,
                 "real chart keeps the lane-3 preview note");
+          // The preview note sits one lane past the playable 3; the playfield must stay
+          // 3 lanes wide and never draw it, while the editor keeps the track on disk.
+          var realProjection = GameplayPreviewProjector.Project(
+              real, GameplayPreviewProfile.Technika);
+          Check(realProjection.LaneCount == 3
+                && realProjection.Notes.All(n => n.Lane < 3),
+                "invisible keysound lanes never widen or draw on the playfield");
           string realOut = TechmaniaChartSerializer.Serialize(real);
           Check(realOut.Contains("legacyRulesetOverride")
                 && realOut.Contains("legacySetlistOverride"),

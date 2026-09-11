@@ -10,7 +10,9 @@ namespace DJMaxEditor.Files.Tech
     /// Opens a TECHMANIA <c>track.tech</c> file. TECHMANIA is the TECHNIKA-style fan
     /// game, and its native note vocabulary is the one the TECHNIKA preview already
     /// speaks, so the import lands on the same four-lane layout with end-of-scan marker
-    /// tracks and the same attribute grammar a real .pt uses.
+    /// tracks and the same attribute grammar a real .pt uses. Notes authored on format
+    /// lanes past the playable set (the format's invisible/autoplay keysound lanes)
+    /// compact onto model tracks 9..50, one per occupied lane.
     ///
     /// A container packs one pattern per difficulty; <see cref="SelectedPatternIndex"/>
     /// selects which slot opens (set from the chooser dialog before parsing) while every

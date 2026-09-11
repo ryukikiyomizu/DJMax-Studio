@@ -59,10 +59,18 @@ namespace DJMaxEditor.Files.Tech
         private const int VirtualTicksPerBeat = 288;
 
         // Source tracks the TECHNIKA layout already reserves: lanes 0-3, end-of-scan marker
-        // tracks 4-7; tempo and other accompaniment follow from track 8.
+        // tracks 4-7, the tempo slot at 8; occupied invisible/keysound format lanes are
+        // compacted onto overflow tracks 9..50.
         private const int LaneCount = 4;
         private const int FirstMarkerTrack = 4;
         private const int TempoTrack = 8;
+        private const int FirstOverflowTrack = 9;
+        private const int MaxModelTrackIndex = 50;
+        // Highest format lane an overflow track can hold: lanes 0-3 are fixed and each of
+        // the 42 model tracks 9..50 takes one occupied format lane from 4 upward.
+        private const int MaxExtraFormatLane = LaneCount + (MaxModelTrackIndex - FirstOverflowTrack + 1) - 1;
+        // A save cannot name a lane the import could not have read.
+        private const int MaxWritableFormatLane = MaxExtraFormatLane;
 
         /// <summary>Beats per scan when a pattern declares none (normal TECHNIKA charts).</summary>
         private const int DefaultBeatsPerScan = 4;
@@ -287,8 +295,12 @@ namespace DJMaxEditor.Files.Tech
             };
 
             // Added in index order: TracksList.GetTrackAtIndex is list-position based, so the
-            // list position must equal Idx. Lanes 0-3 first, marker tracks 4-7, then any
-            // accompaniment from 8 up.
+            // list position must equal Idx. Lanes 0-3 first, marker tracks 4-7, the tempo
+            // slot at 8, then occupied invisible/keysound lanes compacted onto tracks 9+,
+            // exactly the "one column per track that has notes" behaviour the other importers
+            // use. The .tech format allows notes on lanes far past playableLanes - they are
+            // the autoplay/preview keysound lanes - and the format's own ceiling is 63; we
+            // keep as many as fit through model track 50.
             var laneTracks = new TrackData[LaneCount];
             var markerTracks = new TrackData[LaneCount];
             for (int lane = 0; lane < LaneCount; lane++)
@@ -301,7 +313,13 @@ namespace DJMaxEditor.Files.Tech
                     AddTrack(player, (uint)(FirstMarkerTrack + lane), "EOS " + (lane + 1));
             }
 
+            // Always hold slot 8 so the overflow tracks keep list position equal to Idx.
+            AddTrack(player, TempoTrack, "Tempo");
+
+            // Format lane -> events. Lanes 0-3 feed the fixed lane tracks; any occupied lane
+            // at 4 or beyond is compacted onto an overflow track after import.
             var laneEvents = new List<EventData>[LaneCount];
+            var extraLaneEvents = new SortedDictionary<int, List<EventData>>();
             var markerEvents = new List<EventData>[LaneCount];
             for (int lane = 0; lane < LaneCount; lane++)
             {
@@ -339,7 +357,11 @@ namespace DJMaxEditor.Files.Tech
                         skipped++;
                         continue;
                     }
-                    laneEvents[note.Lane].Add(evt);
+                    if (!BucketNote(note.Lane, evt, laneEvents, extraLaneEvents))
+                    {
+                        skipped++;
+                        continue;
+                    }
                     AddMarker(markerEvents, note);
                     notes++;
                 }
@@ -369,7 +391,11 @@ namespace DJMaxEditor.Files.Tech
                         skipped++;
                         continue;
                     }
-                    laneEvents[note.Lane].Add(evt);
+                    if (!BucketNote(note.Lane, evt, laneEvents, extraLaneEvents))
+                    {
+                        skipped++;
+                        continue;
+                    }
                     AddMarker(markerEvents, note);
                     notes++;
                 }
@@ -403,7 +429,11 @@ namespace DJMaxEditor.Files.Tech
                     }
                     // The drag head is attribute 0 with a duration - the classifier's Drag.
                     evt.Attribute = 0;
-                    laneEvents[note.Lane].Add(evt);
+                    if (!BucketNote(note.Lane, evt, laneEvents, extraLaneEvents))
+                    {
+                        skipped++;
+                        continue;
+                    }
                     // Drags never carry an end-of-scan flag (TECHMANIA forces it false on
                     // unpack), so no marker is added.
                     notes++;
@@ -414,6 +444,31 @@ namespace DJMaxEditor.Files.Tech
             {
                 laneTracks[lane].AddEvents(laneEvents[lane]);
                 markerTracks[lane].AddEvents(markerEvents[lane]);
+            }
+
+            // Compact every occupied format lane at 4+ onto the next free model track
+            // from 9 up, remembering its format lane for save-back. Empty lanes get no
+            // track and therefore no column, exactly like the RESPECT/BMS importers.
+            int overflowTrack = FirstOverflowTrack;
+            foreach (KeyValuePair<int, List<EventData>> extra in extraLaneEvents)
+            {
+                if (extra.Value.Count == 0)
+                {
+                    continue;
+                }
+                if (overflowTrack > MaxModelTrackIndex)
+                {
+                    DiagnosticLog.Write("tech.import",
+                        "Ignored " + extra.Value.Count + " note(s) on lane " + extra.Key +
+                        ": only tracks through " + MaxModelTrackIndex + " are supported.");
+                    skipped += extra.Value.Count;
+                    continue;
+                }
+                TrackData track = AddTrack(player, (uint)overflowTrack,
+                    "lane " + (extra.Key + 1));
+                track.AddEvents(extra.Value);
+                metadata.FormatLaneByTrack[overflowTrack] = extra.Key;
+                overflowTrack++;
             }
 
             // Tempo events on track 8, the first overflow track, exactly as the BMS family does.
@@ -444,7 +499,9 @@ namespace DJMaxEditor.Files.Tech
             }
             if (tempoEvents.Count > 0)
             {
-                AddTrack(player, TempoTrack, "Tempo").AddEvents(tempoEvents);
+                // Slot 8 was created empty up front so the overflow tracks keep their
+                // position-equals-Idx invariant; just fill it when tempo events exist.
+                player.Tracks.GetTrackAtIndex(TempoTrack).AddEvents(tempoEvents);
             }
 
             if (notes == 0)
@@ -465,6 +522,42 @@ namespace DJMaxEditor.Files.Tech
             var track = new TrackData(idx) { TrackName = name };
             player.Tracks.AddTrack(track);
             return track;
+        }
+
+        /// <summary>
+        /// Buckets one imported note by its .tech format lane. Lanes 0-3 are the fixed
+        /// playable lanes; lanes 4..<see cref="MaxExtraFormatLane"/> are the format's
+        /// invisible/autoplay keysound lanes and are collected in lane order for the
+        /// overflow tracks. A negative or out-of-range lane is the caller's malformed note.
+        /// </summary>
+        private static bool BucketNote(
+            int formatLane,
+            EventData evt,
+            List<EventData>[] laneEvents,
+            IDictionary<int, List<EventData>> extraLaneEvents)
+        {
+            if (formatLane < 0)
+            {
+                return false;
+            }
+            if (formatLane < LaneCount)
+            {
+                laneEvents[formatLane].Add(evt);
+                return true;
+            }
+            if (formatLane > MaxExtraFormatLane)
+            {
+                return false;
+            }
+
+            List<EventData> bucket;
+            if (!extraLaneEvents.TryGetValue(formatLane, out bucket))
+            {
+                bucket = new List<EventData>();
+                extraLaneEvents[formatLane] = bucket;
+            }
+            bucket.Add(evt);
+            return true;
         }
 
         private static InstrumentData AddInstrument(

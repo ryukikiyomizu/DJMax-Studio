@@ -689,6 +689,15 @@ namespace DJMaxEditor.Preview
             var notes = new List<ProjectedGameplayNote>();
             int secondPlayerNotes = 0;
 
+            // A .tech declares how many lanes are playable. Notes on later lanes (including
+            // the compacted overflow tracks 9+, which are already skipped below) are the
+            // format's invisible/autoplay keysound lanes: they still trigger audio in game
+            // but are never drawn, and letting one widen the field would misdraw every note.
+            int playableLanes = model.TechMetadata != null &&
+                                model.TechMetadata.PlayableLanes >= 2
+                ? Math.Min(4, model.TechMetadata.PlayableLanes)
+                : 0;
+
             foreach (TrackData track in model.Tracks)
             {
                 if (track.Idx > LastLaneTrack)
@@ -702,6 +711,10 @@ namespace DJMaxEditor.Preview
                 }
                 foreach (EventData source in track.Events)
                 {
+                    if (playableLanes > 0 && (int)track.Idx >= playableLanes)
+                    {
+                        continue;
+                    }
                     GameplayPreviewNoteKind? kind = Classify(source);
                     if (!kind.HasValue)
                     {
@@ -741,7 +754,11 @@ namespace DJMaxEditor.Preview
             ApplyRepeatFixups(notes, diagnostics);
             ApplyEndOfScanMarkers(model, notes, ticksPerMeasure);
 
-            int laneCount = DeriveLaneCount(notes);
+            // A .tech's declared playable lanes win; anything else (legacy .pt charts)
+            // keeps deriving the count from the lanes the notes actually use.
+            int laneCount = playableLanes > 0
+                ? playableLanes
+                : DeriveLaneCount(notes);
             int beatsPerScan = BeatsPerScanFor(model);
             foreach (ProjectedGameplayNote note in notes)
             {

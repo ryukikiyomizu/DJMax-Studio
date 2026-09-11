@@ -62,14 +62,33 @@ namespace DJMaxEditor.Files.Tech
             var endOfScan = new HashSet<long>();
             CollectEndOfScan(player, endOfScan);
 
-            var ordered = new List<EventData>();
-            for (int lane = 0; lane < LaneCount; lane++)
+            TechMetadata retained = player.TechMetadata;
+            int dropped = 0;
+            var ordered = new List<KeyValuePair<int, EventData>>();
+            // Lanes 0-3 are fixed; marker tracks 4-7 and the tempo slot 8 are not notes;
+            // overflow tracks 9..50 hold the format's invisible/keysound lanes and map back
+            // to their original format lane through the retained metadata.
+            for (int trackIndex = 0; trackIndex <= MaxModelTrackIndex; trackIndex++)
             {
-                TrackData track = player.Tracks.GetTrackAtIndex((uint)lane);
+                if (trackIndex >= FirstMarkerTrack && trackIndex < FirstOverflowTrack)
+                {
+                    continue;
+                }
+                // Overflow tracks only exist for an imported .tech, whose metadata carries
+                // their original format lane. A chart converted from another format keeps
+                // the historical behaviour: its four fixed lanes are all that is written.
+                if (trackIndex >= FirstOverflowTrack && retained == null)
+                {
+                    continue;
+                }
+                TrackData track = player.Tracks.GetTrackAtIndex((uint)trackIndex);
                 if (track == null)
                 {
                     continue;
                 }
+                int formatLane = retained != null
+                    ? retained.FormatLaneForTrack(trackIndex)
+                    : trackIndex;
                 foreach (EventData evt in track.Events)
                 {
                     if (evt == null || evt.EventType != EventType.Note ||
@@ -77,25 +96,30 @@ namespace DJMaxEditor.Files.Tech
                     {
                         continue;
                     }
-                    ordered.Add(evt);
+                    if (formatLane < 0 || formatLane > MaxWritableFormatLane)
+                    {
+                        dropped++;
+                        continue;
+                    }
+                    ordered.Add(new KeyValuePair<int, EventData>(formatLane, evt));
                 }
             }
             // TECHMANIA keeps its tables in pulse/lane order; the game's own NoteComparer is
             // pulse then lane.
             ordered.Sort((a, b) =>
             {
-                int pulse = ToPulse(a.VirtualTick).CompareTo(ToPulse(b.VirtualTick));
+                int pulse = ToPulse(a.Value.VirtualTick).CompareTo(ToPulse(b.Value.VirtualTick));
                 if (pulse != 0)
                 {
                     return pulse;
                 }
-                return a.TrackId.CompareTo(b.TrackId);
+                return a.Key.CompareTo(b.Key);
             });
 
-            int dropped = 0;
-            foreach (EventData evt in ordered)
+            foreach (KeyValuePair<int, EventData> entry in ordered)
             {
-                int lane = (int)evt.TrackId;
+                int lane = entry.Key;
+                EventData evt = entry.Value;
                 int pulse = ToPulse(evt.VirtualTick);
                 int duration = ToPulse(evt.VirtualDuration);
                 int volume = OutVolume(evt.Volume);
@@ -154,7 +178,6 @@ namespace DJMaxEditor.Files.Tech
                 }
             }
 
-            TechMetadata retained = player.TechMetadata;
 
             var pattern = new PatternDto
             {
