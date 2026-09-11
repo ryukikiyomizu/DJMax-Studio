@@ -506,9 +506,13 @@ jobs:
         shell: pwsh
         run: |
           $out = dotnet run --project smoke -c Debug 2>&1
-          $out | ForEach-Object { Write-Host $_ }
+          $out | Tee-Object -FilePath smoke-run.log | ForEach-Object { Write-Host $_ }
           $code = $LASTEXITCODE
           if ($code -ne 0) {
-            $out | Select-Object -Last 25 | ForEach-Object { Write-Output "::error::$_" }
+            # The exception trace lands on stderr and PowerShell merges it ahead of
+            # the buffered stdout, so a plain tail hides it; grep it out explicitly.
+            Select-String -Path smoke-run.log -Pattern 'assert failed|Exception|error [A-Z]+[0-9]+' |
+              Select-Object -First 20 |
+              ForEach-Object { Write-Output ("::error::" + $_.Line) }
             exit $code
           }
