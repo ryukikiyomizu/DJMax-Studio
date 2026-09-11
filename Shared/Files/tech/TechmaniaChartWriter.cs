@@ -19,15 +19,19 @@ namespace DJMaxEditor.Files.Tech
     /// four-lane Touch control scheme: tracks 0-3 become the note tables, tracks 4-7 are read
     /// purely for their attribute-100 end-of-scan flags, and tempo events from any track
     /// become <c>bpmEvents</c>. The note kinds map one-to-one onto the packed type names; a
-    /// drag becomes a two-node straight Bézier curve whose length is its duration, because
-    /// the model has nowhere to keep the original control points.
+    /// drag is re-emitted as a two-node straight Bézier curve whose length is its duration.
+    /// When the save edits an imported .tech, that re-emission only hits drags that actually
+    /// changed: every untouched drag keeps its original packed object verbatim, curves and
+    /// lane-crossing anchors included.
     /// </para>
     ///
     /// <para>
-    /// Accompaniment tracks (8+ that are not tempo), time stops, first-beat offset and the AV
-    /// metadata have no place a chart-only save can fill, so they are dropped (the dropped
-    /// counts go to the diagnostics log). Volume/pan defaults are the model defaults (127 /
-    /// center 64); anything else is written through and forces the extended packed form.
+    /// Container metadata retained at import (time stops, first-beat offset, AV references,
+    /// GUIDs, bps, sibling difficulties) is written back from <see cref="TechMetadata"/>;
+    /// accompaniment tracks (8+ that are not tempo) remain the one thing a chart-only save
+    /// has no place for (the dropped count goes to the diagnostics log). Volume/pan defaults
+    /// are the model defaults (127 / center 64); anything else is written through and forces
+    /// the extended packed form.
     /// </para>
     /// </summary>
     internal static partial class TechmaniaChartSerializer
@@ -48,7 +52,11 @@ namespace DJMaxEditor.Files.Tech
 
             var packedNotes = new List<string>();
             var packedHolds = new List<string>();
-            var packedDrags = new List<PackedDragDto>();
+            // Mixes verbatim original drag objects (untouched notes keep their curves and
+            // lane-crossing anchors) and freshly built straight ones (new or edited drags).
+            var packedDrags = new JsonArray();
+            IDictionary<long, VerbatimDrag> verbatimDrags =
+                LoadVerbatimDrags(player.TechMetadata);
 
             // End-of-scan flags keyed (lane, pulse) from the marker tracks 4-7.
             var endOfScan = new HashSet<long>();
@@ -117,11 +125,27 @@ namespace DJMaxEditor.Files.Tech
                         break;
 
                     case TechnikaNoteKind.Drag:
-                        packedDrags.Add(new PackedDragDto
+                        VerbatimDrag original;
+                        if (verbatimDrags.TryGetValue(Key(lane, pulse), out original) &&
+                            original.Duration == duration &&
+                            original.Volume == volume &&
+                            original.Pan == pan &&
+                            original.Keysound == sound)
                         {
-                            packedNote = PackDrag(pulse, lane, volume, pan, sound),
-                            packedNodes = StraightDragNodes(duration)
-                        });
+                            // Head pulse/lane, length, volume, pan and keysound all match the
+                            // import: the note was never edited, so its authored curve rides
+                            // through verbatim. Any edit (a moved, resized, re-voiced or newly
+                            // drawn drag) misses a key and is rebuilt as a straight drag.
+                            packedDrags.Add(JsonNode.Parse(original.Json));
+                        }
+                        else
+                        {
+                            packedDrags.Add(JsonSerializer.SerializeToNode(new PackedDragDto
+                            {
+                                packedNote = PackDrag(pulse, lane, volume, pan, sound),
+                                packedNodes = StraightDragNodes(duration)
+                            }));
+                        }
                         break;
 
                     default:
@@ -476,6 +500,85 @@ namespace DJMaxEditor.Files.Tech
             };
         }
 
+        /// <summary>
+        /// Reads the opened pattern's original drag table and indexes it by
+        /// <c>(lane, head pulse)</c>, keeping each entry's verbatim JSON. An exported drag
+        /// whose head, length, volume, pan and keysound all match its import is considered
+        /// untouched and its authored curve (anchors, B-spline control points, lane-crossing
+        /// shape) is written back byte-for-byte; anything the user changed misses a key and
+        /// is rebuilt straight.
+        /// </summary>
+        private static Dictionary<long, VerbatimDrag> LoadVerbatimDrags(TechMetadata retained)
+        {
+            var result = new Dictionary<long, VerbatimDrag>();
+            if (retained == null || string.IsNullOrEmpty(retained.ActivePatternJson))
+            {
+                return result;
+            }
+
+            try
+            {
+                JsonObject active = JsonNode.Parse(retained.ActivePatternJson).AsObject();
+                JsonArray table = active["packedDragNotes"] as JsonArray;
+                if (table == null)
+                {
+                    return result;
+                }
+
+                foreach (JsonNode node in table)
+                {
+                    JsonObject drag = node as JsonObject;
+                    if (drag == null)
+                    {
+                        continue;
+                    }
+                    string head = drag["packedNote"] == null
+                        ? null
+                        : drag["packedNote"].ToJsonString();
+                    // ToJsonString quotes the value; undo the surrounding quotes.
+                    if (head != null && head.Length >= 2 && head[0] == '"')
+                    {
+                        head = JsonSerializer.Deserialize<string>(head);
+                    }
+                    if (string.IsNullOrEmpty(head) ||
+                        !TryUnpack(head, false, true, out PackedNote note))
+                    {
+                        continue;
+                    }
+
+                    int duration;
+                    using (JsonDocument doc = JsonDocument.Parse(drag.ToJsonString()))
+                    {
+                        duration = DragDurationPulses(doc.RootElement);
+                    }
+                    result[Key(note.Lane, note.Pulse)] = new VerbatimDrag
+                    {
+                        Json = drag.ToJsonString(),
+                        Duration = duration,
+                        Volume = note.Volume,
+                        Pan = note.Pan,
+                        Keysound = note.Keysound ?? string.Empty
+                    };
+                }
+            }
+            catch (JsonException ex)
+            {
+                DiagnosticLog.Write("tech.export",
+                    "Could not index the original drag table; drags will be rebuilt straight: "
+                    + ex.Message);
+            }
+            return result;
+        }
+
+        private sealed class VerbatimDrag
+        {
+            public string Json;
+            public int Duration;
+            public int Volume;
+            public int Pan;
+            public string Keysound;
+        }
+
         private static int OutVolume(byte model)
         {
             if (model == ModelDefaultVolume)
@@ -560,7 +663,8 @@ namespace DJMaxEditor.Files.Tech
             public List<TimeStopDto> timeStops { get; set; }
             public List<string> packedNotes { get; set; }
             public List<string> packedHoldNotes { get; set; }
-            public List<PackedDragDto> packedDragNotes { get; set; }
+            // Verbatim untouched drags and freshly built straight drags, in pulse order.
+            public JsonArray packedDragNotes { get; set; }
         }
 
         private sealed class PatternMetadataDto

@@ -359,6 +359,24 @@ jobs:
                 techOut.Contains("RepeatHold|1800|1|300|"),
                 "holds keep their pulse durations");
           Check(techOut.Contains("\"packedDragNotes\""), "drags land in the drag table");
+          // Untouched drags keep their authored shape verbatim: the bezier drag's
+          // off-line control points ...
+          Check(techOut.Contains("120|0.25") && techOut.Contains("-120|-0.25"),
+                "an untouched bezier drag keeps its control points");
+          // ... its lane-crossing B-spline sibling's curve-type head and anchors ...
+          Check(techOut.Contains("E|Drag|2640|3|100|0|1|d2.ogg")
+                && techOut.Contains("120|-0.5|0|0|0|0"),
+                "an untouched B-spline drag keeps its curve type and anchors");
+          // ... while a freshly authored (no retained raw json) drag is rebuilt straight.
+          var blankDrag = new PlayerData();
+          var dt = new TrackData(0) { TrackName = "lane 1" };
+          dt.AddEvent(new EventData { EventType = EventType.Note, VirtualTick = 0,
+              VirtualDuration = 288 });
+          blankDrag.Tracks.AddTrack(dt);
+          string blankDragOut = TechmaniaChartSerializer.Serialize(blankDrag);
+          Check(blankDragOut.Contains("\"packedNote\": \"Drag|0|0|\"")
+                && blankDragOut.Contains("120|0") && blankDragOut.Contains("240|0|-120|0|0|0"),
+                "a newly authored drag is built as a straight 240-pulse drag");
           PlayerData roundTech = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(techOut));
           Check(roundTech.Tracks.Count == 9, "round trip keeps four lane, four marker, tempo tracks");
           Check(roundTech.Tracks.GetTrackAtIndex(0).Events.Count() == 6,
@@ -475,6 +493,10 @@ jobs:
           Check(realOut.Contains("umapyoiprebgm.ogg")
                 && realOut.Contains("\"playableLanes\": 3"),
                 "keysound reference and 3-lane setup survive the real round trip");
+          // The real chart's drag ends one lane over (anchor "240|1"); it must not be
+          // rebuilt as a vertical drag when the note is untouched.
+          Check(realOut.Contains("240|1|0|0|0|0"),
+                "a lane-crossing drag anchor rides through verbatim");
           PlayerData realRound = TechmaniaChartSerializer.Parse(
               Encoding.UTF8.GetBytes(realOut));
           Check(realRound.TechMetadata.PlayableLanes == 3

@@ -42,8 +42,11 @@ namespace DJMaxEditor.Files.Tech
     /// identity fields (see <see cref="TechMetadata"/>). The media files themselves are not
     /// part of a .tech - the format references them by filename and they live beside the
     /// chart in the track folder, so only the references are this code's business. Drag
-    /// control points are the one authored detail that genuinely cannot survive an edit: the
-    /// editor's drag is a straight run, so only the head and its duration are re-emitted.
+    /// control points are the one authored detail the model has no room for. A drag the user
+    /// moves, resizes, re-voices or newly draws is therefore re-emitted as a straight run; a
+    /// drag the edit did not touch (head pulse/lane, computed length, volume, pan and
+    /// keysound all unchanged) keeps its entire original object verbatim, including its
+    /// B-spline control points and lane-crossing anchors.
     /// </para>
     /// </summary>
     internal static partial class TechmaniaChartSerializer
