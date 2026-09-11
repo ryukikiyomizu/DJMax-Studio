@@ -590,10 +590,10 @@ jobs:
                 "the backing track filename stays in pattern metadata");
           Check(!twoOut.Contains("|" + mxBacking),
                 "the synth backing trigger is never written as a packed note");
-          Check(twoRound.TechMetadata.BackingTrackModelTrack == 9,
-                "reopening re-synthesizes the backing trigger at the same track");
           PlayerData twoRound = TechmaniaChartSerializer.Parse(
               Encoding.UTF8.GetBytes(twoOut));
+          Check(twoRound.TechMetadata.BackingTrackModelTrack == 9,
+                "reopening re-synthesizes the backing trigger at the same track");
           Check(twoRound.TechMetadata.SiblingPatterns.Count == 1
                 && twoRound.TechMetadata.SiblingPatterns[0].Json.Contains(
                     "\"patternName\": \"New pattern\""),
