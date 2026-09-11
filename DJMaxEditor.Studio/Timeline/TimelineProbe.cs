@@ -98,6 +98,34 @@ namespace DJMaxEditor.Studio.Timeline
                 ViewModel = viewModel
             };
 
+            // Optional headless exercise of the note-drag path: select one note and run the
+            // same public nudge the arrow keys (and the drag gesture's column math) use, so a
+            // rendered shot can show where the note ends up.
+            if (options.Drag != null)
+            {
+                canvas.Measure(new Size(options.Width, options.Height));
+                canvas.Arrange(new Rect(0, 0, options.Width, options.Height));
+                canvas.UpdateLayout();
+
+                EventData picked = PickEvent(model, options.Drag.Lane, options.Drag.Tick);
+                if (picked != null)
+                {
+                    document.Selection.Replace(new[] { picked });
+                    for (int i = 0; i < options.Drag.Times; i++)
+                    {
+                        bool moved = canvas.NudgeSelection(options.Drag.Dx, options.Drag.Dy);
+                        report.AppendFormat(CultureInfo.InvariantCulture,
+                            "drag nudge {0}: x={1} y={2} moved={3} -> track={4} tick={5}",
+                            i, options.Drag.Dx, options.Drag.Dy, moved,
+                            picked.TrackId, picked.Tick).AppendLine();
+                    }
+                }
+                else
+                {
+                    report.AppendLine("drag: no note found at the requested lane/tick");
+                }
+            }
+
             // `ticks=` is given in the chart's own raw ticks, the same units the sibling playfield
             // probe takes and the same ones the report prints, so a tick read off one report can be
             // handed straight to the other. Everything past here is virtual.
@@ -237,6 +265,35 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
+        /// The note nearest the requested raw tick on one track, for the headless drag test.
+        /// </summary>
+        private static EventData PickEvent(PlayerData model, int trackIndex, int rawTick)
+        {
+            if (model == null || trackIndex < 0 ||
+                trackIndex >= model.Tracks.Count)
+            {
+                return null;
+            }
+            TrackData track = model.Tracks.GetTrackAtIndex((uint)trackIndex);
+            EventData best = null;
+            int bestDistance = int.MaxValue;
+            foreach (EventData evt in track.Events)
+            {
+                if (evt.EventType != EventType.Note)
+                {
+                    continue;
+                }
+                int distance = Math.Abs(evt.Tick - rawTick);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = evt;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
         /// One line per placed item, naming the three gates that decide art versus rectangle
         /// alongside the pieces the kind resolved to.
         /// </summary>
@@ -350,6 +407,16 @@ namespace DJMaxEditor.Studio.Timeline
             public VerticalTimeDirection Direction = VerticalTimeDirection.Upward;
             public bool Assets = true;
             public bool Labels;
+            public DragSpec Drag;
+
+            public sealed class DragSpec
+            {
+                public int Lane;
+                public int Tick;
+                public int Dx;
+                public int Dy;
+                public int Times = 1;
+            }
 
             public static Options Parse(string[] args, int first)
             {
@@ -361,6 +428,33 @@ namespace DJMaxEditor.Studio.Timeline
                         Match(arg, "height=", ref options.Height) ||
                         Match(arg, "zoom=", ref options.Zoom))
                     {
+                        continue;
+                    }
+
+                    if (arg.StartsWith("drag=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string[] parts = arg.Substring("drag=".Length).Split(',');
+                        var values = new List<int>();
+                        foreach (string part in parts)
+                        {
+                            int value;
+                            if (int.TryParse(part.Trim(), NumberStyles.Integer,
+                                    CultureInfo.InvariantCulture, out value))
+                            {
+                                values.Add(value);
+                            }
+                        }
+                        if (values.Count >= 4)
+                        {
+                            options.Drag = new DragSpec
+                            {
+                                Lane = values[0],
+                                Tick = values[1],
+                                Dx = values[2],
+                                Dy = values[3],
+                                Times = values.Count >= 5 ? values[4] : 1
+                            };
+                        }
                         continue;
                     }
 
