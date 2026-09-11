@@ -573,7 +573,9 @@ jobs:
           // transport plays it.
           string mxBacking = "Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav";
           int bgmTrack = two.TechMetadata.BackingTrackModelTrack;
-          Check(bgmTrack == 9, "a backing-only chart gets a synth trigger at track 9");
+          // MX has one hidden-lane note on format lane 5 (model track 9), so the
+          // backing trigger takes the next slot, model track 10.
+          Check(bgmTrack == 10, "a backing-only chart gets a synth trigger past its extras");
           var bgm = two.Tracks.GetTrackAtIndex((uint)bgmTrack).Events.ToList();
           Check(bgm.Count == 1 && bgm[0].Tick == 0
                 && bgm[0].Instrument.Name == mxBacking,
@@ -600,7 +602,7 @@ jobs:
                 "the synth backing trigger is never written as a packed note");
           PlayerData twoRound = TechmaniaChartSerializer.Parse(
               Encoding.UTF8.GetBytes(twoOut));
-          Check(twoRound.TechMetadata.BackingTrackModelTrack == 9,
+          Check(twoRound.TechMetadata.BackingTrackModelTrack == 10,
                 "reopening re-synthesizes the backing trigger at the same track");
           Check(twoRound.TechMetadata.SiblingPatterns.Count == 1
                 && twoRound.TechMetadata.SiblingPatterns[0].Json.Contains(
