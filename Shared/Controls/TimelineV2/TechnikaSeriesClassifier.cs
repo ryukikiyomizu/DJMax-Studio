@@ -22,7 +22,7 @@ namespace DJMaxEditor.Controls.TimelineV2
         /// </summary>
         public TechnikaNoteKind LineKind { get; private set; }
 
-        /// <summary>Head first, close last, joints/ticks in between - chart order.</summary>
+        /// <summary>Head first, tail last, joints/ticks in between - chart order.</summary>
         public List<EventData> Members { get; private set; }
 
         public bool IsChain
@@ -53,22 +53,23 @@ namespace DJMaxEditor.Controls.TimelineV2
     ///
     /// <para>
     /// <see cref="TechnikaNoteClassifier.Classify"/> answers from one event in isolation, and the
-    /// pt format only lets a single event say so much: every member of a repeat run carries the
-    /// head's own attribute (10), and the joints a chain path runs through are ordinary taps
-    /// (attribute 0) the format never re-tagged. An isolated classifier therefore draws every
-    /// repeat member as a round repeat head and the absorbed chain joints as pink taps - the exact
-    /// notes the arcade paints as a magenta repeat tick and a yellow chain dot.
+    /// pt model only lets a single event say so much: legacy packs tag every tick of a repeat with
+    /// the head's own attribute (10), and the joints of a chain path traced through ordinary taps
+    /// are attribute 0. An isolated classifier therefore draws every repeat tick as a round repeat
+    /// head and such chain joints as pink taps - the exact notes the arcade paints as a magenta
+    /// repeat tick and a yellow chain dot.
     /// </para>
     ///
     /// <para>
-    /// This mirrors the run passes the gameplay preview projector performs in
-    /// <c>ApplyChainFixups</c> / <c>ApplyRepeatFixups</c>: a chain head opens a run that absorbs
-    /// the taps up to its explicit closing node, and the first attribute-10 note of a repeat
-    /// series is its head while every following one is a member until the attribute-11 close.
-    /// The two surfaces must agree about what an event is, or editing a note and playing it back
-    /// show two different charts. The same passes also record the runs themselves, which is what
-    /// lets the timeline paint the arcade's yellow chain line and purple repeat line between the
-    /// members instead of leaving a chain or repeat looking like a scatter of separate notes.
+    /// A TECHMANIA .tech, by contrast, tags every member explicitly: one ChainHead followed by
+    /// <em>all</em> ChainNode waypoints (zig-zagging across lanes - real charts carry a dozen nodes
+    /// per head), and one RepeatHead followed by every Repeat marker (a mid-series RepeatHold
+    /// included); there is no single closing note. The passes below therefore speak both dialects:
+    /// an explicit node or repeat marker extends the open series, a plain tap between chain members
+    /// is absorbed the legacy way, and only a note of some other family (or a new head) ends one.
+    /// This mirrors the gameplay preview projector's fixup passes, so editing a note and playing
+    /// it back show one chart - and the same grouping feeds the timeline's yellow chain line and
+    /// purple repeat line instead of leaving a series looking like a scatter of separate notes.
     /// </para>
     /// </summary>
     internal static class TechnikaSeriesClassifier
@@ -78,8 +79,9 @@ namespace DJMaxEditor.Controls.TimelineV2
 
         /// <summary>
         /// Builds the kind every playable-lane note paints as, keyed by the model event itself so
-        /// a frame's <see cref="TimelineItem.SourceEvent"/> is an exact reference hit. Non-lane
-        /// events are deliberately absent: callers fall through to the single-event classifier.
+        /// a frame's <see cref="TimelineItem.SourceEvent"/> is an exact reference hit, plus the
+        /// chain/repeat runs that join them. Non-lane events are deliberately absent: callers fall
+        /// through to the single-event classifier.
         /// </summary>
         public static TechnikaSeriesMap Build(PlayerData model)
         {
@@ -126,9 +128,11 @@ namespace DJMaxEditor.Controls.TimelineV2
         }
 
         /// <summary>
-        /// The chain head's marker opens the chain; ordinary taps strictly after it on the way to
-        /// the explicit closing node are the joints the chain path scrapes through. Taps that sit
-        /// on the closing node's own tick are a real tap in another lane, not joints.
+        /// A chain head opens a path that runs through every following ChainNode (the .tech way,
+        /// crossing lanes), plus any ordinary taps strictly after the head that no node shares a
+        /// tick with (the legacy way: those taps are joints the file never re-tagged). A note of
+        /// another family ends the path; another head replaces it. A tap on a node's own tick is a
+        /// real tap in another lane, not a joint.
         /// </summary>
         private static void ApplyChainFixups(
             TechnikaSeriesMap map, List<SeriesNote> notes)
@@ -138,10 +142,6 @@ namespace DJMaxEditor.Controls.TimelineV2
             EventData head = null;
             TechnikaSeriesRun run = null;
             List<SeriesNote> absorbed = new List<SeriesNote>();
-
-            // Absorbed joints are tracked as their own list rather than by a flag on the note:
-            // the same tick can hold a joint on one lane and a real tap on another, and only the
-            // ones this very run absorbed may revert when it closes.
 
             foreach (SeriesNote note in notes)
             {
@@ -160,29 +160,28 @@ namespace DJMaxEditor.Controls.TimelineV2
 
                 if (kind == TechnikaNoteKind.ChainNode)
                 {
-                    if (open)
+                    if (!open)
                     {
-                        // A tap sharing the closing node's tick is the node's own neighbour, not a
-                        // joint - the projector hands those back before closing the run.
-                        int closeTick = note.Event.Tick;
-                        for (int i = absorbed.Count - 1; i >= 0; i--)
-                        {
-                            if (absorbed[i].Event.Tick == closeTick)
-                            {
-                                kinds[absorbed[i].Event] = TechnikaNoteKind.Basic;
-                                if (run != null)
-                                {
-                                    run.Members.Remove(absorbed[i].Event);
-                                }
-                            }
-                        }
-                        run.Members.Add(note.Event);
-                        open = false;
-                        head = null;
-                        run = null;
-                        absorbed.Clear();
+                        // Orphan node: paint as a node anyway, but it joins nothing.
+                        kinds[note.Event] = kind;
+                        continue;
                     }
+
+                    // A tap sharing a node's tick is that note's neighbour in another lane, not a
+                    // joint - the projector hands those back before extending the path.
+                    int nodeTick = note.Event.Tick;
+                    for (int i = absorbed.Count - 1; i >= 0; i--)
+                    {
+                        if (absorbed[i].Event.Tick == nodeTick)
+                        {
+                            kinds[absorbed[i].Event] = TechnikaNoteKind.Basic;
+                            run.Members.Remove(absorbed[i].Event);
+                        }
+                    }
+                    run.Members.Add(note.Event);
                     kinds[note.Event] = kind;
+                    // Unlike the legacy single-close model, more nodes may follow - the path stays
+                    // open until a non-chain note or the next head.
                     continue;
                 }
 
@@ -194,20 +193,31 @@ namespace DJMaxEditor.Controls.TimelineV2
                     continue;
                 }
 
+                if (open && kind != TechnikaNoteKind.ChainNode)
+                {
+                    // Hold, drag, repeat or tap at the head's own tick ends the path.
+                    open = false;
+                    head = null;
+                    run = null;
+                    absorbed.Clear();
+                }
+
                 kinds[note.Event] = kind;
             }
         }
 
         /// <summary>
-        /// Per lane, the first repeat-head marker opens the series; every later head marker while
-        /// the series is open is a repeat tick, and the closing marker ends it. The held variants
-        /// keep their held tail through the downgrade.
+        /// Per lane, a repeat head opens a series; every following Repeat/RepeatHold marker is a
+        /// member (the .tech way - there can be several, a held segment among them), and a legacy
+        /// run's extra head markers before the first end marker are downgraded to ticks. A note of
+        /// any other kind on the same lane closes the series; notes on other lanes never do.
         /// </summary>
         private static void ApplyRepeatFixups(
             TechnikaSeriesMap map, List<SeriesNote> notes)
         {
             Dictionary<EventData, TechnikaNoteKind> kinds = map.Kinds;
             bool[] openByLane = new bool[LaneCount];
+            bool[] endSeenByLane = new bool[LaneCount];
             TechnikaSeriesRun[] runs = new TechnikaSeriesRun[LaneCount];
 
             foreach (SeriesNote note in notes)
@@ -218,40 +228,58 @@ namespace DJMaxEditor.Controls.TimelineV2
                     kind = note.Kind;
                 }
 
+                int lane = note.Lane;
+                bool laneInRange = lane < LaneCount;
+
                 if (kind == TechnikaNoteKind.RepeatHead ||
                     kind == TechnikaNoteKind.RepeatHeadHold)
                 {
                     bool held = kind == TechnikaNoteKind.RepeatHeadHold;
-                    if (note.Lane < LaneCount && openByLane[note.Lane])
+                    if (laneInRange && openByLane[lane] && !endSeenByLane[lane])
                     {
+                        // Legacy dialect: the intermediate ticks keep the head attribute until the
+                        // single end marker, so a head before that end is another tick.
                         kind = held ? TechnikaNoteKind.RepeatHold : TechnikaNoteKind.Repeat;
-                        if (runs[note.Lane] != null)
+                        if (runs[lane] != null)
                         {
-                            runs[note.Lane].Members.Add(note.Event);
+                            runs[lane].Members.Add(note.Event);
                         }
                     }
-                    else if (note.Lane < LaneCount)
+                    else
                     {
-                        openByLane[note.Lane] = true;
-                        runs[note.Lane] = new TechnikaSeriesRun(TechnikaNoteKind.Repeat);
-                        runs[note.Lane].Members.Add(note.Event);
-                        map.Runs.Add(runs[note.Lane]);
+                        // A fresh head: opens a new series (replacing any that ran its course).
+                        if (laneInRange)
+                        {
+                            openByLane[lane] = true;
+                            endSeenByLane[lane] = false;
+                            runs[lane] = new TechnikaSeriesRun(TechnikaNoteKind.Repeat);
+                            runs[lane].Members.Add(note.Event);
+                            map.Runs.Add(runs[lane]);
+                        }
                     }
                 }
                 else if (kind == TechnikaNoteKind.Repeat ||
                          kind == TechnikaNoteKind.RepeatHold)
                 {
-                    if (note.Lane < LaneCount)
+                    if (laneInRange)
                     {
-                        openByLane[note.Lane] = false;
-                        // An explicit close is only part of the line when a head opened one. An
-                        // orphan close is still painted as a close; it just joins nothing.
-                        if (runs[note.Lane] != null)
+                        if (openByLane[lane])
                         {
-                            runs[note.Lane].Members.Add(note.Event);
-                            runs[note.Lane] = null;
+                            // An end marker joins the run, but does not close it: a .tech series
+                            // carries several Repeat markers, a held one possibly among them.
+                            endSeenByLane[lane] = true;
+                            runs[lane].Members.Add(note.Event);
                         }
+                        // An orphan end marker still paints as one; it just joins nothing.
                     }
+                }
+                else if (laneInRange && openByLane[lane])
+                {
+                    // A non-repeat note on the series' own lane closes it. Other lanes are
+                    // irrelevant to a repeat run, which never leaves its lane.
+                    openByLane[lane] = false;
+                    endSeenByLane[lane] = false;
+                    runs[lane] = null;
                 }
 
                 kinds[note.Event] = kind;

@@ -1076,13 +1076,17 @@ namespace DJMaxEditor.Preview
                         continue;
                     }
 
+                    // A tap sharing any node's pulse is that node's neighbour in another lane, not
+                    // a joint - hand it back before the path extends through this node.
                     foreach (ProjectedGameplayNote implicitNode in
                         implicitNodes.Where(node => node.Pulse == note.Pulse))
                     {
                         implicitNode.Kind = GameplayPreviewNoteKind.Basic;
                         implicitNode.IsImplicitChainNode = false;
                     }
-                    open = false;
+                    // A .tech tags every waypoint as a ChainNode - there is no single closing
+                    // node, so the path stays open for the next node. The legacy single-node
+                    // dialect still works: it simply has no following node.
                     continue;
                 }
 
@@ -1092,6 +1096,14 @@ namespace DJMaxEditor.Preview
                     note.Kind = GameplayPreviewNoteKind.ChainNode;
                     note.IsImplicitChainNode = true;
                     implicitNodes.Add(note);
+                    continue;
+                }
+
+                if (open && note.Kind != GameplayPreviewNoteKind.ChainNode)
+                {
+                    // A note of another family ends the path; the next head opens the next one.
+                    open = false;
+                    implicitNodes.Clear();
                 }
             }
 
@@ -1106,13 +1118,19 @@ namespace DJMaxEditor.Preview
             IList<string> diagnostics)
         {
             var openByLane = new bool[4];
+            // The legacy dialect tags the single closing tick with Repeat/RepeatHold, while a
+            // .tech series names every post-head marker Repeat (a held RepeatHold may sit among
+            // them). An end marker therefore joins the series but does not close it; only a fresh
+            // head or a non-repeat note on the same lane does.
+            var endSeenByLane = new bool[4];
             foreach (ProjectedGameplayNote note in notes)
             {
                 if (note.Kind == GameplayPreviewNoteKind.RepeatHead ||
                     note.Kind == GameplayPreviewNoteKind.RepeatHeadHold)
                 {
-                    if (openByLane[note.Lane])
+                    if (openByLane[note.Lane] && !endSeenByLane[note.Lane])
                     {
+                        // Legacy intermediate ticks keep the head attribute until the end marker.
                         note.Kind = note.Kind == GameplayPreviewNoteKind.RepeatHeadHold
                             ? GameplayPreviewNoteKind.RepeatHold
                             : GameplayPreviewNoteKind.Repeat;
@@ -1120,18 +1138,30 @@ namespace DJMaxEditor.Preview
                     else
                     {
                         openByLane[note.Lane] = true;
+                        endSeenByLane[note.Lane] = false;
                     }
                 }
                 else if (note.Kind == GameplayPreviewNoteKind.Repeat ||
                     note.Kind == GameplayPreviewNoteKind.RepeatHold)
                 {
-                    if (!openByLane[note.Lane])
+                    if (openByLane[note.Lane])
+                    {
+                        endSeenByLane[note.Lane] = true;
+                    }
+                    else
                     {
                         diagnostics.Add(
                             "Orphan repeat node on lane " + note.Lane +
                             " at tick " + note.Source.Tick + ".");
                     }
+                }
+                else if (note.Lane >= 0 && note.Lane < openByLane.Length &&
+                    openByLane[note.Lane])
+                {
+                    // A repeat never leaves its lane, so only a same-lane note closes the series;
+                    // anything happening in other lanes is irrelevant.
                     openByLane[note.Lane] = false;
+                    endSeenByLane[note.Lane] = false;
                 }
             }
 

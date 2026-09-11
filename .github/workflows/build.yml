@@ -379,9 +379,12 @@ jobs:
           var sRepeats = series.Runs.Where(r => !r.IsChain).ToList();
           Check(sChains.Count == 1 && sChains[0].Members.Count == 3,
                 "the fixture's chain head and two chain nodes form one 3-member chain run");
-          Check(sRepeats.Count == 2 && sRepeats.All(r => r.Members.Count == 2),
-                "the repeat head/close pairs each form one repeat run, got "
-                + sRepeats.Count);
+          Check(sRepeats.Count == 2
+                && sRepeats.OrderBy(r => r.Members.Count).Select(r => r.Members.Count)
+                    .SequenceEqual(new[] { 2, 3 }),
+                "the head/two-tick series and the held pair form two repeat runs, got "
+                + sRepeats.Count + " of sizes ["
+                + string.Join(",", sRepeats.Select(r => r.Members.Count)) + "]");
           Check(sRepeats.All(r => r.LineKind == TechnikaNoteKind.Repeat)
                 && sChains[0].LineKind == TechnikaNoteKind.ChainNode,
                 "run line kinds name the connector colour families");
