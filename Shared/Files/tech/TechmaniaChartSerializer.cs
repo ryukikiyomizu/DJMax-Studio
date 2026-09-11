@@ -570,8 +570,8 @@ namespace DJMaxEditor.Files.Tech
         }
 
         /// <summary>
-        /// Builds the model event for one unpacked note. Returns false when the lane is one the
-        /// four-track TECHNIKA field cannot place.
+        /// Builds the model event for one unpacked note. Returns false only when the note type
+        /// is unknown or its format lane is out of the supported 0..<see cref="MaxExtraFormatLane"/>.
         /// </summary>
         private static bool TryBuildNote(
             PackedNote note,
@@ -597,7 +597,10 @@ namespace DJMaxEditor.Files.Tech
                 default:
                     return false;
             }
-            if (note.Lane < 0 || note.Lane >= LaneCount)
+            // Lanes 0-3 are playable; 4..MaxExtraFormatLane are the format's invisible/
+            // autoplay keysound lanes and compact onto overflow tracks after this. Only a
+            // genuinely out-of-range format lane (the format ceiling is 63) is malformed.
+            if (note.Lane < 0 || note.Lane > MaxExtraFormatLane)
             {
                 return false;
             }
