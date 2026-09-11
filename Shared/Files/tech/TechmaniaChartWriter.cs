@@ -366,7 +366,7 @@ namespace DJMaxEditor.Files.Tech
             {
                 return TechDefaultVolume;
             }
-            return Math.Max(0, Math.Min(100, model));
+            return Math.Max(0, Math.Min(100, (int)model));
         }
 
         private static int OutPan(byte model)
