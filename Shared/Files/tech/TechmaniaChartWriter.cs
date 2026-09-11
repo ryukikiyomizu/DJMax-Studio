@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DJMaxEditor.Controls.TimelineV2;
 using DJMaxEditor.Diagnostics;
 using DJMaxEditor.DJMax;
@@ -170,9 +171,66 @@ namespace DJMaxEditor.Files.Tech
                 packedDragNotes = packedDrags
             };
 
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+
+            // One editor model edits exactly one difficulty slot; the other patterns from
+            // the imported container are kept as verbatim JSON and re-spliced in their
+            // original slots so a multi-difficulty track survives open/edit/save intact.
+            int activeSlot = retained != null ? retained.ActivePatternIndex : 0;
+            if (activeSlot < 0)
+            {
+                activeSlot = 0;
+            }
+            string activeRawJson = retained != null ? retained.ActivePatternJson : null;
+            JsonNode activeNode = !string.IsNullOrEmpty(activeRawJson)
+                ? PatchActivePattern(activeRawJson, pattern, options)
+                : JsonSerializer.SerializeToNode(pattern, options);
+            var patternSlots = new SortedList<int, JsonNode>
+            {
+                { activeSlot, activeNode }
+            };
+            int siblingCount = 0;
+            if (retained != null)
+            {
+                foreach (TechSiblingPattern sibling in retained.SiblingPatterns)
+                {
+                    if (sibling == null || sibling.Index == activeSlot ||
+                        sibling.Index < 0 || string.IsNullOrEmpty(sibling.Json))
+                    {
+                        continue;
+                    }
+                    JsonNode node = null;
+                    try
+                    {
+                        node = JsonNode.Parse(sibling.Json);
+                    }
+                    catch (JsonException)
+                    {
+                        DiagnosticLog.Write("tech.export",
+                            "Dropped an unreadable sibling pattern at slot " + sibling.Index);
+                        continue;
+                    }
+                    if (node != null && !patternSlots.ContainsKey(sibling.Index))
+                    {
+                        patternSlots.Add(sibling.Index, node);
+                        siblingCount++;
+                    }
+                }
+            }
+            var patternsArray = new JsonArray();
+            foreach (KeyValuePair<int, JsonNode> slot in patternSlots)
+            {
+                patternsArray.Add(slot.Value);
+            }
+
             var file = new TrackFileDto
             {
                 version = SupportedVersion,
+                patterns = patternsArray,
                 trackMetadata = new TrackMetadataDto
                 {
                     guid = NonEmptyGuid(retained != null ? retained.TrackGuid : null),
@@ -187,8 +245,7 @@ namespace DJMaxEditor.Files.Tech
                     previewEndTime = retained != null ? retained.PreviewEndTime : 0,
                     previewBga = retained != null ? retained.PreviewBga : string.Empty,
                     autoOrderPatterns = retained != null && retained.AutoOrderPatterns
-                },
-                patterns = new List<PatternDto> { pattern }
+                }
             };
 
             if (dropped > 0)
@@ -196,17 +253,64 @@ namespace DJMaxEditor.Files.Tech
                 DiagnosticLog.Write("tech.export",
                     "Dropped " + dropped + " note(s) with no TECHMANIA equivalent.");
             }
-
-            var options = new JsonSerializerOptions
+            if (siblingCount > 0)
             {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
+                DiagnosticLog.Write("tech.export",
+                    "Re-spliced " + siblingCount + " unedited sibling pattern(s).");
+            }
+
             string json = JsonSerializer.Serialize(file, options);
 
             // TECHMANIA's parser is a tolerant JSON reader but is case-sensitive about the
             // packed type names; nothing else here relies on key order.
             return json;
+        }
+
+        /// <summary>
+        /// Rebuilds the edited pattern on top of its verbatim import JSON. Only the surfaces
+        /// the editor can actually change are replaced - the tempo/initBpm field, the tempo
+        /// event and time-stop tables, and the three packed note tables; every other key
+        /// (legacy ruleset/setlist overrides, the metadata fields the editor never edits,
+        /// key order and null styles) rides through untouched. The integrity fingerprint is
+        /// removed because the edit invalidated it and the game recomputes a missing one.
+        /// </summary>
+        private static JsonNode PatchActivePattern(
+            string rawJson,
+            PatternDto edited,
+            JsonSerializerOptions options)
+        {
+            JsonObject node;
+            try
+            {
+                node = JsonNode.Parse(rawJson).AsObject();
+            }
+            catch (JsonException)
+            {
+                DiagnosticLog.Write("tech.export",
+                    "The opened pattern's original JSON was unreadable; rebuilding it.");
+                return JsonSerializer.SerializeToNode(edited, options);
+            }
+
+            JsonObject metadata = node["patternMetadata"] as JsonObject;
+            if (metadata == null)
+            {
+                node["patternMetadata"] =
+                    JsonSerializer.SerializeToNode(edited.patternMetadata, options);
+            }
+            else
+            {
+                metadata["initBpm"] = JsonValue.Create(edited.patternMetadata.initBpm);
+            }
+
+            node["bpmEvents"] = JsonSerializer.SerializeToNode(edited.bpmEvents, options);
+            node["timeStops"] = JsonSerializer.SerializeToNode(edited.timeStops, options);
+            node["packedNotes"] = JsonSerializer.SerializeToNode(edited.packedNotes, options);
+            node["packedHoldNotes"] =
+                JsonSerializer.SerializeToNode(edited.packedHoldNotes, options);
+            node["packedDragNotes"] =
+                JsonSerializer.SerializeToNode(edited.packedDragNotes, options);
+            node.Remove("fingerprint");
+            return node;
         }
 
         private static void CollectEndOfScan(PlayerData player, HashSet<long> flags)
@@ -428,7 +532,10 @@ namespace DJMaxEditor.Files.Tech
         {
             public string version { get; set; }
             public TrackMetadataDto trackMetadata { get; set; }
-            public List<PatternDto> patterns { get; set; }
+
+            // Active slot serialized from PatternDto, sibling slots kept as verbatim
+            // parsed JSON nodes; JsonArray serializes each node in slot order.
+            public JsonArray patterns { get; set; }
         }
 
         private sealed class TrackMetadataDto

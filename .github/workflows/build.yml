@@ -156,6 +156,7 @@ jobs:
           using System.IO;
           using System.Linq;
           using System.Text;
+          using System.Text.Json.Nodes;
           using DJMaxEditor.DJMax;
           using DJMaxEditor.Files;
           using DJMaxEditor.Files.bms;
@@ -395,9 +396,80 @@ jobs:
           Check(blankOut.Contains("Basic|0|0|") && !blankOut.Contains("E|Basic"),
                 "model-default volume/pan pack as a compact note");
 
+          // Multi-difficulty container: stitch a second, untouched pattern (MX) behind
+          // the opened one (NM). The editor edits slot 0; slot 1 must come back verbatim.
+          var multiDoc = JsonNode.Parse(tech);
+          multiDoc["patterns"].AsArray().Add(JsonNode.Parse(
+              "{\"patternMetadata\":{\"guid\":\"p2\",\"patternName\":\"MX\",\"author\":\"other\","
+              + "\"initBpm\":100,\"bps\":4},\"packedNotes\":[\"Basic|0|1|mx.ogg\"],"
+              + "\"packedHoldNotes\":[],\"packedDragNotes\":[]}"));
+          string multiTech = multiDoc.ToJsonString();
+          PlayerData multiChart = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiTech));
+          var mm = multiChart.TechMetadata;
+          Check(mm.ActivePatternIndex == 0 && mm.SiblingPatterns.Count == 1
+                && mm.SiblingPatterns[0].Index == 1,
+                "only the first pattern opens; the other is retained as a sibling");
+          string multiOut = TechmaniaChartSerializer.Serialize(multiChart);
+          Check(multiOut.Contains("\"patternName\": \"MX\"") &&
+                multiOut.Contains("Basic|0|1|mx.ogg"),
+                "the unedited sibling difficulty is written back verbatim");
+          PlayerData multiRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(multiOut));
+          Check(multiRound.TechMetadata.SiblingPatterns.Count == 1
+                && multiRound.TechMetadata.SiblingPatterns[0].Json.Contains("mx.ogg"),
+                "sibling difficulty survives a second round trip");
+
+          // Real shipped charts: a 3-lane single-pattern file and a two-difficulty
+          // container, both with null metadata, fingerprints and legacy overrides.
+          byte[] realBytes = File.ReadAllBytes(Path.Combine("smoke", "umapyoi.tech"));
+          PlayerData real = TechmaniaChartSerializer.Parse(realBytes);
+          var rm = real.TechMetadata;
+          Check(rm != null && rm.Title == "umapyoi" && rm.PlayableLanes == 3
+                && rm.PatternName == "NM", "real 3-lane chart opens with its metadata");
+          Check(rm.Bga == "umapyoiprebga.mp4" && rm.WaitForEndOfBga
+                && rm.SiblingPatterns.Count == 0,
+                "real chart AV metadata is retained with no sibling patterns");
+          Check(real.Tracks.GetTrackAtIndex(3).Events.Count() == 1,
+                "real chart keeps the lane-3 preview note");
+          string realOut = TechmaniaChartSerializer.Serialize(real);
+          Check(realOut.Contains("legacyRulesetOverride")
+                && realOut.Contains("legacySetlistOverride"),
+                "legacy overrides ride through on the edited pattern");
+          Check(!realOut.Contains("fingerprint"),
+                "the stale fingerprint is dropped so the game recomputes it");
+          Check(realOut.Contains("umapyoiprebgm.ogg")
+                && realOut.Contains("\"playableLanes\": 3"),
+                "keysound reference and 3-lane setup survive the real round trip");
+          PlayerData realRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(realOut));
+          Check(realRound.TechMetadata.PlayableLanes == 3
+                && realRound.TechMetadata.PatternName == "NM",
+                "real chart reopens at 3 lanes after save-back");
+
+          byte[] twoBytes = File.ReadAllBytes(
+              Path.Combine("smoke", "crimes-two-patterns.tech"));
+          PlayerData two = TechmaniaChartSerializer.Parse(twoBytes);
+          Check(two.TechMetadata.SiblingPatterns.Count == 1
+                && two.TechMetadata.PatternName == "MX",
+                "real two-difficulty file opens MX and keeps New pattern as a sibling");
+          string twoOut = TechmaniaChartSerializer.Serialize(two);
+          Check(twoOut.Contains("\"patternName\": \"New pattern\"")
+                && twoOut.Contains("800x800cc.jpg"),
+                "real second difficulty and eyecatch reference are written back");
+          PlayerData twoRound = TechmaniaChartSerializer.Parse(
+              Encoding.UTF8.GetBytes(twoOut));
+          Check(twoRound.TechMetadata.SiblingPatterns.Count == 1
+                && twoRound.TechMetadata.SiblingPatterns[0].Json.Contains(
+                    "\"patternName\": \"New pattern\""),
+                "real two-difficulty file survives a second round trip");
+
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;
           SMOKE_PROG_EOF
+          # Real-world charts shipped with the repo: a 3-lane single-pattern file and a
+          # two-difficulty container, both with null metadata, fingerprints and overrides.
+          cp test-fixtures/tech/*.tech smoke/
           ls -la smoke/
       - name: Run smoke test
         shell: pwsh

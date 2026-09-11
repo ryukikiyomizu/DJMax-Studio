@@ -28,17 +28,22 @@ namespace DJMaxEditor.Files.Tech
     /// Grid conversion. TECHMANIA counts 240 pulses per beat; this model counts 192 ticks per
     /// 4-beat measure with 6 virtual ticks per tick, i.e. 288 virtual ticks per beat, so a pulse
     /// is 6/5 of a virtual tick and positions are rounded. A track.tech packs several patterns
-    /// (difficulties) in one file while the model holds one chart, so the first pattern is
-    /// imported - same choice an importer with no pattern chooser makes elsewhere. Touch, Keys
-    /// and KM control schemes share one lane coordinate system (lanes 0..playableLanes-1,
-    /// playableLanes being 2-4), so no scheme-specific mapping is needed.
+    /// (difficulties) in one file while the model holds one chart, so the first pattern opens;
+    /// every other pattern is retained verbatim as raw JSON in <see cref="TechMetadata"/> and
+    /// re-spliced into its original slot on save, which keeps a multi-difficulty container
+    /// intact even though only one chart is being edited. Touch, Keys and KM control schemes
+    /// share one lane coordinate system (lanes 0..playableLanes-1, playableLanes being 2-4),
+    /// so no scheme-specific mapping is needed.
     /// </para>
     ///
     /// <para>
-    /// Not represented in the model and deliberately dropped: drag control points (the editor's
-    /// drag is a straight run; only the head and its duration survive), time stops, BGA and
-    /// preview metadata, first-beat offset, and per-note volume/pan curves outside the stored
-    /// byte fields. Volume/pan and the end-of-scan flag do survive.
+    /// Not represented in the model but preserved as container metadata rather than dropped:
+    /// time stops, BGA/preview file references, first-beat offset and the track/pattern
+    /// identity fields (see <see cref="TechMetadata"/>). The media files themselves are not
+    /// part of a .tech - the format references them by filename and they live beside the
+    /// chart in the track folder, so only the references are this code's business. Drag
+    /// control points are the one authored detail that genuinely cannot survive an edit: the
+    /// editor's drag is a straight run, so only the head and its duration are re-emitted.
     /// </para>
     /// </summary>
     internal static partial class TechmaniaChartSerializer
@@ -132,8 +137,22 @@ namespace DJMaxEditor.Files.Tech
                 AutoOrderPatterns = TrackBool(root, "autoOrderPatterns")
             };
 
-            // One model is one chart; take the first pattern deterministically.
-            return ParsePattern(patterns[0], metadata);
+            // One model is one chart; the first pattern opens deterministically. A container
+            // normally holds one pattern per difficulty, and the others are not edited - they
+            // are retained verbatim so the save-back splices all difficulties back together.
+            // The opened pattern keeps its raw JSON too: the exporter patches it in place,
+            // carrying fields this code does not model (legacy overrides, fingerprint block,
+            // null styles) instead of rebuilding the object from a fixed DTO.
+            metadata.ActivePatternIndex = 0;
+            metadata.ActivePatternJson = patterns[0].GetRawText();
+            PlayerData model = ParsePattern(patterns[0], metadata);
+            for (int i = 1; i < patterns.GetArrayLength(); i++)
+            {
+                metadata.SiblingPatterns.Add(
+                    new TechSiblingPattern(i, patterns[i].GetRawText()));
+            }
+
+            return model;
         }
 
         private static PlayerData ParsePattern(JsonElement pattern, TechMetadata metadata)

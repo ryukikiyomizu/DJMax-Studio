@@ -59,6 +59,52 @@ namespace DJMaxEditor.Files.Tech
         /// Per the .tech specification pulse is in pulses and duration is counted in beats,
         /// but both values are passed through verbatim and never interpreted here.</summary>
         public List<TechTimeStop> TimeStops { get; } = new List<TechTimeStop>();
+
+        /// <summary>
+        /// Slot (0-based index into the container's <c>patterns</c> array) of the single
+        /// pattern this model is editing. A track.tech normally ships one pattern per
+        /// difficulty (NM, HD, MX ...) inside one container; the editor opens one chart at a
+        /// time, so every other slot is retained verbatim in <see cref="SiblingPatterns"/>.
+        /// </summary>
+        public int ActivePatternIndex { get; set; }
+
+        /// <summary>
+        /// Verbatim raw JSON of the opened pattern at import time. The exporter patches the
+        /// fields the editor can change (tempo, packed note tables, time stops) onto this
+        /// copy instead of rebuilding the object, which carries format fields the editor
+        /// does not model - legacy ruleset/setlist overrides, key ordering, null styles -
+        /// through the round trip untouched. Null for a chart converted from another format.
+        /// </summary>
+        public string ActivePatternJson { get; set; }
+
+        /// <summary>
+        /// The container's other difficulty patterns as verbatim raw JSON, each tagged with
+        /// its original slot. They are never parsed into the event model and never altered:
+        /// saving the edited pattern splices it back into its slot and writes these out
+        /// untouched, so open/edit/save of a multi-difficulty track loses nothing.
+        /// </summary>
+        public List<TechSiblingPattern> SiblingPatterns { get; }
+            = new List<TechSiblingPattern>();
+    }
+
+    /// <summary>One non-edited pattern of a multi-pattern .tech container, kept as raw JSON.</summary>
+    public sealed class TechSiblingPattern
+    {
+        public TechSiblingPattern()
+        {
+        }
+
+        public TechSiblingPattern(int index, string json)
+        {
+            Index = index;
+            Json = json;
+        }
+
+        /// <summary>Original slot in the container's patterns array.</summary>
+        public int Index { get; set; }
+
+        /// <summary>The pattern object's verbatim JSON.</summary>
+        public string Json { get; set; } = "";
     }
 
     public sealed class TechTimeStop
