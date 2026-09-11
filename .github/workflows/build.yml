@@ -238,7 +238,8 @@ jobs:
                 "detector still identifies classic BMS");
 
           // TECHMANIA track.tech (format v3): every note family, extended fields, a drag
-          // with node-derived duration, a tempo event and an end-of-scan marker.
+          // with node-derived duration, a tempo event, an end-of-scan marker, and notes
+          // on invisible keysound lanes 5 and 7 (4 and 6 stay empty to test compaction).
           string tech = @"{
             ""version"": ""3"",
             ""trackMetadata"": { ""guid"":""t"", ""title"":""T"", ""artist"":""A"", ""genre"":""G"",
@@ -263,8 +264,6 @@ jobs:
                 ""Repeat|720|1|b.ogg"",
                 ""E|Basic|960|2|80|-50|0|c|d.ogg"",
                 ""E|Basic|1920|0|100|0|1|"",
-                // Invisible/autoplay keysound lanes beyond the playable lanes: lanes
-                // 4 and 6 stay empty, only 5 and 7 must get compacted overflow tracks.
                 ""Basic|3000|5|extra5.ogg"",
                 ""Basic|3120|7|extra7.ogg""
               ],
