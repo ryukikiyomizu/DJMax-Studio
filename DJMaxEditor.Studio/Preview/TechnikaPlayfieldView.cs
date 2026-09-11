@@ -1495,7 +1495,12 @@ namespace DJMaxEditor.Studio.Preview
             dc.PushTransform(new MatrixTransform(placement));
             if (line == null)
             {
-                dc.DrawRectangle(_theme.NoteFor(kind).Trail, null, new Rect(0, 0, length, height));
+                // Chain connectors are yellow even though chain heads are green: the arcade's
+                // line matches the yellow node rings. Repeat connectors reuse the purple trail.
+                Brush fallback = LinkFamily(kind) == ChainFamily
+                    ? _theme.ChainRunLine
+                    : _theme.NoteFor(kind).Trail;
+                dc.DrawRectangle(fallback, null, new Rect(0, 0, length, height));
             }
             else
             {

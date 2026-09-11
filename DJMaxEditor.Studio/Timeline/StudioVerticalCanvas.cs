@@ -117,7 +117,7 @@ namespace DJMaxEditor.Studio.Timeline
 
         private VerticalTimelineViewModel _viewModel;
         private VerticalTimelineFrame _frame;
-        private Dictionary<EventData, TechnikaNoteKind> _seriesKinds;
+        private TechnikaSeriesMap _series;
         private PlayerData _seriesModel;
         private long _seriesSignature;
         private TimelineOrientation _orientation = TimelineOrientation.Vertical;
@@ -613,6 +613,7 @@ namespace DJMaxEditor.Studio.Timeline
 
             DrawLaneFields(dc, frame, body);
             DrawGrid(dc, frame, body);
+            DrawSeriesLinks(dc, frame);
             DrawNotes(dc, frame);
 
             dc.Pop();
@@ -784,6 +785,117 @@ namespace DJMaxEditor.Studio.Timeline
             return Math.Abs(ratio - Math.Round(ratio)) < 0.0001;
         }
 
+        /// <summary>
+        /// The arcade's family connectors, painted under the heads: a yellow line from a chain
+        /// head through its joints to its closing node, and a purple line along a repeat series
+        /// from its head to its close. The heads alone do not carry this information - absorbed
+        /// chain joints are ordinary taps and repeat ticks are repeat heads in the model - so
+        /// without the bars a series reads as a scatter of unrelated notes. The gameplay preview
+        /// draws the same connectors; this keeps the two surfaces to one chart.
+        ///
+        /// <para>
+        /// Two stream geometries, two draw calls no matter how many runs there are, matching the
+        /// grid layer's batching.
+        /// </para>
+        /// </summary>
+        private void DrawSeriesLinks(DrawingContext dc, VerticalTimelineFrame frame)
+        {
+            if (_series == null || _series.Runs.Count == 0 ||
+                !VerticalTrackLayout.IsTechnikaMode(frame.Layout.Mode))
+            {
+                return;
+            }
+
+            var placedByEvent = new Dictionary<EventData, VerticalPlacedItem>();
+            for (int i = 0; i < frame.Items.Count; i++)
+            {
+                VerticalPlacedItem placed = frame.Items[i];
+                if (placed.Item != null && placed.Item.SourceEvent != null)
+                {
+                    placedByEvent[placed.Item.SourceEvent] = placed;
+                }
+            }
+            if (placedByEvent.Count == 0)
+            {
+                return;
+            }
+
+            // One thickness from the playable lane width: the connectors are a fixed fraction of
+            // the lane, the same way the playfield measures them, and all playable lanes share it.
+            double laneWidth = 0.0;
+            for (int i = 0; i < frame.Layout.Columns.Count; i++)
+            {
+                VerticalColumn column = frame.Layout.Columns[i];
+                if (IsPlayable(column))
+                {
+                    laneWidth = column.Width * frame.Coordinates.ColumnScale;
+                    break;
+                }
+            }
+            if (laneWidth <= 0.0)
+            {
+                return;
+            }
+            double thickness = Math.Max(2.0, laneWidth * 0.16);
+
+            StreamGeometry chainGeometry = new StreamGeometry();
+            StreamGeometry repeatGeometry = new StreamGeometry();
+            using (StreamGeometryContext chain = chainGeometry.Open())
+            using (StreamGeometryContext repeat = repeatGeometry.Open())
+            {
+                foreach (TechnikaSeriesRun run in _series.Runs)
+                {
+                    StreamGeometryContext target = run.IsChain ? chain : repeat;
+                    Point? previous = null;
+                    Point? first = null;
+                    foreach (EventData member in run.Members)
+                    {
+                        VerticalPlacedItem placed;
+                        if (!placedByEvent.TryGetValue(member, out placed))
+                        {
+                            continue;
+                        }
+                        Point centre = new Point(
+                            placed.Left + (placed.Width / 2.0),
+                            placed.Top + (placed.Height / 2.0));
+                        if (run.IsChain)
+                        {
+                            // A chain crosses lanes, so every visible member is a vertex and
+                            // joins the one before it.
+                            if (previous.HasValue)
+                            {
+                                target.BeginFigure(previous.Value, false, false);
+                                target.LineTo(centre, true, false);
+                            }
+                        }
+                        else if (!first.HasValue)
+                        {
+                            // A repeat series stays in one lane, so one bar from the first
+                            // visible member to the last is the whole line - and drawing it in
+                            // one piece is what keeps it visually straight.
+                            first = centre;
+                        }
+                        previous = centre;
+                    }
+                    if (!run.IsChain && first.HasValue && previous.HasValue &&
+                        previous.Value != first.Value)
+                    {
+                        target.BeginFigure(first.Value, false, false);
+                        target.LineTo(previous.Value, true, false);
+                    }
+                }
+            }
+            chainGeometry.Freeze();
+            repeatGeometry.Freeze();
+
+            // A wide soft underlay and a bright core, so the bars read on the dark field the way
+            // the arcade's own glow-line sheets do rather than as hairlines.
+            dc.DrawGeometry(null, _theme.SeriesLinkGlow(thickness * 2.2, true), chainGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkPen(thickness, true), chainGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkGlow(thickness * 2.2, false), repeatGeometry);
+            dc.DrawGeometry(null, _theme.SeriesLinkPen(thickness, false), repeatGeometry);
+        }
+
         private void DrawNotes(DrawingContext dc, VerticalTimelineFrame frame)
         {
             System.Collections.ObjectModel.ReadOnlyCollection<VerticalPlacedItem> items = frame.Items;
@@ -917,14 +1029,14 @@ namespace DJMaxEditor.Studio.Timeline
                 }
             }
 
-            if (model == _seriesModel && signature == _seriesSignature && _seriesKinds != null)
+            if (model == _seriesModel && signature == _seriesSignature && _series != null)
             {
                 return;
             }
 
             _seriesModel = model;
             _seriesSignature = signature;
-            _seriesKinds = TechnikaSeriesClassifier.Build(model);
+            _series = TechnikaSeriesClassifier.Build(model);
         }
 
         /// <summary>
@@ -934,8 +1046,8 @@ namespace DJMaxEditor.Studio.Timeline
         private TechnikaNoteKind KindFor(EventData source)
         {
             TechnikaNoteKind kind;
-            if (source != null && _seriesKinds != null &&
-                _seriesKinds.TryGetValue(source, out kind))
+            if (source != null && _series != null &&
+                _series.Kinds.TryGetValue(source, out kind))
             {
                 return kind;
             }

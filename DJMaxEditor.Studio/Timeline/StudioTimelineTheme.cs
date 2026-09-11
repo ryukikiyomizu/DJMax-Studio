@@ -433,6 +433,50 @@ namespace DJMaxEditor.Studio.Timeline
             return pen;
         }
 
+        /// <summary>
+        /// The bright core of a series connector: yellow for a chain path, purple for a repeat
+        /// run - the same two families the gameplay preview joins with
+        /// <c>notepressline</c>/<c>noterepeatline</c>. Yellow is sampled from the packaged
+        /// <c>notepressnote</c> chain-node rings; purple follows the repeat note edge.
+        /// </summary>
+        public Pen SeriesLinkPen(double thickness, bool chain)
+        {
+            return LinkPen(thickness, chain, glow: false);
+        }
+
+        /// <summary>The wide soft halo drawn under <see cref="SeriesLinkPen"/>.</summary>
+        public Pen SeriesLinkGlow(double thickness, bool chain)
+        {
+            return LinkPen(thickness, chain, glow: true);
+        }
+
+        private readonly Dictionary<int, Pen> _linkPens = new Dictionary<int, Pen>();
+
+        private Pen LinkPen(double thickness, bool chain, bool glow)
+        {
+            int key = ((int)Math.Round(thickness * 4.0) << 3) | (chain ? 0x4 : 0) | (glow ? 0x1 : 0);
+            Pen pen;
+            if (_linkPens.TryGetValue(key, out pen))
+            {
+                return pen;
+            }
+
+            Color core = StudioPalette.Parse(chain ? "#FFFFD300" : "#FFE650DE");
+            Color color = glow
+                ? Color.FromArgb(0x55, core.R, core.G, core.B)
+                : core;
+            SolidColorBrush brush = new SolidColorBrush(color);
+            brush.Freeze();
+            pen = new Pen(brush, Math.Max(1.0, thickness))
+            {
+                StartLineCap = PenLineCap.Round,
+                EndLineCap = PenLineCap.Round
+            };
+            pen.Freeze();
+            _linkPens[key] = pen;
+            return pen;
+        }
+
         private static Brush Translucent(string hex, double opacity)
         {
             SolidColorBrush brush = new SolidColorBrush(StudioPalette.Parse(hex));

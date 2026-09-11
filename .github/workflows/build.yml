@@ -141,6 +141,7 @@ jobs:
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" />
               <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
               <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
               <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
@@ -166,6 +167,7 @@ jobs:
           using DJMaxEditor.Files.FormatDetection;
           using DJMaxEditor.Preview;
           using DJMaxEditor.Controls.Vertical;
+          using DJMaxEditor.Controls.TimelineV2;
           int checks = 0;
           void Check(bool condition, string what)
           {
@@ -370,6 +372,55 @@ jobs:
                 "a repeated keysound filename shares one instrument");
           Check(techChart.Tracks.GetTrackAtIndex(5).Events.Count() == 0,
                 "an empty marker lane still has its track");
+          // The series classifier also groups the members of one chain or repeat, which is
+          // what the timeline's yellow/purple connector lines walk.
+          var series = TechnikaSeriesClassifier.Build(techChart);
+          var sChains = series.Runs.Where(r => r.IsChain).ToList();
+          var sRepeats = series.Runs.Where(r => !r.IsChain).ToList();
+          Check(sChains.Count == 1 && sChains[0].Members.Count == 3,
+                "the fixture's chain head and two chain nodes form one 3-member chain run");
+          Check(sRepeats.Count == 2 && sRepeats.All(r => r.Members.Count == 2),
+                "the repeat head/close pairs each form one repeat run, got "
+                + sRepeats.Count);
+          Check(sRepeats.All(r => r.LineKind == TechnikaNoteKind.Repeat)
+                && sChains[0].LineKind == TechnikaNoteKind.ChainNode,
+                "run line kinds name the connector colour families");
+          // A hand-built series: chain head absorbs two plain taps crossing lanes before its
+          // explicit close; repeat head, two more head-marked ticks, then the close.
+          var sp = new PlayerData();
+          var sl0 = new TrackData(0) { TrackName = "0" };
+          var sl1 = new TrackData(1) { TrackName = "1" };
+          sp.Tracks.AddTrack(sl0);
+          sp.Tracks.AddTrack(sl1);
+          EventData SN(TrackData track, int tick, byte attr)
+          {
+              var e = new EventData { EventType = EventType.Note, Tick = tick, Attribute = attr };
+              track.AddEvent(e);
+              return e;
+          }
+          EventData chainHead = SN(sl1, 0, 5);
+          EventData joint1 = SN(sl0, 10, 0);
+          EventData joint2 = SN(sl0, 20, 0);
+          EventData chainClose = SN(sl1, 30, 6);
+          EventData repHead = SN(sl0, 100, 10);
+          EventData repTick1 = SN(sl0, 120, 10);
+          EventData repTick2 = SN(sl0, 140, 10);
+          EventData repClose = SN(sl0, 160, 11);
+          var built = TechnikaSeriesClassifier.Build(sp);
+          var bChain = built.Runs.Single(r => r.IsChain);
+          var bRepeat = built.Runs.Single(r => !r.IsChain);
+          Check(bChain.Members.SequenceEqual(
+                new[] { chainHead, joint1, joint2, chainClose }),
+                "chain run walks head, two absorbed cross-lane taps, close");
+          Check(bRepeat.Members.SequenceEqual(
+                new[] { repHead, repTick1, repTick2, repClose }),
+                "repeat run walks head, two downgraded ticks, close");
+          Check(built.Kinds[joint1] == TechnikaNoteKind.ChainNode
+                && built.Kinds[joint2] == TechnikaNoteKind.ChainNode
+                && built.Kinds[repTick1] == TechnikaNoteKind.Repeat
+                && built.Kinds[repTick2] == TechnikaNoteKind.Repeat,
+                "absorbed taps paint as chain nodes and later heads as repeat ticks");
+
           bool oldRejected = false;
           try { TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes("{ \"version\": \"2\", \"patterns\": [] }")); }
           catch (ChartLoadException ex) { oldRejected = ex.Kind == ChartLoadError.UnsupportedFormat; }
