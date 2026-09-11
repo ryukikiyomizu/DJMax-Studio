@@ -135,11 +135,17 @@ namespace DJMaxEditor.Files.Tech
                 IsReadOnly = false
             };
 
+            // Added in index order: TracksList.GetTrackAtIndex is list-position based, so the
+            // list position must equal Idx. Lanes 0-3 first, marker tracks 4-7, then any
+            // accompaniment from 8 up.
             var laneTracks = new TrackData[LaneCount];
             var markerTracks = new TrackData[LaneCount];
             for (int lane = 0; lane < LaneCount; lane++)
             {
                 laneTracks[lane] = AddTrack(player, (uint)lane, "lane " + (lane + 1));
+            }
+            for (int lane = 0; lane < LaneCount; lane++)
+            {
                 markerTracks[lane] =
                     AddTrack(player, (uint)(FirstMarkerTrack + lane), "EOS " + (lane + 1));
             }
