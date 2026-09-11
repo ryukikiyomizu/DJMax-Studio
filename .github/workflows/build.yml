@@ -412,6 +412,12 @@ jobs:
                 "pattern metadata is written back");
           Check(techOut.Contains("\"pulse\": 480") && techOut.Contains("\"duration\": 120"),
                 "time stops are written back");
+          // Every media filename the .tech names (the files live beside the .tech and
+          // are referenced by bare name, never embedded) is written back verbatim.
+          Check(techOut.Contains("audio.ogg") && techOut.Contains("bg.png")
+                && techOut.Contains("bga.mp4") && techOut.Contains("eye.png")
+                && techOut.Contains("prev.ogg") && techOut.Contains("prev.mp4"),
+                "backing track, back image, BGA, eyecatch and preview filenames survive");
           var roundMeta = roundTech.TechMetadata;
           Check(roundMeta != null && roundMeta.Title == "T" && roundMeta.PatternName == "NM"
                 && roundMeta.Bps == 2 && roundMeta.TimeStops.Count == 1,
@@ -513,12 +519,27 @@ jobs:
           Check(twoOut.Contains("\"patternName\": \"New pattern\"")
                 && twoOut.Contains("800x800cc.jpg"),
                 "real second difficulty and eyecatch reference are written back");
+          // Each difficulty names its own media, sitting beside the .tech as bare
+          // filenames - the opened slot keeps its backing track (spaces/parens/.wav),
+          // the untouched sibling keeps its different backing track verbatim, and the
+          // shared BGA name is present too.
+          Check(twoOut.Contains("Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav"),
+                "the opened difficulty keeps its own backing track filename");
+          Check(twoOut.Contains("\"backingTrack\": \"Crime_and_Punishment.wav\""),
+                "the sibling difficulty keeps its own backing track filename");
+          Check(twoOut.Contains("0419.mp4"),
+                "the background video filename is written back");
           PlayerData twoRound = TechmaniaChartSerializer.Parse(
               Encoding.UTF8.GetBytes(twoOut));
           Check(twoRound.TechMetadata.SiblingPatterns.Count == 1
                 && twoRound.TechMetadata.SiblingPatterns[0].Json.Contains(
                     "\"patternName\": \"New pattern\""),
                 "real two-difficulty file survives a second round trip");
+          Check(twoRound.TechMetadata.BackingTrack ==
+                "Crime_and_Punishment (Backing Track) (BS-RoFormer SW).wav"
+                && twoRound.TechMetadata.Bga == "0419.mp4"
+                && twoRound.TechMetadata.EyecatchImage == "800x800cc.jpg",
+                "the reopened chart remembers every media filename");
 
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;
