@@ -324,8 +324,11 @@ jobs:
           Check(t2[0].Pan == 32 && t2[0].Instrument.Name == "c|d.ogg",
                 "extended pan maps to the 0..127 byte and the keysound keeps its pipe");
           var t3 = techChart.Tracks.GetTrackAtIndex(3).Events.ToList();
-          Check(t3.Count == 1 && t3[0].Attribute == 0 && t3[0].Tick == 432
+          Check(t3.Count == 2 && t3[0].Attribute == 0 && t3[0].Tick == 432
                 && t3[0].Duration == 96, "drag is attribute 0 with node-derived duration");
+          Check(t3[1].Attribute == 0 && t3[1].Tick == 528 && t3[1].Duration == 64
+                && t3[1].Instrument.Name == "d2.ogg",
+                "extended B-spline drag keeps head, keysound and interpolated duration");
           var eos = techChart.Tracks.GetTrackAtIndex(4).Events.ToList();
           Check(eos.Count == 1 && eos[0].Attribute == 100 && eos[0].Tick == 384,
                 "end-of-scan flag becomes an attribute-100 marker on track 4");
