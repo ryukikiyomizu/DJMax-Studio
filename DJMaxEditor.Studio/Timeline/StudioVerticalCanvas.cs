@@ -1884,8 +1884,10 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// True when a press on this hit may start a note move: a gameplay/authoring column
-        /// (never an end-of-scan marker or other annotation column) carrying a Note event.
+        /// True when a press on this hit may start a note move: a gameplay/authoring column -
+        /// playable lanes, overflow authoring columns, and the BGA SYNC timing column -
+        /// carrying a Note event. End-of-scan markers, MR and BG stay unarmed: markers are
+        /// flags owned by their lanes, not notes.
         /// </summary>
         private static bool IsMovableNoteHit(VerticalHitResult hit)
         {
@@ -1899,8 +1901,14 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// Columns a note may be dragged from or onto: the playable lanes and the overflow
-        /// authoring columns. Marker, tempo, MR and BGA columns are annotation and stay out.
+        /// Columns a note may be dragged from or onto: the playable lanes, the overflow
+        /// authoring columns, and the BGA SYNC timing column. BGA SYNC is the
+        /// timing-authoring exception - its switches are placed against the music exactly
+        /// like notes, and are already creatable, selectable and deletable on this surface,
+        /// so locking only the drag was inconsistent. Scan markers, MR and BG stay out:
+        /// markers are flags owned by their lanes, and the master reference must not slip
+        /// in time. (The BMS "BPM" column reuses the BgaSync kind; its tempo events are not
+        /// Notes, so they still never arm a move - only Notes travel through this gate.)
         /// </summary>
         private static bool CanReceiveNotes(VerticalColumn column)
         {
@@ -1916,6 +1924,7 @@ namespace DJMaxEditor.Studio.Timeline
                 case VerticalColumnKind.ShoulderRight:
                 case VerticalColumnKind.SideRight:
                 case VerticalColumnKind.Overflow:
+                case VerticalColumnKind.BgaSync:
                     return true;
                 default:
                     return false;
@@ -1941,7 +1950,8 @@ namespace DJMaxEditor.Studio.Timeline
             }
 
             // Note-capable columns in display order, mapped by column position rather than
-            // model track index so the marker/tempo gap is skipped, not traversed.
+            // model track index so annotation columns (markers, MR, BG) are skipped, not
+            // traversed.
             _moveColumns = NoteMoveColumns();
 
             int anchorColumn = _moveColumns.IndexOf(anchor.TrackId);
@@ -2033,7 +2043,7 @@ namespace DJMaxEditor.Studio.Timeline
             int tickDelta = desiredAnchorTick - _moveAnchorTick;
 
             // Column shift from the note-capable column under the pointer, counted in visible
-            // columns so the marker/tempo track gap is skipped. Stays put while the pointer is
+            // columns so annotation columns are skipped. Stays put while the pointer is
             // over something that is not a lane (gutter, ruler, marker column).
             int columnShift = _moveAppliedColumnShift;
             VerticalHitResult hover = _frame.HitTest(point.X, point.Y);
@@ -2089,10 +2099,11 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// Columns notes can be dragged between, in left-to-right display order: playable lanes
-        /// and overflow authoring columns only - annotation columns are excluded, as is the
-        /// synthesized backing-track trigger a soundtrack-only .tech creates (that track is
-        /// never written back, so parking a note on it would lose the note on save).
+        /// Columns notes can be dragged between, in left-to-right display order: playable lanes,
+        /// overflow authoring columns, and the BGA SYNC timing column. Annotation columns are
+        /// excluded, as is the synthesized backing-track trigger a soundtrack-only .tech
+        /// creates (that track is never written back, so parking a note on it would lose the
+        /// note on save).
         /// </summary>
         private List<uint> NoteMoveColumns()
         {

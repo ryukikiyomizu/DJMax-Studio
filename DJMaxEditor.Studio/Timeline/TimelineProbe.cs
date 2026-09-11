@@ -325,7 +325,8 @@ namespace DJMaxEditor.Studio.Timeline
                 return 6;
             }
 
-            // Note-capable columns in display order, mirroring StudioVerticalCanvas.
+            // Note-capable columns in display order, mirroring StudioVerticalCanvas
+            // (CanReceiveNotes): playable lanes, overflow authoring columns, and BGA SYNC.
             var lanes = new List<VerticalColumn>();
             foreach (VerticalColumn column in frame.Layout.Columns)
             {
@@ -337,6 +338,7 @@ namespace DJMaxEditor.Studio.Timeline
                     case VerticalColumnKind.ShoulderRight:
                     case VerticalColumnKind.SideRight:
                     case VerticalColumnKind.Overflow:
+                    case VerticalColumnKind.BgaSync:
                         lanes.Add(column);
                         break;
                 }
