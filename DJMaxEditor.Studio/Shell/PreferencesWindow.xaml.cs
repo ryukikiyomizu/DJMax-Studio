@@ -275,6 +275,7 @@ namespace DJMaxEditor.Studio.Shell
                 GameplayDirectionCheck.IsChecked = timeline.GameplayTimeDirection;
                 HorizontalCheck.IsChecked = timeline.HorizontalOrientation;
                 InverseScrollingCheck.IsChecked = timeline.InverseScrolling;
+                LockVerticalCheck.IsChecked = timeline.LockVerticalMovement;
                 // Normalise has already guaranteed both denominators name a real entry, so the
                 // fallbacks below are belt and braces rather than a live path.
                 GridCombo.SelectedItem =
@@ -362,6 +363,7 @@ namespace DJMaxEditor.Studio.Shell
             timeline.GameplayTimeDirection = GameplayDirectionCheck.IsChecked == true;
             timeline.HorizontalOrientation = HorizontalCheck.IsChecked == true;
             timeline.InverseScrolling = InverseScrollingCheck.IsChecked == true;
+            timeline.LockVerticalMovement = LockVerticalCheck.IsChecked == true;
 
             // A ComboBox with nothing selected must leave the stored value alone rather than
             // writing a zero: 0 is a real value for both of these (Free, and beat lines off).
