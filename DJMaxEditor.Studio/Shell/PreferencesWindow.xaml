@@ -447,6 +447,14 @@
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
                                        Text="Wheel up walks the playhead to later bars instead of earlier, and pans the columns the other way. Zoom and grid cycling are not inverted." />
+
+                            <CheckBox x:Name="LockVerticalCheck" Margin="0,12,0,0"
+                                      Content="Lock vertical movement when moving notes"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="When on, dragging notes or nudging with arrow keys only changes lanes - original timing is preserved to avoid delay/latency drift. Turn off to allow free time movement as well." />
                         </StackPanel>
                     </ScrollViewer>
 

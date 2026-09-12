@@ -361,15 +361,16 @@ namespace DJMaxEditor.Studio.Timeline
             Point start = new Point(startItem.Left + (startItem.Width / 2.0), startY);
 
             VerticalColumn targetLane = lanes[targetColumn];
-            int targetVirtualTick = picked.VirtualTick +
-                (spec.RawTickDelta * EventData.VirtualTickSize);
+            // Vertical movement is locked: target tick is original tick, not delta.
+            int originalRawTick = picked.Tick;
+            int targetVirtualTick = picked.VirtualTick;
             double targetX = coords.NativeXToScreen(
                 targetLane.NativeLeft + (targetLane.Width / 2.0), frame.OriginNativeX);
             double targetY = coords.TickToY(targetVirtualTick, frame.OriginTick);
             var target = new Point(targetX, targetY);
 
             report.AppendFormat(CultureInfo.InvariantCulture,
-                "mouse drag: from track {0} tick {1} at ({2:F1},{3:F1}) to track {4} tick {5} at ({6:F1},{7:F1})",
+                "mouse drag: from track {0} tick {1} at ({2:F1},{3:F1}) to track {4} tick {5} at ({6:F1},{7:F1}) [vertical locked]",
                 picked.TrackId, picked.Tick, start.X, start.Y,
                 targetLane.SourceTrackId, targetVirtualTick / EventData.VirtualTickSize,
                 target.X, target.Y).AppendLine();
@@ -400,11 +401,12 @@ namespace DJMaxEditor.Studio.Timeline
             canvas.SurfaceRelease();
 
             bool laneOk = picked.TrackId == (uint)targetLane.SourceTrackId;
-            bool tickOk = picked.Tick == targetVirtualTick / EventData.VirtualTickSize;
+            // Vertical locked: tick must stay at original, not move to target.
+            bool tickOk = picked.Tick == originalRawTick;
             report.AppendFormat(CultureInfo.InvariantCulture,
-                "mouse drag result: track={0} (want {1}, {2}) rawTick={3} (want {4}, {5})",
+                "mouse drag result: track={0} (want {1}, {2}) rawTick={3} (want {4} locked, {5})",
                 picked.TrackId, targetLane.SourceTrackId, laneOk ? "ok" : "MISMATCH",
-                picked.Tick, targetVirtualTick / EventData.VirtualTickSize,
+                picked.Tick, originalRawTick,
                 tickOk ? "ok" : "MISMATCH").AppendLine();
             return laneOk && tickOk ? 0 : 6;
         }

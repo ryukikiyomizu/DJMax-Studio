@@ -176,6 +176,13 @@ namespace DJMaxEditor.Studio.Settings
         /// </summary>
         public double ZoomStep { get; set; } = 1.25;
 
+        /// <summary>
+        /// When true, vertical (time) movement of notes is locked so a drag or nudge can never
+        /// change a note's original timing - preserving timing and avoiding delay/latency drift
+        /// during lane reassignment. When false, notes can move freely in time as well as lanes.
+        /// </summary>
+        public bool LockVerticalMovement { get; set; } = true;
+
         internal void Clamp()
         {
             TrackWidthScale = StudioSettings.Clamp(
@@ -225,6 +232,7 @@ namespace DJMaxEditor.Studio.Settings
                 GridDenominator = GridDenominator,
                 BeatDenominator = BeatDenominator,
                 ZoomStep = ZoomStep,
+                LockVerticalMovement = LockVerticalMovement,
             };
         }
 
@@ -243,6 +251,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "timeline.grid", GridDenominator);
             StudioSettings.Line(text, "timeline.beat", BeatDenominator);
             StudioSettings.Line(text, "timeline.zoomStep", ZoomStep);
+            StudioSettings.Line(text, "timeline.lockVertical", LockVerticalMovement);
         }
     }
 
