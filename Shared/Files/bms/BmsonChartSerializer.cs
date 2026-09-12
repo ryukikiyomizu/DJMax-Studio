@@ -91,12 +91,46 @@ namespace DJMaxEditor.Files.bms
             sb.Append(",\"resolution\":").Append(Resolution);
             sb.Append("},\"lines\":[");
 
-            int measureLength = Resolution * 4;
-            int lastMeasure = Math.Max(1, (maxPulse + measureLength - 1) / measureLength);
-            for (int measure = 0; measure <= lastMeasure; measure++)
+            // Build measure lines respecting non-4/4 ratios from the chart's metadata.
+            // The reader records ratios in BmsMetadata.MeasureLengthRatios (same as classic BMS #mmm02),
+            // and the writer must preserve them: a chart with a half-length bar that is written
+            // as all k=0 will have every later note shifted in any other editor.
+            // y is cumulative pulses, length = ratio * 4 * Resolution, k=0 means default 4/4.
+            int baseMeasureLength = Resolution * 4;
+            var lineEntries = new List<KeyValuePair<int,int>>(); // y,k
+            int y = 0;
+            int m = 0;
+            // Generate measures until we have passed maxPulse.
+            while (y <= maxPulse)
             {
-                if (measure > 0) sb.Append(',');
-                sb.Append("{\"y\":").Append(measure * measureLength).Append(",\"k\":0}");
+                double ratio = 1.0;
+                if (metadata.MeasureLengthRatios != null && metadata.MeasureLengthRatios.TryGetValue(m, out double r))
+                {
+                    ratio = r;
+                }
+                int length = (int)Math.Round(ratio * baseMeasureLength, MidpointRounding.AwayFromZero);
+                if (length <= 0) length = baseMeasureLength;
+                int k = Math.Abs(ratio - 1.0) < 1e-9 ? 0 : length;
+                lineEntries.Add(new KeyValuePair<int,int>(y, k));
+                y += length;
+                m++;
+                if (m > 9999) break; // safety, bmson allows more than BMS 000-999 but avoid runaway
+            }
+            // One extra empty measure beyond maxPulse, matching the original behavior that always
+            // wrote lastMeasure inclusive (an empty bar at the end).
+            if (lineEntries.Count == 0)
+            {
+                lineEntries.Add(new KeyValuePair<int,int>(0, 0));
+                lineEntries.Add(new KeyValuePair<int,int>(baseMeasureLength, 0));
+            }
+            else
+            {
+                lineEntries.Add(new KeyValuePair<int,int>(y, 0));
+            }
+            for (int i = 0; i < lineEntries.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"y\":").Append(lineEntries[i].Key).Append(",\"k\":").Append(lineEntries[i].Value).Append('}');
             }
 
             sb.Append("],\"bpm_events\":[");
