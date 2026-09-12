@@ -488,6 +488,7 @@ namespace DJMaxEditor.Studio.Shell
             AssetsToggle.IsChecked = timeline.ShowNoteArt;
             _canvas.ShowNoteAssets = timeline.ShowNoteArt;
             _canvas.InverseScrolling = timeline.InverseScrolling;
+            _canvas.LockVerticalMovement = timeline.LockVerticalMovement;
 
             GridDivision division = GridDivision.FromDenominator(timeline.GridDenominator);
             if (division != null)

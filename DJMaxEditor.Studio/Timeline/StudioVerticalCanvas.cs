@@ -300,6 +300,13 @@ namespace DJMaxEditor.Studio.Timeline
         /// </summary>
         public bool InverseScrolling { get; set; }
 
+        /// <summary>
+        /// When true, vertical (time) movement of notes is locked so a drag or keyboard nudge
+        /// never changes original timing - preserving timing and avoiding latency/delay.
+        /// Controlled by the Timeline setting "Lock vertical movement".
+        /// </summary>
+        public bool LockVerticalMovement { get; set; } = true;
+
         public VerticalTimelineViewModel ViewModel
         {
             get { return _viewModel; }
@@ -2031,11 +2038,12 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// Drives the armed note move from the current pointer: time delta from the travel
-        /// along the tick axis (grid-snapped from the anchor), lane delta from the column
-        /// under the pointer. Applied as incremental moves so one gesture is one undo entry,
-        /// and the edit controller rejects a frame wholesale if any selected note would leave
-        /// the chart's tracks or go before tick zero.
+        /// Drives the armed note move from the current pointer. When <see cref="LockVerticalMovement"/>
+        /// is true, only lane delta is applied so a drag can never change original timing - preserving
+        /// timing and avoiding delay/latency drift. When false, both time and lane deltas are applied
+        /// (original behavior) for free movement. Applied as incremental moves so one gesture is one
+        /// undo entry, and the edit controller rejects a frame wholesale if any selected note would
+        /// leave the chart's tracks or go before tick zero.
         /// </summary>
         private void UpdateNoteMove(Point point)
         {
@@ -2046,19 +2054,36 @@ namespace DJMaxEditor.Studio.Timeline
 
             double deltaX = point.X - _moveStart.X;
             double deltaY = point.Y - _moveStart.Y;
-            if (!_moveActive &&
-                Math.Abs(deltaX) < MoveThreshold && Math.Abs(deltaY) < MoveThreshold)
+            if (!_moveActive)
             {
-                return;
+                if (LockVerticalMovement)
+                {
+                    if (Math.Abs(deltaX) < MoveThreshold) return;
+                }
+                else
+                {
+                    if (Math.Abs(deltaX) < MoveThreshold && Math.Abs(deltaY) < MoveThreshold) return;
+                }
             }
             _moveActive = true;
 
-            VerticalCoordinateSystem coords = _frame.Coordinates;
-            int startPointerTick = coords.YToTick(_moveStart.Y, _frame.OriginTick);
-            int pointerTick = coords.YToTick(point.Y, _frame.OriginTick);
-            int desiredAnchorTick =
-                SnapTick(_moveAnchorTick + (pointerTick - startPointerTick));
-            int tickDelta = desiredAnchorTick - _moveAnchorTick;
+            int tickDelta;
+            int incrementTick;
+            if (LockVerticalMovement)
+            {
+                // Vertical locked: timing preserved.
+                tickDelta = 0;
+                incrementTick = 0;
+            }
+            else
+            {
+                VerticalCoordinateSystem coords = _frame.Coordinates;
+                int startPointerTick = coords.YToTick(_moveStart.Y, _frame.OriginTick);
+                int pointerTick = coords.YToTick(point.Y, _frame.OriginTick);
+                int desiredAnchorTick = SnapTick(_moveAnchorTick + (pointerTick - startPointerTick));
+                tickDelta = desiredAnchorTick - _moveAnchorTick;
+                incrementTick = tickDelta - _moveAppliedTickDelta;
+            }
 
             // Column shift from the note-capable column under the pointer, counted in visible
             // columns so annotation columns are skipped. Stays put while the pointer is
@@ -2073,8 +2098,6 @@ namespace DJMaxEditor.Studio.Timeline
                     columnShift = hoverColumn - _moveAnchorColumn;
                 }
             }
-
-            int incrementTick = tickDelta - _moveAppliedTickDelta;
 
             // Per-item destination lanes from each entry's column at arm time, stated against
             // each item's CURRENT track so the undo action can chain into the previous frame.
@@ -2150,11 +2173,11 @@ namespace DJMaxEditor.Studio.Timeline
         }
 
         /// <summary>
-        /// The keyboard companion to a move drag: shifts the current selection by the signed
-        /// number of lanes along the screen X axis and grid steps along the screen Y axis
-        /// (right/down positive). The orientation swap and the inverse-scroll flip are resolved
-        /// here, so the caller just hands over which arrow was pressed. Answers false when there
-        /// is nothing movable or the nudge would leave the field, leaving the key unhandled.
+        /// The keyboard companion to a move drag. When <see cref="LockVerticalMovement"/> is true,
+        /// only lane steps are applied so timing is preserved. When false, both lane and time steps
+        /// are applied (original behavior). The orientation swap and the inverse-scroll flip are
+        /// resolved here, so the caller just hands over which arrow was pressed. Answers false when
+        /// there is nothing movable or the nudge would leave the field, leaving the key unhandled.
         /// </summary>
         public bool NudgeSelection(int screenAxisX, int screenAxisY)
         {
@@ -2183,12 +2206,19 @@ namespace DJMaxEditor.Studio.Timeline
                 screenTimeSteps = screenAxisY;
             }
 
-            // Upward time puts later ticks toward the top, so a downward keypress must go earlier.
-            int timeSign = _frame.Coordinates.TimeDirection == VerticalTimeDirection.Upward
-                ? -1
-                : 1;
-            int tickDelta = (int)Math.Round(
-                screenTimeSteps * timeSign * ScrubStepTicks(), MidpointRounding.AwayFromZero);
+            int tickDelta;
+            if (LockVerticalMovement)
+            {
+                // Vertical locked: preserve original timing.
+                tickDelta = 0;
+            }
+            else
+            {
+                // Upward time puts later ticks toward the top, so a downward keypress must go earlier.
+                int timeSign = _frame.Coordinates.TimeDirection == VerticalTimeDirection.Upward ? -1 : 1;
+                tickDelta = (int)Math.Round(
+                    screenTimeSteps * timeSign * ScrubStepTicks(), MidpointRounding.AwayFromZero);
+            }
 
             List<uint> columns = NoteMoveColumns();
 
