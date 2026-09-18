@@ -39,6 +39,10 @@ namespace DJMaxEditor.Studio.Keyslicer
         private bool _syncingWaveScroll;
         private WaveOutEvent _previewOut;
         private WaveStream _previewReader;
+        private System.Windows.Threading.DispatcherTimer _playheadTimer;
+        private double _playheadStartMs;
+        private DateTime _playheadStartUtc;
+        private double _playheadDurationMs;
         private KeysoundSlice _bandlabClipboardSlice;
         private bool _bandlabClipboardIsCut;
         private int _lastSnapBeforeFree = 16;
@@ -481,6 +485,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                         e.Cancel = true;
                 }
             }
+            StopPlayheadTimer();
             try { _previewOut?.Stop(); } catch {}
             try { _previewOut?.Dispose(); } catch {}
             try { _previewReader?.Dispose(); } catch {}
@@ -1190,11 +1195,71 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private void OnStopSource(object sender, RoutedEventArgs e)
         {
+            StopPlayheadTimer();
             try { _previewOut?.Stop(); } catch {}
             try { _previewOut?.Dispose(); _previewOut = null; } catch {}
             try { _previewReader?.Dispose(); _previewReader = null; } catch {}
             try { _auditionPlayer?.StopAllSounds(); } catch {}
             _vm.IsPlayingSource = false;
+        }
+
+        private void StartPlayheadTimer(double startMs, double durationMs)
+        {
+            StopPlayheadTimer();
+            _playheadStartMs = startMs;
+            _playheadDurationMs = durationMs;
+            _playheadStartUtc = DateTime.UtcNow;
+            if (_playheadTimer == null)
+            {
+                _playheadTimer = new System.Windows.Threading.DispatcherTimer();
+                _playheadTimer.Interval = TimeSpan.FromMilliseconds(16);
+                _playheadTimer.Tick += OnPlayheadTick;
+            }
+            _playheadTimer.Start();
+        }
+
+        private void StopPlayheadTimer()
+        {
+            try { _playheadTimer?.Stop(); } catch {}
+        }
+
+        private void OnPlayheadTick(object sender, EventArgs e)
+        {
+            if (_previewOut == null || _previewOut.PlaybackState != PlaybackState.Playing)
+            {
+                // Fallback to elapsed time even if WaveOut not reporting playing (e.g. immediate)
+                if (!_vm.IsPlayingSource) { StopPlayheadTimer(); return; }
+            }
+            double elapsed = (DateTime.UtcNow - _playheadStartUtc).TotalMilliseconds;
+            double now = _playheadStartMs + elapsed;
+            double end = _playheadStartMs + _playheadDurationMs;
+            // clamp to total duration
+            double total = _vm.Waveform?.DurationMs ?? _vm.SelectedSource?.DurationMs ?? end;
+            if (total > 0) end = Math.Min(end, total);
+            if (now >= end)
+            {
+                now = end;
+                _vm.PlayheadMs = now;
+                try { _vm.EnsureMsVisible(now); } catch {}
+                UpdateRuler();
+                SyncWaveHScroll();
+                StopPlayheadTimer();
+                // let the normal auto-stop handle WaveOut stop; just ensure UI settles
+                return;
+            }
+            _vm.PlayheadMs = now;
+            // keep playhead visible — auto-scroll if needed
+            try
+            {
+                double vis = _vm.VisibleDurationMs;
+                double scroll = _vm.ScrollMs;
+                if (now < scroll + 20 || now > scroll + vis - 20)
+                {
+                    _vm.ScrollMs = Math.Max(0, now - vis * 0.4);
+                    SyncWaveHScroll();
+                }
+            } catch {}
+            UpdateRuler();
         }
 
         private WaveStream CreatePlaybackReader(string path)
@@ -1222,6 +1287,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 return;
             }
             // Stop any previous preview first so Space toggles and overlapping plays don't stack
+            StopPlayheadTimer();
             try { _previewOut?.Stop(); } catch {}
             try { _previewOut?.Dispose(); } catch {}
             try { _previewReader?.Dispose(); } catch {}
@@ -1276,6 +1342,9 @@ namespace DJMaxEditor.Studio.Keyslicer
                     }
                 } catch { }
 
+                // capture for closure (startMs/previewMs are method params)
+                double capturedStartMs = startMs;
+                double capturedPreviewMs = previewMs;
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     try
@@ -1290,6 +1359,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                         {
                             if (stopped) return;
                             stopped = true;
+                            StopPlayheadTimer();
                             _vm.IsPlayingSource = false;
                             try { wo.Dispose(); } catch {}
                             try { reader.Dispose(); } catch {}
@@ -1304,16 +1374,18 @@ namespace DJMaxEditor.Studio.Keyslicer
                             }
                         };
                         wo.Play();
+                        StartPlayheadTimer(capturedStartMs, capturedPreviewMs);
                         // Auto-stop after previewMs + small tail, unless previewMs is very long (full song)
-                        int stopMs = (int)Math.Min(120000, previewMs + 300);
-                        if (previewMs > 60000) stopMs = (int)Math.Min(300000, previewMs + 500);
-                        Task.Delay(stopMs).ContinueWith(_ =>
+                        int stopMs = (int)Math.Min(120000, capturedPreviewMs + 300);
+                        if (capturedPreviewMs > 60000) stopMs = (int)Math.Min(300000, capturedPreviewMs + 500);
+                        Task.Delay(stopMs).ContinueWith(__ =>
                         {
                             try { Application.Current?.Dispatcher?.Invoke(() => { try { if (wo.PlaybackState == PlaybackState.Playing) wo.Stop(); } catch { } }); } catch { }
                         });
                     }
                     catch (Exception ex)
                     {
+                        StopPlayheadTimer();
                         _vm.IsPlayingSource = false;
                         try { reader.Dispose(); } catch {}
                         _previewReader = null;
