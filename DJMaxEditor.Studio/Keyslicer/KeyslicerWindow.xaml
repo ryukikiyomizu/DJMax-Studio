@@ -215,7 +215,7 @@
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="{Binding Label}" Foreground="{StaticResource Brush.TextPrimary}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock FontSize="10" Foreground="{StaticResource Brush.TextMuted}">
-                                                    <Run Text="{Binding StartMs, StringFormat={}{0:F1} ms}" /><Run Text=" → " /><Run Text="{Binding EndMs, StringFormat={}{0:F1} ms}" /><Run Text="  (" /><Run Text="{Binding DurationMs, StringFormat={}{0:F0} ms}" /><Run Text=")" />
+                                                    <Run Text="{Binding StartMs, StringFormat={}{0:F1} ms, Mode=OneWay}" /><Run Text=" → " /><Run Text="{Binding EndMs, StringFormat={}{0:F1} ms, Mode=OneWay}" /><Run Text="  (" /><Run Text="{Binding DurationMs, StringFormat={}{0:F0} ms, Mode=OneWay}" /><Run Text=")" />
                                                 </TextBlock>
                                             </StackPanel>
                                             <TextBlock Grid.Column="2" Text="{Binding Lane}" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="6,0,0,0" />
