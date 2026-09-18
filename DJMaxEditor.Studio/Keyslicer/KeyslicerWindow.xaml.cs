@@ -37,6 +37,9 @@ namespace DJMaxEditor.Studio.Keyslicer
         private IAudioOutput _auditionOutput;
         private bool _ready;
         private bool _syncingWaveScroll;
+        private KeysoundSlice _bandlabClipboardSlice;
+        private bool _bandlabClipboardIsCut;
+        private int _lastSnapBeforeFree = 16;
         private bool _suppressInspectorEvents;
         private StudioSettingsStore _settingsStore = new StudioSettingsStore();
         private StudioSettings _studioSettings;
@@ -253,6 +256,150 @@ namespace DJMaxEditor.Studio.Keyslicer
                 UpdateRuler();
             }
             finally { _syncingWaveScroll = false; }
+        }
+
+
+        private void BandlabCopySlice(bool isCut)
+        {
+            var slice = _vm.SelectedSlice ?? SliceList.SelectedItem as KeysoundSlice;
+            if (slice == null)
+            {
+                StatusLabel.Text = "No slice selected to " + (isCut ? "cut" : "copy");
+                StatusBarText.Text = StatusLabel.Text;
+                return;
+            }
+            _bandlabClipboardSlice = slice.Clone();
+            _bandlabClipboardSlice.Id = slice.Id; // keep original id for reference but will be reallocated on paste
+            _bandlabClipboardIsCut = isCut;
+            if (isCut)
+            {
+                _vm.DeleteSlice(slice);
+                RefreshLists(); UpdateInspector();
+                StatusLabel.Text = "Cut " + slice.Id;
+            }
+            else
+            {
+                StatusLabel.Text = "Copied " + slice.Id + " (Ctrl+V to paste at playhead)";
+            }
+            StatusBarText.Text = StatusLabel.Text;
+            try { Clipboard.SetText("#KeyslicerSlice:" + slice.Id); } catch {}
+        }
+
+        private void BandlabPasteSlice()
+        {
+            if (_bandlabClipboardSlice == null)
+            {
+                // Fallback to BMS paste if no slice clipboard
+                OnPasteClipboard(null, null);
+                return;
+            }
+            var src = _bandlabClipboardSlice;
+            double dur = src.DurationMs;
+            double ph = _vm.PlayheadMs;
+            double start = ph;
+            double end = start + dur;
+            if (_vm.Waveform != null)
+            {
+                double total = _vm.Waveform.DurationMs;
+                if (end > total) { end = total; start = Math.Max(0, end - dur); }
+            }
+            // Same source
+            var newSlice = _vm.CreateSlice(start, end, src.Lane);
+            if (newSlice != null)
+            {
+                newSlice.Label = src.Label;
+                newSlice.Gain = src.Gain;
+                newSlice.FadeInMs = src.FadeInMs;
+                newSlice.FadeOutMs = src.FadeOutMs;
+                newSlice.SnapToZeroCrossing = src.SnapToZeroCrossing;
+                newSlice.Normalize = src.Normalize;
+                _vm.SelectedSlice = newSlice;
+                SliceList.SelectedItem = newSlice;
+                RefreshLists(); UpdateInspector();
+                // ensure visible
+                _vm.EnsureMsVisible((start+end)/2);
+                StatusLabel.Text = "Pasted " + src.Id + " -> " + newSlice.Id + " at " + start.ToString("0.#") + " ms";
+                StatusBarText.Text = StatusLabel.Text;
+            }
+            if (!_bandlabClipboardIsCut)
+            {
+                // keep clipboard for multiple pastes (like Bandlab)
+            }
+            else
+            {
+                _bandlabClipboardIsCut = false;
+            }
+        }
+
+        private void BandlabSelectAll()
+        {
+            try
+            {
+                SliceList.SelectAll();
+                if (_vm.Slices.Count > 0)
+                {
+                    _vm.SelectedSlice = _vm.Slices[0];
+                    UpdateInspector();
+                }
+                StatusLabel.Text = "Selected all " + _vm.Slices.Count + " slice(s) (Ctrl+A)";
+                StatusBarText.Text = StatusLabel.Text;
+            } catch {}
+        }
+
+        private void BandlabToggleSnap()
+        {
+            // Bandlab N = Snap to grid on/off  -> toggles between Free and last snap
+            if (_vm.SnapDenominator == 0)
+            {
+                _vm.SnapDenominator = _lastSnapBeforeFree != 0 ? _lastSnapBeforeFree : 16;
+            }
+            else
+            {
+                _lastSnapBeforeFree = _vm.SnapDenominator;
+                _vm.SnapDenominator = 0;
+            }
+            try { SnapCombo.SelectedIndex = SnapIndexFromDenom(_vm.SnapDenominator); } catch {}
+            StatusLabel.Text = "Snap " + _vm.SnapLabel + " (N)";
+            StatusBarText.Text = StatusLabel.Text;
+            UpdateRuler();
+        }
+
+        private void BandlabGoStart()
+        {
+            _vm.PlayheadMs = 0;
+            _vm.ScrollMs = 0;
+            _vm.ChartPlayheadMs = 0;
+            try { ChartPlayheadBox.Text = "0"; } catch {}
+            UpdateRuler(); SyncWaveHScroll();
+            StatusLabel.Text = "Go to start (W)";
+            StatusBarText.Text = StatusLabel.Text;
+        }
+
+        private void BandlabGoEnd()
+        {
+            double total = _vm.Waveform?.DurationMs ?? 0;
+            if (total > 10)
+            {
+                _vm.PlayheadMs = total - 1;
+                // scroll to end
+                double vis = _vm.VisibleDurationMs;
+                _vm.ScrollMs = Math.Max(0, total - vis);
+                _vm.ChartPlayheadMs = _vm.PlayheadMs; // keep chart head at end
+                try { ChartPlayheadBox.Text = _vm.ChartPlayheadMs.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture); } catch {}
+                UpdateRuler(); SyncWaveHScroll();
+            }
+            StatusLabel.Text = "Go to end (E)";
+            StatusBarText.Text = StatusLabel.Text;
+        }
+
+        private void BandlabFit()
+        {
+            _vm.Zoom = 1.0;
+            _vm.ScrollMs = 0;
+            try { ZoomSlider.Value = 1.0; } catch {}
+            UpdateRuler(); SyncWaveHScroll();
+            StatusLabel.Text = "Fit to window (F)";
+            StatusBarText.Text = StatusLabel.Text;
         }
 
         private void OnSplitAtPlayhead()
@@ -1547,41 +1694,105 @@ namespace DJMaxEditor.Studio.Keyslicer
         private void OnPreviewKeyDown(object sender, KeyEventArgs e)
         {
             bool isTextInput = Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox || Keyboard.FocusedElement is RichTextBox;
-            // Undo/redo always wins regardless of draft state.
-            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+            bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+
+            // ---- Bandlab / Cakewalk Ctrl+ shortcuts (work even in textboxes) ----
+            if (ctrl && !alt)
             {
-                if (e.Key == Key.Z) { if (_vm.CanUndo) { _vm.Undo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
-                if (e.Key == Key.Y || (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift))
-                { if (_vm.CanRedo) { _vm.Redo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
+                if (e.Key == Key.N) { OnNew(null, null); e.Handled = true; return; }
+                if (e.Key == Key.O) { OnOpenProject(null, null); e.Handled = true; return; }
+                if (e.Key == Key.S && !shift) { OnSaveProject(null, null); e.Handled = true; return; }
+                if (e.Key == Key.S && shift) { OnSaveProjectAs(null, null); e.Handled = true; return; }
+                if (e.Key == Key.Z && !shift) { if (_vm.CanUndo) { _vm.Undo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
+                if (e.Key == Key.Z && shift) { if (_vm.CanRedo) { _vm.Redo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
+                if (e.Key == Key.Y) { if (_vm.CanRedo) { _vm.Redo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
+                if (e.Key == Key.X) { BandlabCopySlice(true); e.Handled = true; return; }
+                if (e.Key == Key.C && !shift) { BandlabCopySlice(false); e.Handled = true; return; }
+                if (e.Key == Key.V) { BandlabPasteSlice(); e.Handled = true; return; }
+                if (e.Key == Key.D) { OnDuplicateSlice(null, null); e.Handled = true; return; }
+                if (e.Key == Key.A) { BandlabSelectAll(); e.Handled = true; return; }
+                if (e.Key == Key.E) { OnExportSlices(null, null); e.Handled = true; return; }
+                if (e.Key == Key.B) { OnSendToEditor(null, null); e.Handled = true; return; }
+                if (e.Key == Key.F) { BandlabFit(); e.Handled = true; return; }
+                // Ctrl+Right / Left = zoom in/out (Cakewalk: Ctrl+Right/Left zoom horizontally)
+                if (e.Key == Key.Right) { _vm.Zoom = Math.Min(32, _vm.Zoom * 1.25); try { ZoomSlider.Value = _vm.Zoom; } catch {} UpdateRuler(); SyncWaveHScroll(); e.Handled = true; return; }
+                if (e.Key == Key.Left)  { _vm.Zoom = Math.Max(0.5, _vm.Zoom / 1.25); try { ZoomSlider.Value = _vm.Zoom; } catch {} UpdateRuler(); SyncWaveHScroll(); e.Handled = true; return; }
             }
-            // Bandlab-style S = split at playhead (does not conflict with D/F/J/K lanes)
-            if (!isTextInput && e.Key == Key.S && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == ModifierKeys.None)
-            { OnSplitAtPlayhead(); e.Handled = true; return; }
-            // Lane hotkeys: D/F/J/K -> lane + make slice (ignore while typing).
-            if (isTextInput) { /* let textbox handle D/S etc. */ }
-            else if (e.Key == Key.D) { CreateSliceFromDraft(0); e.Handled = true; }
-            else if (e.Key == Key.F) { CreateSliceFromDraft(1); e.Handled = true; }
-            else if (e.Key == Key.J) { CreateSliceFromDraft(2); e.Handled = true; }
-            else if (e.Key == Key.K) { CreateSliceFromDraft(3); e.Handled = true; }
-            else if (e.Key == Key.Enter)
+            // Bandlab: Ctrl+Shift+A = select none (deselect)
+            if (ctrl && shift && e.Key == Key.A) { try { SliceList.UnselectAll(); _vm.SelectedSlice = null; UpdateInspector(); } catch {} e.Handled = true; return; }
+
+            // ---- Single-key Bandlab transport/edit (ignore when typing) ----
+            bool plain = !ctrl && !alt; // shift allowed for some
+            if (!isTextInput && plain && e.Key == Key.S) { OnSplitAtPlayhead(); e.Handled = true; return; }
+            if (!isTextInput && plain && e.Key == Key.M) // Insert marker -> place note (Cakewalk M)
+            {
+                if (_vm.SelectedSlice != null) { double before = _vm.ChartPlayheadMs; var note = _vm.PlaceNoteForSlice(_vm.SelectedSlice, before); double adv = _vm.ComputeAutoAdvanceMs(_vm.SelectedSlice); if (adv > 0) { _vm.ChartPlayheadMs = _vm.QuantizeMs(before + adv); try { ChartPlayheadBox.Text = _vm.ChartPlayheadMs.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture); } catch {} } RefreshLists(); StatusLabel.Text = "Placed note for " + _vm.SelectedSlice.Id + " at " + (note?.ChartTimeMs.ToString("0.#") ?? "?") + " ms (M)"; StatusBarText.Text = StatusLabel.Text; } else { CreateSliceFromDraft(-1); }
+                e.Handled = true; return;
+            }
+            if (!isTextInput && plain && e.Key == Key.N) { BandlabToggleSnap(); e.Handled = true; return; }
+            if (!isTextInput && plain && e.Key == Key.Q) { OnQuantizeNotes(null, null); e.Handled = true; return; }
+            // F as lane takes priority when draft exists; Fit is Ctrl+F (see above) -- plain F intentionally not handled here
+            if (!isTextInput && plain && e.Key == Key.W) { BandlabGoStart(); e.Handled = true; return; }
+            if (!isTextInput && plain && e.Key == Key.E) { BandlabGoEnd(); e.Handled = true; return; }
+            if (!isTextInput && plain && e.Key == Key.L) // Cakewalk L = Loop on/off -> toggle AutoAdvance
+            {
+                // cycle grid->beat->gap->off
+                string cur = _vm.AutoAdvanceMode ?? "grid";
+                string next = cur == "grid" ? "beat" : cur == "beat" ? "gap" : cur == "gap" ? "off" : "grid";
+                _vm.AutoAdvanceMode = next;
+                try { foreach (ComboBoxItem it in AutoAdvanceCombo.Items) if ((string)it.Tag == next) { AutoAdvanceCombo.SelectedItem = it; break; } } catch {}
+                StatusLabel.Text = "Auto-advance " + next + " (L)";
+                StatusBarText.Text = StatusLabel.Text;
+                e.Handled = true; return;
+            }
+            if (!isTextInput && plain && e.Key == Key.K)
+            {
+                if (_vm.HasDraft || (_vm.SelectedSlice != null && _vm.SelectedSlice.Lane == 3))
+                {
+                    CreateSliceFromDraft(3); e.Handled = true; return;
+                }
+                // else toggle Zero-X (Bandlab K = metronome)
+                _vm.SnapToZeroCrossing = !_vm.SnapToZeroCrossing;
+                try { ZeroCrossCheck.IsChecked = _vm.SnapToZeroCrossing; } catch {}
+                StatusLabel.Text = "Zero-X " + (_vm.SnapToZeroCrossing ? "ON" : "OFF") + " (K)";
+                StatusBarText.Text = StatusLabel.Text;
+                e.Handled = true; return;
+            }
+            if (!isTextInput && plain && e.Key == Key.R) // Cakewalk R = Record -> audition play
+            {
+                OnPlaySource(null, null);
+                e.Handled = true; return;
+            }
+
+            // Lane hotkeys: D/F/J/K -> lane + make slice (Bandlab Ctrl+D etc handled above; plain F/J/K/D are lanes)
+            if (!isTextInput && !ctrl && e.Key == Key.D) { CreateSliceFromDraft(0); e.Handled = true; return; }
+            else if (!isTextInput && !ctrl && e.Key == Key.F) { CreateSliceFromDraft(1); e.Handled = true; return; }
+            else if (!isTextInput && !ctrl && e.Key == Key.J) { CreateSliceFromDraft(2); e.Handled = true; return; }
+            // K handled above (lane when draft, else Zero-X) — no duplicate
+
+            // Remaining generic keys (work even when isTextInput if not typing letter)
+            if (e.Key == Key.Enter)
             {
                 if (_vm.Suggestions.Count > 0 && _vm.SuggestionIndex >= 0)
                     OnAccept(null, null);
                 else
                     CreateSliceFromDraft(-1);
-                e.Handled = true;
+                e.Handled = true; return;
             }
             else if (e.Key == Key.Escape)
             {
                 if (_vm.HasDraft) { _vm.ClearDraft(); UpdateDraftInfo(); }
                 else try { _auditionPlayer?.StopAllSounds(); } catch { }
-                e.Handled = true;
+                e.Handled = true; return;
             }
-            else if (e.Key == Key.Delete)
+            else if (e.Key == Key.Delete || e.Key == Key.Back)
             {
-                var slice = SliceList.SelectedItem as KeysoundSlice ?? _vm.SelectedSlice;
-                if (slice != null) { _vm.DeleteSlice(slice); RefreshLists(); UpdateInspector(); }
-                e.Handled = true;
+                var toDelete = SliceList.SelectedItems.Cast<KeysoundSlice>().ToList();
+                if (toDelete.Count == 0) { var single = SliceList.SelectedItem as KeysoundSlice ?? _vm.SelectedSlice; if (single != null) toDelete.Add(single); }
+                if (toDelete.Count > 0) { foreach (var sl in toDelete.ToList()) _vm.DeleteSlice(sl); RefreshLists(); UpdateInspector(); }
+                e.Handled = true; return;
             }
             else if (e.Key == Key.OemOpenBrackets) // [
             {
@@ -1590,7 +1801,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                     _vm.SuggestionIndex = Math.Max(0, _vm.SuggestionIndex - 1);
                     SuggestionLabel.Text = string.Format("Suggestion {0}/{1}", _vm.SuggestionIndex + 1, _vm.Suggestions.Count);
                 }
-                e.Handled = true;
+                e.Handled = true; return;
             }
             else if (e.Key == Key.OemCloseBrackets) // ]
             {
@@ -1599,24 +1810,18 @@ namespace DJMaxEditor.Studio.Keyslicer
                     _vm.SuggestionIndex = Math.Min(_vm.Suggestions.Count - 1, _vm.SuggestionIndex + 1);
                     SuggestionLabel.Text = string.Format("Suggestion {0}/{1}", _vm.SuggestionIndex + 1, _vm.Suggestions.Count);
                 }
-                e.Handled = true;
+                e.Handled = true; return;
             }
             else if (e.Key == Key.Space)
             {
-                if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs));
-                else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice);
-                else _ = AuditionAtAsync(_vm.PlayheadMs, 800);
-                e.Handled = true;
+                // Bandlab Space = Play/Pause toggle
+                try { if (_vm.IsPlayingSource) { _auditionPlayer?.StopAllSounds(); _vm.IsPlayingSource = false; } else { _vm.IsPlayingSource = true; if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs)); else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice); else _ = AuditionAtAsync(_vm.PlayheadMs, 800); } } catch {}
+                e.Handled = true; return;
             }
-            else if (e.Key == Key.P)
+            else if (e.Key == Key.P && !ctrl)
             {
                 OnPlayDraft(null, null);
-                e.Handled = true;
-            }
-            else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                OnPasteClipboard(null, null);
-                e.Handled = true;
+                e.Handled = true; return;
             }
         }
     }

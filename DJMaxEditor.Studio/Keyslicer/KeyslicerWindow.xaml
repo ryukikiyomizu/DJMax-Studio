@@ -233,6 +233,7 @@
 
                         <ListBox Grid.Row="2" x:Name="SliceList" Margin="4,0,4,4"
                                  Background="Transparent" BorderThickness="0"
+                                 SelectionMode="Extended"
                                  SelectionChanged="OnSliceSelectionChanged">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -293,7 +294,7 @@
                             <TextBlock x:Name="SuggestionLabel" Text="No suggestions" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" />
                             <TextBlock Grid.Column="1" x:Name="DraftLabel" Text="" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" HorizontalAlignment="Right" />
                         </Grid>
-                        <TextBlock Text="Shortcuts: drag to make draft, Enter = make slice, S = split at playhead (Bandlab), D/F/J/K = lane + make, [ / ] = next suggestion, Del = delete, Ctrl+Z/Y = undo/redo, Space = audition." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextDisabled}" FontSize="10" Margin="0,8,0,0" />
+                        <TextBlock Text="Shortcuts: drag→draft, Enter = make, S = split (Bandlab), D/F/J/K = lane+make, M = place note, N = snap on/off, Q = quantize, W/E = start/end, F = fit, Space = play/pause, Ctrl+Z/Y undo, Ctrl+X/C/V/D/A cut/copy/paste/duplicate/select, Del = delete, [ / ] suggestions." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextDisabled}" FontSize="10" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -562,11 +563,11 @@
                         <Separator Margin="0,14" />
                         <TextBlock Text="WORKFLOW HINTS" Style="{StaticResource Slicer.Header}" Margin="0,8,0,0" />
                         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" LineHeight="16">
-                            <Run Text="• Drag to make yellow draft; S = split at playhead (Bandlab)." /><LineBreak />
-                            <Run Text="• D/F/J/K = make slice on lane + place note." /><LineBreak />
-                            <Run Text="• Detect → [ / ] → Enter to batch-accept." /><LineBreak />
-                            <Run Text="• Wheel = scroll, Ctrl/Alt+wheel = zoom; drag bottom scrollbar." /><LineBreak />
-                            <Run Text="• Double-click to audition." />
+                            <Run Text="• Drag to make yellow draft; S = split (Bandlab), M = place note." /><LineBreak />
+                            <Run Text="• D/F/J/K = lane+make · N = snap · Q = quantize · W/E = start/end" /><LineBreak />
+                            <Run Text="• Ctrl+Z/Y undo · Ctrl+X/C/V cut/copy/paste · Ctrl+D duplicate · Del" /><LineBreak />
+                            <Run Text="• Wheel = scroll, Ctrl+wheel = zoom; drag scrollbar; F = fit" /><LineBreak />
+                            <Run Text="• Double-click to audition · Space = play/pause" />
                         </TextBlock>
                     </StackPanel>
                 </ScrollViewer>
