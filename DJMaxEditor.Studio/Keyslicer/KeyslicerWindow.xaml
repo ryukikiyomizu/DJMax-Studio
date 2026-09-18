@@ -4,7 +4,7 @@
         xmlns:keyslicer="clr-namespace:DJMaxEditor.Studio.Keyslicer"
         Title="Keysound Slicer - DJMax Studio"
         Width="1380" Height="860"
-        MinWidth="1100" MinHeight="620"
+        MinWidth="980" MinHeight="620"
         Background="{StaticResource Brush.Abyss}"
         Foreground="{StaticResource Brush.TextPrimary}"
         FontFamily="{StaticResource Font.Ui}"
@@ -39,8 +39,8 @@
             <Grid Margin="8,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
@@ -87,7 +87,8 @@
                     </Button>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="BPM" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <TextBox x:Name="BpmBox" Width="56" VerticalAlignment="Center" TextChanged="OnBpmChanged" ToolTip="Chart BPM (for note pulse conversion) - auto-synced from open chart" />
                     <TextBlock Text="OFFSET" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="10,0,4,0" />
@@ -119,7 +120,8 @@
                         </Border>
                         <TextBlock Grid.Column="1" x:Name="BudgetText" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="6,0,0,0" Text="0 / 1295"/>
                     </Grid>
-                </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <TextBlock Grid.Column="2" x:Name="ProjectLabel" Text="Untitled slicer project" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
@@ -133,11 +135,11 @@
         <!-- Body: left sources + center waveform + right inspector -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" MinWidth="220" />
+                <ColumnDefinition Width="280" MinWidth="200" />
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="*" MinWidth="520" />
                 <ColumnDefinition Width="4" />
-                <ColumnDefinition Width="320" MinWidth="240" />
+                <ColumnDefinition Width="300" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- Left: sources + slice library -->
@@ -291,7 +293,7 @@
                             <TextBlock x:Name="SuggestionLabel" Text="No suggestions" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" />
                             <TextBlock Grid.Column="1" x:Name="DraftLabel" Text="" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" HorizontalAlignment="Right" />
                         </Grid>
-                        <TextBlock Text="Shortcuts: drag on waveform to make a draft, Enter = make slice, D/F/J/K = lane + make, [ / ] = next suggestion, Del = delete." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextDisabled}" FontSize="10" Margin="0,8,0,0" />
+                        <TextBlock Text="Shortcuts: drag to make draft, Enter = make slice, S = split at playhead (Bandlab), D/F/J/K = lane + make, [ / ] = next suggestion, Del = delete, Ctrl+Z/Y = undo/redo, Space = audition." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextDisabled}" FontSize="10" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -304,6 +306,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="44" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="12" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -343,9 +346,13 @@
                 <Border Grid.Row="2" Background="Black" ClipToBounds="True">
                     <keyslicer:KeyslicerWaveformView x:Name="WaveformView" />
                 </Border>
+                <!-- Horizontal scrollbar — always visible so you can drag to the end (fixes missing slider) -->
+                <Grid Grid.Row="3" Background="{StaticResource Brush.Surface}">
+                    <ScrollBar x:Name="WaveHScroll" Orientation="Horizontal" Minimum="0" Maximum="100" ViewportSize="10" ValueChanged="OnWaveHScroll" Margin="0,1,0,1" ToolTip="Scroll waveform (also drag, wheel, Shift+wheel)" />
+                </Grid>
 
                 <!-- Selection / creation bar: draft -> slice -> note is the core gesture. Zero-cross and auto-advance are best-default extras that keep clicks out and rhythm on-grid without asking. -->
-                <Border Grid.Row="3" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1" Padding="8,6">
+                <Border Grid.Row="4" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1" Padding="8,6">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -382,7 +389,7 @@
                 </Border>
 
                 <!-- Timeline / notes overview -->
-                <Border Grid.Row="4" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,0" Padding="8,6" MinHeight="86">
+                <Border Grid.Row="5" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,0" Padding="8,6" MinHeight="86">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -555,11 +562,11 @@
                         <Separator Margin="0,14" />
                         <TextBlock Text="WORKFLOW HINTS" Style="{StaticResource Slicer.Header}" Margin="0,8,0,0" />
                         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" LineHeight="16">
-                            <Run Text="• Drag on the waveform to make a yellow draft." /><LineBreak />
-                            <Run Text="• Press D/F/J/K to make a slice on that lane + place a note." /><LineBreak />
-                            <Run Text="• Detect → [ / ] → Enter to batch-accept onsets." /><LineBreak />
-                            <Run Text="• Ctrl/Alt + wheel = zoom, wheel = scroll." /><LineBreak />
-                            <Run Text="• Double-click waveform or slice to audition." />
+                            <Run Text="• Drag to make yellow draft; S = split at playhead (Bandlab)." /><LineBreak />
+                            <Run Text="• D/F/J/K = make slice on lane + place note." /><LineBreak />
+                            <Run Text="• Detect → [ / ] → Enter to batch-accept." /><LineBreak />
+                            <Run Text="• Wheel = scroll, Ctrl/Alt+wheel = zoom; drag bottom scrollbar." /><LineBreak />
+                            <Run Text="• Double-click to audition." />
                         </TextBlock>
                     </StackPanel>
                 </ScrollViewer>

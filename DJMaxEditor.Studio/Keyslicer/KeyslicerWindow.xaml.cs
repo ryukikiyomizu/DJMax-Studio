@@ -36,6 +36,7 @@ namespace DJMaxEditor.Studio.Keyslicer
         private NAudioKeysoundPlayer _auditionPlayer; // lightweight player for preview
         private IAudioOutput _auditionOutput;
         private bool _ready;
+        private bool _syncingWaveScroll;
         private bool _suppressInspectorEvents;
         private StudioSettingsStore _settingsStore = new StudioSettingsStore();
         private StudioSettings _studioSettings;
@@ -52,7 +53,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
             // Wire up view model events.
             _vm.PropertyChanged += OnVmPropertyChanged;
-            _vm.WaveformUpdated += (s, e) => UpdateSourceInfo();
+            _vm.WaveformUpdated += (s, e) => { UpdateSourceInfo(); SyncWaveHScroll(); };
             _vm.SlicesChanged += (s, e) => RefreshLists();
 
             // Lists.
@@ -187,6 +188,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             UpdateModeButtons();
             UpdateBudget();
             UpdateRuler();
+            SyncWaveHScroll();
             WaveformView.Focus();
             // First-launch chooser (non-blocking via dispatcher so window is shown).
             Dispatcher.BeginInvoke(new Action(() => ShowModeChooserIfNeeded()), System.Windows.Threading.DispatcherPriority.Loaded);
@@ -215,6 +217,98 @@ namespace DJMaxEditor.Studio.Keyslicer
                 }
             }
             catch { }
+        }
+
+        private void SyncWaveHScroll()
+        {
+            if (_syncingWaveScroll) return;
+            if (WaveHScroll == null) return;
+            try
+            {
+                _syncingWaveScroll = true;
+                double total = _vm.Waveform?.DurationMs ?? 0;
+                double vis = _vm.VisibleDurationMs;
+                double max = Math.Max(0, total - vis);
+                double val = Math.Max(0, Math.Min(max, _vm.ScrollMs));
+                WaveHScroll.Minimum = 0;
+                WaveHScroll.Maximum = max;
+                WaveHScroll.ViewportSize = vis;
+                WaveHScroll.LargeChange = Math.Max(20, vis * 0.9);
+                WaveHScroll.SmallChange = Math.Max(10, vis * 0.05);
+                WaveHScroll.IsEnabled = max > 1 && total > 0;
+                if (Math.Abs(WaveHScroll.Value - val) > 0.5)
+                    WaveHScroll.Value = val;
+            }
+            catch {}
+            finally { _syncingWaveScroll = false; }
+        }
+
+        private void OnWaveHScroll(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_syncingWaveScroll || !_ready) return;
+            try
+            {
+                _syncingWaveScroll = true;
+                _vm.ScrollMs = e.NewValue;
+                UpdateRuler();
+            }
+            finally { _syncingWaveScroll = false; }
+        }
+
+        private void OnSplitAtPlayhead()
+        {
+            double ph = _vm.PlayheadMs;
+            if (double.IsNaN(ph)) return;
+            if (_vm.HasDraft)
+            {
+                double a = Math.Min(_vm.DraftStartMs, _vm.DraftEndMs);
+                double b = Math.Max(_vm.DraftStartMs, _vm.DraftEndMs);
+                if (ph > a + 5 && ph < b - 5)
+                {
+                    _vm.CreateSlice(ph, b);
+                    _vm.SetDraft(a, ph);
+                    RefreshLists(); UpdateInspector(); UpdateSourceInfo();
+                    StatusLabel.Text = String.Format("Split draft at {0:0} ms -> two", ph);
+                    StatusBarText.Text = StatusLabel.Text;
+                    return;
+                }
+                if (Math.Abs(ph - a) < 500 || Math.Abs(ph - b) < 500)
+                {
+                    CreateSliceFromDraft(-1);
+                    return;
+                }
+            }
+            var sel = _vm.SelectedSlice ?? SliceList.SelectedItem as KeysoundSlice;
+            if (sel != null)
+            {
+                double s = sel.StartMs, e2 = sel.EndMs;
+                if (ph > s + 8 && ph < e2 - 8)
+                {
+                    int lane = sel.Lane;
+                    try
+                    {
+                        _vm.DeleteSlice(sel);
+                        _vm.CreateSlice(s, ph, lane);
+                        _vm.CreateSlice(ph, e2, lane);
+                        RefreshLists(); UpdateInspector();
+                        StatusLabel.Text = String.Format("Split {0} at {1:0} ms", sel.Label, ph);
+                        StatusBarText.Text = StatusLabel.Text;
+                        return;
+                    }
+                    catch {}
+                }
+            }
+            if (_vm.Waveform != null)
+            {
+                double s = Math.Max(0, ph - 400), e2 = Math.Min(_vm.Waveform.DurationMs, ph + 400);
+                if (e2 > s + 20)
+                {
+                    _vm.SetDraft(s, e2);
+                    UpdateDraftInfo();
+                    StatusLabel.Text = "Draft created around playhead — press S again to split or Enter to make slice";
+                    StatusBarText.Text = StatusLabel.Text;
+                }
+            }
         }
 
         private void OnClosing(object sender, CancelEventArgs e)
@@ -289,6 +383,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             {
                 ZoomLabel.Text = "ZOOM " + _vm.Zoom.ToString("0.0", CultureInfo.InvariantCulture) + "x";
                 UpdateRuler();
+                SyncWaveHScroll();
             }
             if (e.PropertyName == nameof(KeyslicerViewModel.SlicerMode) ||
                 e.PropertyName == nameof(KeyslicerViewModel.BudgetLabel) ||
@@ -355,6 +450,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             try { UpdateModeButtons(); } catch { }
             try { UpdateBudget(); } catch { }
             try { UpdateRuler(); } catch { }
+            try { SyncWaveHScroll(); } catch { }
         }
 
         private void RefreshSources()
@@ -1398,6 +1494,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             if (!_ready) return;
             _vm.Zoom = e.NewValue;
             UpdateRuler();
+            SyncWaveHScroll();
         }
 
         private void OnSnapChanged(object sender, SelectionChangedEventArgs e)
@@ -1449,6 +1546,7 @@ namespace DJMaxEditor.Studio.Keyslicer
         // ----------------------------------------------------------------
         private void OnPreviewKeyDown(object sender, KeyEventArgs e)
         {
+            bool isTextInput = Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox || Keyboard.FocusedElement is RichTextBox;
             // Undo/redo always wins regardless of draft state.
             if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
@@ -1456,8 +1554,12 @@ namespace DJMaxEditor.Studio.Keyslicer
                 if (e.Key == Key.Y || (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift))
                 { if (_vm.CanRedo) { _vm.Redo(); RefreshLists(); UpdateInspector(); } e.Handled = true; return; }
             }
-            // Lane hotkeys: D/F/J/K -> lane + make slice.
-            if (e.Key == Key.D) { CreateSliceFromDraft(0); e.Handled = true; }
+            // Bandlab-style S = split at playhead (does not conflict with D/F/J/K lanes)
+            if (!isTextInput && e.Key == Key.S && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == ModifierKeys.None)
+            { OnSplitAtPlayhead(); e.Handled = true; return; }
+            // Lane hotkeys: D/F/J/K -> lane + make slice (ignore while typing).
+            if (isTextInput) { /* let textbox handle D/S etc. */ }
+            else if (e.Key == Key.D) { CreateSliceFromDraft(0); e.Handled = true; }
             else if (e.Key == Key.F) { CreateSliceFromDraft(1); e.Handled = true; }
             else if (e.Key == Key.J) { CreateSliceFromDraft(2); e.Handled = true; }
             else if (e.Key == Key.K) { CreateSliceFromDraft(3); e.Handled = true; }
