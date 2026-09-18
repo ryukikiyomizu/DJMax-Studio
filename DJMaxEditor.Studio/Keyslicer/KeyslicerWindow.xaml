@@ -15,9 +15,7 @@
         TextOptions.TextFormattingMode="Display"
         SnapsToDevicePixels="True">
     <Window.Resources>
-        <!-- Slicer: bump icons 18→20 for this window so toolbar + inspector icons read as first-class (user says icons still small). Palette is now 18 globally. -->
-        <sys:Double x:Key="Metric.IconSize">20</sys:Double>
-        <sys:Double x:Key="Metric.ToolButtonSize">32</sys:Double>
+        <!-- Slicer: Large variant for top bar where user said icons still small; Palette is 18 globally, Large is 20 for hero actions only. -->
         <Style x:Key="Icon.Glyph.Large" TargetType="Path" BasedOn="{StaticResource Icon.Glyph}">
             <Setter Property="Width" Value="20" />
             <Setter Property="Height" Value="20" />
@@ -44,13 +42,14 @@
 
         <!-- Top toolbar / project bar -->
         <Border Grid.Row="0" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1">
-            <Grid Margin="8,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                <Grid Margin="8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" MinWidth="420" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="NewBtn" Style="{StaticResource Slicer.Button}" Click="OnNew" ToolTip="New slicer project">
@@ -83,7 +82,7 @@
                     </Button>
                     <Button Style="{StaticResource Slicer.Button}" Click="OnExportTech" ToolTip="Export a Techmania .tech chart from the placed notes">
                         <StackPanel Orientation="Horizontal">
-                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Music4}" Margin="0,0,4,0" />
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Music4}" Margin="0,0,4,0" />
                             <TextBlock Text="Export .tech" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -137,13 +136,14 @@
                     <TextBlock x:Name="StatusLabel" Text="Ready" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="260" />
                     <Button Style="{StaticResource Slicer.Button}" Click="OnCloseWindow" ToolTip="Close slicer (project stays in memory)">Close</Button>
                 </StackPanel>
-            </Grid>
+                </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- Body: left sources + center waveform + right inspector -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="200" />
+                <ColumnDefinition Width="300" MinWidth="220" />
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="*" MinWidth="520" />
                 <ColumnDefinition Width="4" />
@@ -168,27 +168,29 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Text="SOURCE RECORDINGS" Style="{StaticResource Slicer.Header}" />
-                        <StackPanel Grid.Row="1" Orientation="Horizontal">
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnImportSource" ToolTip="Import a long source recording (wav/ogg/mp3/opus/flac)">
-                                <StackPanel Orientation="Horizontal">
-                                    <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.FolderOpen}" Margin="0,0,4,0" />
-                                    <TextBlock Text="Import audio" />
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnRemoveSource" ToolTip="Remove selected source">
-                                <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.X}" />
-                            </Button>
-                            <Separator Margin="6,0" />
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnImportBmsFile" ToolTip="Import BMS/BMSE/BMSON keysounds as virtual slices (round-trip)">
-                                <StackPanel Orientation="Horizontal">
-                                    <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.ClipboardPaste}" Margin="0,0,4,0" />
-                                    <TextBlock Text="Import BMS" />
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnPasteClipboard" ToolTip="Paste BMS/iBMSC clipboard fragment (Ctrl+V) — preview before import">
-                                <TextBlock Text="Paste" />
-                            </Button>
-                        </StackPanel>
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnImportSource" ToolTip="Import a long source recording (wav/ogg/mp3/opus/flac)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.FolderOpen}" Margin="0,0,4,0" />
+                                        <TextBlock Text="Import audio" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnRemoveSource" ToolTip="Remove selected source">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                                </Button>
+                                <Separator Margin="6,0" />
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnImportBmsFile" ToolTip="Import BMS/BMSE/BMSON keysounds as virtual slices (round-trip)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.ClipboardPaste}" Margin="0,0,4,0" />
+                                        <TextBlock Text="Import BMS" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnPasteClipboard" ToolTip="Paste BMS/iBMSC clipboard fragment (Ctrl+V) — preview before import">
+                                    <TextBlock Text="Paste" />
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </Border>
 
@@ -218,10 +220,11 @@
                             </Grid>
                         </Border>
 
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,4">
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnDeleteSlice" ToolTip="Delete selected slice (Del)">
-                                <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Eraser}" />
-                            </Button>
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="6,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnDeleteSlice" ToolTip="Delete selected slice (Del)">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Eraser}" />
+                                </Button>
                             <Button Style="{StaticResource Slicer.Button}" Click="OnDuplicateSlice" ToolTip="Duplicate selected slice">Dup</Button>
                             <Button Style="{StaticResource Slicer.Button}" Click="OnMergeSlices" ToolTip="Merge selected slices (when 2 selected)">Merge</Button>
                             <Separator Margin="6,0" />
@@ -237,7 +240,8 @@
                                 <ComboBoxItem Content="7" Tag="6" />
                                 <ComboBoxItem Content="8" Tag="7" />
                             </ComboBox>
-                        </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <ListBox Grid.Row="2" x:Name="SliceList" Margin="4,0,4,4"
                                  Background="Transparent" BorderThickness="0"
@@ -286,7 +290,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource Slicer.Button}" Click="OnDetect" ToolTip="Run onset detection (suggests slices)">
                                 <StackPanel Orientation="Horizontal">
-                                    <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.ZoomIn}" Margin="0,0,4,0" />
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.ZoomIn}" Margin="0,0,4,0" />
                                     <TextBlock Text="Detect" />
                                 </StackPanel>
                             </Button>
@@ -328,17 +332,17 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Music4}" Margin="0,0,6,0" />
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Music4}" Margin="0,0,6,0" />
                             <TextBlock Text="WAVEFORM" Style="{StaticResource Text.Section}" VerticalAlignment="Center" />
                             <TextBlock x:Name="SourceInfoLabel" Text="no source loaded" Foreground="{StaticResource Brush.TextMuted}" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Style="{StaticResource Slicer.Button}" Click="OnPlaySource" ToolTip="Play source at playhead (Space)">
-                                <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Play}" />
+                                <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Play}" />
                             </Button>
                             <Button Style="{StaticResource Slicer.Button}" Click="OnPlayDraft" ToolTip="Play draft / selected slice (P)">P</Button>
                             <Button Style="{StaticResource Slicer.Button}" Click="OnStopSource" ToolTip="Stop (Esc)">
-                                <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Square}" />
+                                <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Square}" />
                             </Button>
                             <Separator Margin="6,0" />
                             <TextBlock Text="Chart playhead" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="11" />
@@ -448,7 +452,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Layers}" Margin="0,0,6,0" />
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}" Margin="0,0,6,0" />
                             <TextBlock Text="INSPECTOR" Style="{StaticResource Text.Section}" VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock Grid.Column="1" x:Name="InspectorHint" Text="" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" VerticalAlignment="Center" />
