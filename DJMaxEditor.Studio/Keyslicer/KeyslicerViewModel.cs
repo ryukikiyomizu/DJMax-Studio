@@ -45,9 +45,9 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         public KeyslicerViewModel()
         {
-            Project = KeyslicerProject.CreateEmpty();
             Slices = new ObservableCollection<KeysoundSlice>();
             Suggestions = new ObservableCollection<SuggestedSlice>();
+            Project = KeyslicerProject.CreateEmpty();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -772,9 +772,11 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private void SyncCollectionsFromProject()
         {
+            if (Slices == null) return;
             Slices.Clear();
-            if (Project.Slices != null)
+            if (Project != null && Project.Slices != null)
                 foreach (var s in Project.Slices) Slices.Add(s);
+            if (Project == null || Project.Sources == null) return;
             // Sources are accessed directly via Project.Sources for ComboBox binding?
             // Ensure selected source is valid.
             if (SelectedSource != null && !Project.Sources.Contains(SelectedSource))

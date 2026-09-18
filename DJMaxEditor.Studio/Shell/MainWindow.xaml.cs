@@ -772,20 +772,32 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private void OnOpenSlicer(object sender, RoutedEventArgs e)
         {
-            if (_slicerWindow != null)
+            try
             {
-                _slicerWindow.Activate();
-                // Keep the attachment fresh: the user may have opened a different chart since the
-                // slicer was first shown.
-                _slicerWindow.AttachChartContext(_document);
-                return;
-            }
+                if (_slicerWindow != null)
+                {
+                    _slicerWindow.Activate();
+                    // Keep the attachment fresh: the user may have opened a different chart since the
+                    // slicer was first shown.
+                    _slicerWindow.AttachChartContext(_document);
+                    return;
+                }
 
-            _slicerWindow = new KeyslicerWindow();
-            _slicerWindow.Owner = this;
-            _slicerWindow.AttachChartContext(_document);
-            _slicerWindow.Closed += OnSlicerClosed;
-            _slicerWindow.Show();
+                _slicerWindow = new KeyslicerWindow();
+                _slicerWindow.Owner = this;
+                _slicerWindow.AttachChartContext(_document);
+                _slicerWindow.Closed += OnSlicerClosed;
+                _slicerWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                Logs.Write($"Keyslicer open failed: {ex}");
+                MessageBox.Show(this,
+                    $"Keysound Slicer failed to open:\n\n{ex.GetType().Name}: {ex.Message}\n\nSee Help → Open log folder for the full trace.\n\nThe main editor will stay open.",
+                    "Keysound Slicer", MessageBoxButton.OK, MessageBoxImage.Error);
+                try { _slicerWindow?.Close(); } catch { }
+                _slicerWindow = null;
+            }
         }
 
         private void OnSlicerClosed(object sender, EventArgs e)
