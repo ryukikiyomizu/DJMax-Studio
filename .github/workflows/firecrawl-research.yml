@@ -1,0 +1,61 @@
+name: firecrawl-research
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_key:
+        description: 'Firecrawl API key (fc-...)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/01a0b1fa-djmax-studio
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps
+        run: npm install firecrawl zod
+
+      - name: Run Firecrawl agent (spark-2)
+        env:
+          FIRECRAWL_API_KEY: ${{ inputs.api_key }}
+        run: |
+          echo "::add-mask::${FIRECRAWL_API_KEY}"
+          node scripts/firecrawl-agent.mjs
+          ls -lh firecrawl-result.json docs/keyslicer-research-firecrawl.json
+          cat firecrawl-result.json | head -200
+
+      - name: Upload research artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyslicer-research-firecrawl
+          path: |
+            firecrawl-result.json
+            docs/keyslicer-research-firecrawl.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Commit result to branch (no key)
+        if: success()
+        run: |
+          git config user.name "arena-ai-coding-agent[bot]"
+          git config user.email "bot@users.noreply.github.com"
+          git add docs/keyslicer-research-firecrawl.json firecrawl-result.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "research: add Firecrawl agent output (spark-2) for keyslicer audit"
+          git push origin HEAD:arena/01a0b1fa-djmax-studio
