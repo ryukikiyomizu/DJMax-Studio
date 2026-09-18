@@ -37,6 +37,8 @@ namespace DJMaxEditor.Studio.Keyslicer
         private IAudioOutput _auditionOutput;
         private bool _ready;
         private bool _syncingWaveScroll;
+        private WaveOutEvent _previewOut;
+        private AudioFileReader _previewReader;
         private KeysoundSlice _bandlabClipboardSlice;
         private bool _bandlabClipboardIsCut;
         private int _lastSnapBeforeFree = 16;
@@ -478,6 +480,9 @@ namespace DJMaxEditor.Studio.Keyslicer
                         e.Cancel = true;
                 }
             }
+            try { _previewOut?.Stop(); } catch {}
+            try { _previewOut?.Dispose(); } catch {}
+            try { _previewReader?.Dispose(); } catch {}
             _vm.Dispose();
             try { _auditionPlayer?.Dispose(); } catch { }
             try { _auditionOutput?.Dispose(); } catch { }
@@ -1182,19 +1187,26 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private void OnStopSource(object sender, RoutedEventArgs e)
         {
-            try { _auditionPlayer?.StopAllSounds(); } catch { }
+            try { _previewOut?.Stop(); } catch {}
+            try { _previewOut?.Dispose(); _previewOut = null; } catch {}
+            try { _previewReader?.Dispose(); _previewReader = null; } catch {}
+            try { _auditionPlayer?.StopAllSounds(); } catch {}
+            _vm.IsPlayingSource = false;
         }
 
         private async Task AuditionAtAsync(double startMs, double previewMs)
         {
             if (_vm.SelectedSource == null) return;
-            // Lightweight preview: render the interval to a temp wav and play via a throwaway
-            // WaveOutEvent that lives for the preview duration. This is editor-only convenience;
-            // the chart export does not depend on it, so a failure here never blocks slicing.
+            // Stop any previous preview first so Space toggles and overlapping plays don't stack
+            try { _previewOut?.Stop(); } catch {}
+            try { _previewOut?.Dispose(); } catch {}
+            try { _previewReader?.Dispose(); } catch {}
+            _previewOut = null; _previewReader = null;
+            _vm.IsPlayingSource = true;
             try
             {
                 string path = _vm.SelectedSource.ResolvedPath;
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) { _vm.IsPlayingSource = false; return; }
                 var slice = new KeysoundSlice
                 {
                     SourceFile = path,
@@ -1222,26 +1234,37 @@ namespace DJMaxEditor.Studio.Keyslicer
                                     var reader = new AudioFileReader(wav);
                                     var wo = new WaveOutEvent();
                                     wo.Init(reader);
-                                    wo.PlaybackStopped += (s, e) => { try { wo.Dispose(); reader.Dispose(); } catch { } try { Directory.Delete(tmpDir, true); } catch { } };
+                                    // keep references so Space can stop
+                                    _previewReader = reader;
+                                    _previewOut = wo;
+                                    wo.PlaybackStopped += (s, e) =>
+                                    {
+                                        _vm.IsPlayingSource = false;
+                                        try { wo.Dispose(); } catch {}
+                                        try { reader.Dispose(); } catch {}
+                                        if (_previewOut == wo) _previewOut = null;
+                                        if (_previewReader == reader) _previewReader = null;
+                                        try { Directory.Delete(tmpDir, true); } catch {}
+                                    };
                                     wo.Play();
-                                    // Schedule cleanup after previewMs + tail.
                                     Task.Delay((int)Math.Min(5000, previewMs + 400)).ContinueWith(_ =>
                                     {
-                                        try { wo.Stop(); } catch { }
+                                        try { if (wo.PlaybackState == PlaybackState.Playing) wo.Stop(); } catch {}
                                     });
                                 }
-                                catch { try { Directory.Delete(tmpDir, true); } catch { } }
+                                catch { _vm.IsPlayingSource = false; try { Directory.Delete(tmpDir, true); } catch {} }
                             });
                         }
                         else
                         {
-                            try { Directory.Delete(tmpDir, true); } catch { }
+                            _vm.IsPlayingSource = false;
+                            try { Directory.Delete(tmpDir, true); } catch {}
                         }
                     }
-                    catch { try { Directory.Delete(tmpDir, true); } catch { } }
+                    catch { _vm.IsPlayingSource = false; try { Directory.Delete(tmpDir, true); } catch {} }
                 });
             }
-            catch { }
+            catch { _vm.IsPlayingSource = false; }
         }
 
         private async Task AuditionSliceAsync(KeysoundSlice slice)
@@ -1784,7 +1807,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             else if (e.Key == Key.Escape)
             {
                 if (_vm.HasDraft) { _vm.ClearDraft(); UpdateDraftInfo(); }
-                else try { _auditionPlayer?.StopAllSounds(); } catch { }
+                else { OnStopSource(null, null); }
                 e.Handled = true; return;
             }
             else if (e.Key == Key.Delete || e.Key == Key.Back)
@@ -1814,9 +1837,26 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
             else if (e.Key == Key.Space)
             {
-                // Bandlab Space = Play/Pause toggle
-                try { if (_vm.IsPlayingSource) { _auditionPlayer?.StopAllSounds(); _vm.IsPlayingSource = false; } else { _vm.IsPlayingSource = true; if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs)); else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice); else _ = AuditionAtAsync(_vm.PlayheadMs, 800); } } catch {}
-                e.Handled = true; return;
+                // Don't steal Space when typing in an editable TextBox
+                if (isTextInput && Keyboard.FocusedElement is TextBox tb && !tb.IsReadOnly)
+                {
+                    // let TextBox insert space
+                }
+                else
+                {
+                    bool isPlaying = (_previewOut != null && _previewOut.PlaybackState == PlaybackState.Playing) || _vm.IsPlayingSource;
+                    if (isPlaying)
+                    {
+                        OnStopSource(null, null);
+                    }
+                    else
+                    {
+                        if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs));
+                        else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice);
+                        else _ = AuditionAtAsync(_vm.PlayheadMs, 800);
+                    }
+                    e.Handled = true; return;
+                }
             }
             else if (e.Key == Key.P && !ctrl)
             {
