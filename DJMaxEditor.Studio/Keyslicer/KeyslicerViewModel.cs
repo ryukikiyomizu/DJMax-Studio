@@ -47,6 +47,15 @@ namespace DJMaxEditor.Studio.Keyslicer
         {
             Slices = new ObservableCollection<KeysoundSlice>();
             Suggestions = new ObservableCollection<SuggestedSlice>();
+            Slices.CollectionChanged += (s,e) =>
+            {
+                OnPropertyChanged(nameof(SliceCount));
+                OnPropertyChanged(nameof(BudgetLabel));
+                OnPropertyChanged(nameof(BudgetFill));
+                OnPropertyChanged(nameof(BudgetState));
+                OnPropertyChanged(nameof(IsOverBudget));
+                SlicesChanged?.Invoke(this, EventArgs.Empty);
+            };
             Project = KeyslicerProject.CreateEmpty();
         }
 
@@ -65,6 +74,13 @@ namespace DJMaxEditor.Studio.Keyslicer
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(Bpm));
                 OnPropertyChanged(nameof(SongFile));
+                OnPropertyChanged(nameof(SlicerMode));
+                OnPropertyChanged(nameof(MaxSlices));
+                OnPropertyChanged(nameof(BudgetLabel));
+                OnPropertyChanged(nameof(BudgetFill));
+                OnPropertyChanged(nameof(BudgetState));
+                OnPropertyChanged(nameof(IsOverBudget));
+                OnPropertyChanged(nameof(ModeLabel));
             }
         }
 
@@ -210,6 +226,44 @@ namespace DJMaxEditor.Studio.Keyslicer
         }
 
         public string SnapLabel => SnapDenominator == 0 ? "Free" : "1/" + SnapDenominator;
+
+        public SlicerMode SlicerMode
+        {
+            get => Project.SlicerMode;
+            set
+            {
+                if (Project.SlicerMode == value) return;
+                Project.SlicerMode = value;
+                MarkDirty();
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(MaxSlices));
+                OnPropertyChanged(nameof(BudgetLabel));
+                OnPropertyChanged(nameof(BudgetFill));
+                OnPropertyChanged(nameof(BudgetState));
+                OnPropertyChanged(nameof(IsOverBudget));
+                OnPropertyChanged(nameof(BudgetTooltip));
+                OnPropertyChanged(nameof(ModeLabel));
+            }
+        }
+
+        public int SliceCount => Slices.Count;
+        public int MaxSlices => KeyslicerProject.MaxSlicesForMode(SlicerMode);
+        public BudgetState BudgetState => KeyslicerBudget.Evaluate(SliceCount, SlicerMode);
+        public string BudgetLabel => BudgetState.Label;
+        public double BudgetFill => BudgetState.IsUnbounded ? 0 : Math.Max(0, Math.Min(1, BudgetState.Fill));
+        public bool IsOverBudget => BudgetState.IsOver;
+        public string BudgetTooltip => SlicerMode switch
+        {
+            SlicerMode.Bms => "BMS 36-base WAV table: 1295 keysounds max (36*36=1296 minus reserved ZZ). Same as BMSE docs — overflow silently reuses IDs.",
+            SlicerMode.Respect => "RESPECT extended table: 2047 keysounds.",
+            _ => "Technika: no fixed table — export creates one OGG/WAV per used slice, streamed."
+        };
+        public string ModeLabel => SlicerMode switch
+        {
+            SlicerMode.Bms => "BMS",
+            SlicerMode.Respect => "RESPECT",
+            _ => "TECHNIKA"
+        };
 
         public string AutoAdvanceMode
         {

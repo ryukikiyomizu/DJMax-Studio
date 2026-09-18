@@ -7,11 +7,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Input;
 using Microsoft.Win32;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
 using DJMaxEditor.Studio.Audio;
+using DJMaxEditor.Studio.Settings;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
@@ -35,6 +37,8 @@ namespace DJMaxEditor.Studio.Keyslicer
         private IAudioOutput _auditionOutput;
         private bool _ready;
         private bool _suppressInspectorEvents;
+        private StudioSettingsStore _settingsStore = new StudioSettingsStore();
+        private StudioSettings _studioSettings;
 
         public KeyslicerWindow()
         {
@@ -144,12 +148,18 @@ namespace DJMaxEditor.Studio.Keyslicer
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             _ready = true;
+            // Load studio settings (for keyslicer defaults + audio latency).
+            try
+            {
+                _settingsStore = new StudioSettingsStore();
+                _studioSettings = _settingsStore.Load() ?? new StudioSettings();
+                _studioSettings.Normalise();
+            }
+            catch { _studioSettings = new StudioSettings(); }
             // Lightweight audition device.
             try
             {
-                var settingsStore = new Studio.Settings.StudioSettingsStore();
-                var settings = settingsStore.Load();
-                int latency = settings?.Audio?.OutputLatencyMs ?? 60;
+                int latency = _studioSettings?.Audio?.OutputLatencyMs ?? 60;
                 _auditionOutput = new NAudioDeviceOutput(latency);
                 _auditionPlayer = new NAudioKeysoundPlayer(_auditionOutput, true, 512L * 1024L * 1024L);
             }
@@ -158,8 +168,49 @@ namespace DJMaxEditor.Studio.Keyslicer
                 _auditionPlayer = null;
             }
 
+            // Apply saved slicer defaults to a brand-new project (don't overwrite a loaded one).
+            if (_vm.Project != null && _vm.Slices.Count == 0 && string.IsNullOrEmpty(_vm.ProjectPath))
+            {
+                int savedMode = _studioSettings?.Keyslicer?.DefaultSlicerMode ?? 0;
+                SlicerMode m = savedMode == 1 ? SlicerMode.Respect : savedMode == 2 ? SlicerMode.Technika : SlicerMode.Bms;
+                if (_vm.SlicerMode != m) _vm.SlicerMode = m;
+                int savedSnap = _studioSettings?.Keyslicer?.DefaultSnapDenominator ?? 16;
+                if (savedSnap == 0 || savedSnap == 4 || savedSnap == 8 || savedSnap == 16 || savedSnap == 32)
+                    _vm.SnapDenominator = savedSnap;
+            }
+
             UpdateAll();
+            UpdateModeButtons();
+            UpdateBudget();
+            UpdateRuler();
             WaveformView.Focus();
+            // First-launch chooser (non-blocking via dispatcher so window is shown).
+            Dispatcher.BeginInvoke(new Action(() => ShowModeChooserIfNeeded()), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void ShowModeChooserIfNeeded()
+        {
+            if (_studioSettings == null) return;
+            if (_studioSettings.Keyslicer.SuppressModeChooser) return;
+            // Only show for a new/empty project where mode hasn't been explicitly chosen this session.
+            if (_vm.Slices.Count != 0 || !string.IsNullOrEmpty(_vm.ProjectPath)) return;
+            try
+            {
+                SlicerMode picked = _vm.SlicerMode;
+                bool suppress = _studioSettings.Keyslicer.SuppressModeChooser;
+                bool ok = SlicerModeChooserWindow.TryPick(this, ref picked, ref suppress);
+                if (ok)
+                {
+                    _vm.SlicerMode = picked;
+                    _studioSettings.Keyslicer.DefaultSlicerMode = picked == SlicerMode.Respect ? 1 : picked == SlicerMode.Technika ? 2 : 0;
+                    _studioSettings.Keyslicer.SuppressModeChooser = suppress;
+                    _settingsStore.Save(_studioSettings);
+                    UpdateModeButtons();
+                    UpdateBudget();
+                    UpdateRuler();
+                }
+            }
+            catch { }
         }
 
         private void OnClosing(object sender, CancelEventArgs e)
@@ -218,10 +269,37 @@ namespace DJMaxEditor.Studio.Keyslicer
                 case nameof(KeyslicerViewModel.SelectedSlice):
                     UpdateInspector();
                     break;
+                case nameof(KeyslicerViewModel.SlicerMode):
+                case nameof(KeyslicerViewModel.BudgetState):
+                case nameof(KeyslicerViewModel.BudgetLabel):
+                    UpdateModeButtons();
+                    UpdateBudget();
+                    break;
+                case nameof(KeyslicerViewModel.ChartPlayheadMs):
+                case nameof(KeyslicerViewModel.Bpm):
+                    UpdateRuler();
+                    break;
             }
             if (e.PropertyName == nameof(KeyslicerViewModel.Zoom) ||
                 e.PropertyName == nameof(KeyslicerViewModel.ScrollMs))
+            {
                 ZoomLabel.Text = "ZOOM " + _vm.Zoom.ToString("0.0", CultureInfo.InvariantCulture) + "x";
+                UpdateRuler();
+            }
+            if (e.PropertyName == nameof(KeyslicerViewModel.SlicerMode) ||
+                e.PropertyName == nameof(KeyslicerViewModel.BudgetLabel) ||
+                e.PropertyName == nameof(KeyslicerViewModel.BudgetFill) ||
+                e.PropertyName == nameof(KeyslicerViewModel.SliceCount) ||
+                e.PropertyName == nameof(KeyslicerViewModel.MaxSlices))
+            {
+                UpdateModeButtons();
+                UpdateBudget();
+            }
+            if (e.PropertyName == nameof(KeyslicerViewModel.Bpm) ||
+                e.PropertyName == nameof(KeyslicerViewModel.SnapDenominator) ||
+                e.PropertyName == nameof(KeyslicerViewModel.ChartPlayheadMs) ||
+                e.PropertyName == "OffsetMsSafe")
+                UpdateRuler();
 
             // Suggestion label.
             if (e.PropertyName == nameof(KeyslicerViewModel.SuggestionIndex) ||
@@ -270,6 +348,9 @@ namespace DJMaxEditor.Studio.Keyslicer
             StatusLabel.Text = _vm.Status;
             StatusBarText.Text = _vm.Status;
             ZoomLabel.Text = "ZOOM " + _vm.Zoom.ToString("0.0", CultureInfo.InvariantCulture) + "x";
+            try { UpdateModeButtons(); } catch { }
+            try { UpdateBudget(); } catch { }
+            try { UpdateRuler(); } catch { }
         }
 
         private void RefreshSources()
@@ -296,6 +377,8 @@ namespace DJMaxEditor.Studio.Keyslicer
             NoteCountLabel.Text = _vm.Project.Notes.Count + " notes";
             StatusLabel.Text = _vm.Status;
             StatusBarText.Text = _vm.Status;
+            try { UpdateBudget(); } catch { }
+            try { UpdateRuler(); } catch { }
         }
 
         private void UpdateDraftInfo()
@@ -318,6 +401,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             if (_vm.SelectedSource != null && _vm.Waveform != null)
                 SourceInfoLabel.Text = string.Format("{0}  {1:F0} ms  {2} kHz x{3}  zoom {4:F1}x",
                     _vm.SelectedSource.FileName, _vm.Waveform.DurationMs, _vm.Waveform.SampleRate, _vm.Waveform.Channels, _vm.Zoom);
+            UpdateRuler();
         }
 
         private void UpdateInspector()
@@ -355,6 +439,81 @@ namespace DJMaxEditor.Studio.Keyslicer
                 InspectorHint.Text = s.IsConfirmed ? "confirmed" : "draft";
             }
             _suppressInspectorEvents = false;
+        }
+
+        private void UpdateModeButtons()
+        {
+            if (ModeBmsBtn == null) return;
+            var m = _vm.SlicerMode;
+            // Visual selection: accent background for active
+            System.Windows.Media.Brush accent = TryFindResource("Brush.Accent") as System.Windows.Media.Brush;
+            System.Windows.Media.Brush raised = TryFindResource("Brush.Raised") as System.Windows.Media.Brush;
+            System.Windows.Media.Brush edge = TryFindResource("Brush.Edge") as System.Windows.Media.Brush;
+            // Reset
+            ModeBmsBtn.Background = m == SlicerMode.Bms ? accent : raised;
+            ModeRespectBtn.Background = m == SlicerMode.Respect ? accent : raised;
+            ModeTechnikaBtn.Background = m == SlicerMode.Technika ? accent : raised;
+            // Keep tooltip budget fresh
+            ModeBmsBtn.ToolTip = "BMS — 1295 max" + (_vm.SlicerMode == SlicerMode.Bms ? " · active" : "");
+            ModeRespectBtn.ToolTip = "RESPECT — 2047 max" + (_vm.SlicerMode == SlicerMode.Respect ? " · active" : "");
+            ModeTechnikaBtn.ToolTip = "TECHNIKA — no limit" + (_vm.SlicerMode == SlicerMode.Technika ? " · active" : "");
+        }
+
+        private void UpdateBudget()
+        {
+            if (BudgetText == null || BudgetFill == null) return;
+            var st = _vm.BudgetState;
+            BudgetText.Text = st.Label;
+            BudgetText.Foreground = st.IsOver ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF,0x6B,0x6B)) : TryFindResource("Brush.TextMuted") as System.Windows.Media.Brush;
+            if (BudgetInlineLabel != null)
+                BudgetInlineLabel.Text = st.IsUnbounded ? " / ∞" : string.Format(" / {0}", st.Max);
+            double fillW = 0;
+            if (!st.IsUnbounded)
+            {
+                double frac = Math.Max(0, Math.Min(1, st.Fill));
+                fillW = 90 * frac;
+                BudgetFill.Width = fillW;
+                BudgetFill.Background = st.FillBrush;
+                BudgetFill.ToolTip = st.Label + " — " + _vm.BudgetTooltip;
+            }
+            else
+            {
+                BudgetFill.Width = 90;
+                BudgetFill.Background = st.FillBrush;
+                BudgetFill.ToolTip = st.Label + " — " + _vm.BudgetTooltip;
+            }
+        }
+
+        private void UpdateRuler()
+        {
+            if (ChartRuler == null) return;
+            ChartRuler.Bpm = _vm.Bpm;
+            ChartRuler.OffsetMs = _vm.Project.OffsetMs;
+            ChartRuler.SnapDenominator = _vm.SnapDenominator;
+            ChartRuler.Zoom = _vm.Zoom;
+            ChartRuler.ScrollMs = _vm.ScrollMs;
+            ChartRuler.DurationMs = _vm.Waveform?.DurationMs ?? 0;
+            ChartRuler.ChartPlayheadMs = _vm.ChartPlayheadMs;
+            ChartRuler.InvalidateVisual();
+        }
+
+        private void OnModeBms(object sender, RoutedEventArgs e)
+        {
+            _vm.SlicerMode = SlicerMode.Bms;
+            try { if (_studioSettings != null) { _studioSettings.Keyslicer.DefaultSlicerMode = 0; _settingsStore.Save(_studioSettings); } } catch {}
+            UpdateModeButtons(); UpdateBudget(); UpdateRuler();
+        }
+        private void OnModeRespect(object sender, RoutedEventArgs e)
+        {
+            _vm.SlicerMode = SlicerMode.Respect;
+            try { if (_studioSettings != null) { _studioSettings.Keyslicer.DefaultSlicerMode = 1; _settingsStore.Save(_studioSettings); } } catch {}
+            UpdateModeButtons(); UpdateBudget(); UpdateRuler();
+        }
+        private void OnModeTechnika(object sender, RoutedEventArgs e)
+        {
+            _vm.SlicerMode = SlicerMode.Technika;
+            try { if (_studioSettings != null) { _studioSettings.Keyslicer.DefaultSlicerMode = 2; _settingsStore.Save(_studioSettings); } } catch {}
+            UpdateModeButtons(); UpdateBudget(); UpdateRuler();
         }
 
         // ----------------------------------------------------------------
@@ -780,7 +939,10 @@ namespace DJMaxEditor.Studio.Keyslicer
         {
             if (!_ready) return;
             if (double.TryParse(ChartPlayheadBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v))
+            {
                 _vm.ChartPlayheadMs = Math.Max(0, v);
+                UpdateRuler();
+            }
         }
 
         private void OnClearNotes(object sender, RoutedEventArgs e)
@@ -1076,14 +1238,20 @@ namespace DJMaxEditor.Studio.Keyslicer
         {
             if (!_ready) return;
             if (double.TryParse(BpmBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v))
+            {
                 _vm.Bpm = v;
+                UpdateRuler();
+            }
         }
 
         private void OnOffsetChanged(object sender, TextChangedEventArgs e)
         {
             if (!_ready) return;
             if (double.TryParse(OffsetBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v))
+            {
                 _vm.Project.OffsetMs = v;
+                UpdateRuler();
+            }
         }
 
         private void OnFadeChanged(object sender, TextChangedEventArgs e)
@@ -1104,6 +1272,7 @@ namespace DJMaxEditor.Studio.Keyslicer
         {
             if (!_ready) return;
             _vm.Zoom = e.NewValue;
+            UpdateRuler();
         }
 
         private void OnSnapChanged(object sender, SelectionChangedEventArgs e)
@@ -1114,6 +1283,8 @@ namespace DJMaxEditor.Studio.Keyslicer
             _vm.SnapDenominator = SnapDenomFromIndex(cb.SelectedIndex);
             StatusLabel.Text = "Snap " + _vm.SnapLabel;
             StatusBarText.Text = StatusLabel.Text;
+            try { if (_studioSettings != null) { _studioSettings.Keyslicer.DefaultSnapDenominator = _vm.SnapDenominator; _settingsStore.Save(_studioSettings); } } catch {}
+            UpdateRuler();
         }
 
         private void OnAutoAdvanceChanged(object sender, SelectionChangedEventArgs e)

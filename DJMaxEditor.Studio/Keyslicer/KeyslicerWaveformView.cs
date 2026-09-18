@@ -98,7 +98,11 @@ namespace DJMaxEditor.Studio.Keyslicer
                 e.PropertyName == nameof(KeyslicerViewModel.PlayheadMs) ||
                 e.PropertyName == nameof(KeyslicerViewModel.DraftStartMs) ||
                 e.PropertyName == nameof(KeyslicerViewModel.DraftEndMs) ||
-                e.PropertyName == nameof(KeyslicerViewModel.SelectedSlice))
+                e.PropertyName == nameof(KeyslicerViewModel.SelectedSlice) ||
+                e.PropertyName == nameof(KeyslicerViewModel.SnapToZeroCrossing) ||
+                e.PropertyName == nameof(KeyslicerViewModel.ChartPlayheadMs) ||
+                e.PropertyName == nameof(KeyslicerViewModel.SnapDenominator) ||
+                e.PropertyName == nameof(KeyslicerViewModel.Bpm))
                 InvalidateVisual();
         }
         private void OnSlicesChanged(object s, EventArgs e) => InvalidateVisual();
@@ -182,6 +186,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
             // Draft selection (yellow) across the waveform band.
             DrawDraft(dc, w, waveTop, waveH);
+            DrawZeroCrossOverlay(dc, w, waveTop, waveH);
 
             // Suggestions (ghost).
             DrawSuggestions(dc, w, waveTop, waveH);
@@ -385,6 +390,61 @@ namespace DJMaxEditor.Studio.Keyslicer
             handleBrush.Freeze();
             dc.DrawRectangle(handleBrush, null, new Rect(l - 1, top, 2, h));
             dc.DrawRectangle(handleBrush, null, new Rect(r - 1, top, 2, h));
+        }
+
+        private void DrawZeroCrossOverlay(DrawingContext dc, double w, double top, double h)
+        {
+            if (_viewModel == null || !_viewModel.HasDraft || !_viewModel.SnapToZeroCrossing) return;
+            if (_viewModel.Waveform == null) return;
+            double s = Math.Min(_viewModel.DraftStartMs, _viewModel.DraftEndMs);
+            double e = Math.Max(_viewModel.DraftStartMs, _viewModel.DraftEndMs);
+            double sN = _viewModel.FindNearestZeroCrossing(s);
+            double eN = _viewModel.FindNearestZeroCrossing(e);
+            bool sMoved = Math.Abs(sN - s) > 0.35;
+            bool eMoved = Math.Abs(eN - e) > 0.35;
+            if (!sMoved && !eMoved) return;
+            // Ghost at original, solid at nudged. Non-destructive A/B: original still stored as draft before nudging on create.
+            var ghostPen = new Pen(new SolidColorBrush(Color.FromArgb(120, 0xFF, 0x8A, 0x8A)), 1.5) { DashStyle = DashStyles.Dash };
+            ghostPen.Freeze();
+            var nudgedPen = new Pen(new SolidColorBrush(Color.FromRgb(0x66, 0xFF, 0xB0)), 1.4);
+            nudgedPen.Freeze();
+            var labelBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0xFF, 0xC8));
+            labelBrush.Freeze();
+            if (sMoved)
+            {
+                double xOrig = MsToX(s);
+                double xNudged = MsToX(sN);
+                dc.DrawLine(ghostPen, new Point(xOrig, top), new Point(xOrig, top + h));
+                dc.DrawLine(nudgedPen, new Point(xNudged, top), new Point(xNudged, top + h));
+                // Connector
+                var connPen = new Pen(new SolidColorBrush(Color.FromArgb(80, 0x66, 0xFF, 0xB0)), 1);
+                connPen.Freeze();
+                dc.DrawLine(connPen, new Point(xOrig, top + h * 0.5), new Point(xNudged, top + h * 0.5));
+                string lab = string.Format(CultureInfo.InvariantCulture, "→ {0:+0.0;-0.0} ms", sN - s);
+                var tf = new FormattedText(lab, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, _typeface, 9, labelBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                double tx = Math.Max(2, Math.Min(w - tf.Width - 2, (xNudged + 4)));
+                dc.DrawText(tf, new Point(tx, top + 2));
+            }
+            if (eMoved)
+            {
+                double xOrig = MsToX(e);
+                double xNudged = MsToX(eN);
+                dc.DrawLine(ghostPen, new Point(xOrig, top), new Point(xOrig, top + h));
+                dc.DrawLine(nudgedPen, new Point(xNudged, top), new Point(xNudged, top + h));
+                var connPen = new Pen(new SolidColorBrush(Color.FromArgb(80, 0x66, 0xFF, 0xB0)), 1);
+                connPen.Freeze();
+                dc.DrawLine(connPen, new Point(xOrig, top + h * 0.5), new Point(xNudged, top + h * 0.5));
+                string lab = string.Format(CultureInfo.InvariantCulture, "{0:+0.0;-0.0} ms ←", eN - e);
+                var tf = new FormattedText(lab, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, _typeface, 9, labelBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                double tx = Math.Max(2, Math.Min(w - tf.Width - 2, (xNudged - tf.Width - 4)));
+                dc.DrawText(tf, new Point(tx, top + 2));
+            }
+            // Small legend in corner when moved
+            if (sMoved || eMoved)
+            {
+                var legend = new FormattedText("Zero-X A/B: dash=raw  solid=nudged (click still creates nudged)", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, _typeface, 8, new SolidColorBrush(Color.FromArgb(160, 255,255,255)), VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                dc.DrawText(legend, new Point(w - legend.Width - 6, top + h - 12));
+            }
         }
 
         private void DrawSuggestions(DrawingContext dc, double w, double top, double h)

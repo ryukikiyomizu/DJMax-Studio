@@ -7,6 +7,13 @@ using System.Text.Json.Serialization;
 
 namespace DJMaxEditor.Studio.Keyslicer
 {
+    public enum SlicerMode
+    {
+        Bms,
+        Respect,
+        Technika
+    }
+
     /// <summary>
     /// Project model for the keysound slicer scene.
     /// Stores references to source audio files and non-destructive slice intervals,
@@ -35,11 +42,23 @@ namespace DJMaxEditor.Studio.Keyslicer
         /// <summary>Snap grid denominator for quantize and auto-advance (0=Free, 4,8,16,32).</summary>
         public int SnapDenominator { get; set; } = 16;
 
+        /// <summary>Target platform for budget + polyphony simulation.</summary>
+        public SlicerMode SlicerMode { get; set; } = SlicerMode.Bms;
+
         /// <summary>How the chart playhead auto-advances after placing a note.</summary>
         public string AutoAdvanceMode { get; set; } = "grid"; // grid | beat | gap | off
 
         /// <summary>Nudge slice edges to nearest zero-crossing within ~2 ms.</summary>
         public bool SnapToZeroCrossing { get; set; } = true;
+
+        public static int MaxSlicesForMode(SlicerMode mode) => mode switch
+        {
+            SlicerMode.Respect => 2047,
+            SlicerMode.Technika => int.MaxValue,
+            _ => 1295,
+        };
+
+        public int MaxSlices => MaxSlicesForMode(SlicerMode);
 
         public List<KeysoundSource> Sources { get; set; } = new List<KeysoundSource>();
 
@@ -151,6 +170,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 Bpm = Bpm,
                 OffsetMs = OffsetMs,
                 SnapDenominator = SnapDenominator,
+                SlicerMode = SlicerMode,
                 AutoAdvanceMode = AutoAdvanceMode,
                 SnapToZeroCrossing = SnapToZeroCrossing,
                 NextIdCounter = NextIdCounter,
