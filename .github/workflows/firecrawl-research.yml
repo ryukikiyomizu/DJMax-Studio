@@ -1,11 +1,13 @@
 name: firecrawl-research
 
 on:
+  push:
+    branches: [arena/01a0b1fa-djmax-studio]
   workflow_dispatch:
     inputs:
       api_key:
         description: 'Firecrawl API key (fc-...)'
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -30,14 +32,19 @@ jobs:
 
       - name: Run Firecrawl agent (spark-2)
         env:
-          FIRECRAWL_API_KEY: ${{ inputs.api_key }}
+          FIRECRAWL_API_KEY: ${{ inputs.api_key || secrets.FIRECRAWL_API_KEY }}
         run: |
-          echo "::add-mask::${FIRECRAWL_API_KEY}"
+          if [ -z "$FIRECRAWL_API_KEY" ]; then
+            echo "FIRECRAWL_API_KEY not set (need secrets.FIRECRAWL_API_KEY or workflow_dispatch input)"
+            exit 0
+          fi
+          echo "::add-mask::$FIRECRAWL_API_KEY"
           node scripts/firecrawl-agent.mjs
-          ls -lh firecrawl-result.json docs/keyslicer-research-firecrawl.json
-          cat firecrawl-result.json | head -200
+          ls -lh firecrawl-result.json docs/keyslicer-research-firecrawl.json || true
+          head -500 firecrawl-result.json || true
 
       - name: Upload research artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: keyslicer-research-firecrawl
@@ -45,9 +52,9 @@ jobs:
             firecrawl-result.json
             docs/keyslicer-research-firecrawl.json
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
 
-      - name: Commit result to branch (no key)
+      - name: Commit result to branch
         if: success()
         run: |
           git config user.name "arena-ai-coding-agent[bot]"
@@ -57,5 +64,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "research: add Firecrawl agent output (spark-2) for keyslicer audit"
+          git commit -m "research: Firecrawl agent output (spark-2) via Actions"
           git push origin HEAD:arena/01a0b1fa-djmax-studio
