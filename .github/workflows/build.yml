@@ -720,29 +720,3 @@ jobs:
               ForEach-Object { Write-Output ("::error::" + $_.Line) }
             exit $code
           }
-
-  firecrawl-research:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check secret
-        run: |
-          if [ -z "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
-            echo "no key, skip"
-            exit 0
-          fi
-          echo "key present"
-      - name: Setup Node
-        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install
-        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
-        run: npm install firecrawl zod
-      - name: Run agent
-        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
-        env:
-          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
-        run: node scripts/firecrawl-agent.mjs
