@@ -159,7 +159,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock Text="SOURCE RECORDINGS" Style="{StaticResource Slicer.Header}" />
                         <StackPanel Grid.Row="1" Orientation="Horizontal">
-                            <Button Style="{StaticResource Slicer.Button}" Click="OnImportSource" ToolTip="Import a long source recording (wav/ogg/mp3)">
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnImportSource" ToolTip="Import a long source recording (wav/ogg/mp3/opus/flac)">
                                 <StackPanel Orientation="Horizontal">
                                     <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.FolderOpen}" Margin="0,0,4,0" />
                                     <TextBlock Text="Import audio" />
@@ -167,6 +167,16 @@
                             </Button>
                             <Button Style="{StaticResource Slicer.Button}" Click="OnRemoveSource" ToolTip="Remove selected source">
                                 <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                            </Button>
+                            <Separator Margin="6,0" />
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnImportBmsFile" ToolTip="Import BMS/BMSE/BMSON keysounds as virtual slices (round-trip)">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.ClipboardPaste}" Margin="0,0,4,0" />
+                                    <TextBlock Text="Import BMS" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnPasteClipboard" ToolTip="Paste BMS/iBMSC clipboard fragment (Ctrl+V) — preview before import">
+                                <TextBlock Text="Paste" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -360,9 +370,10 @@
                             <TextBlock Text="/" Foreground="{StaticResource Brush.TextMuted}" Margin="2,0" VerticalAlignment="Center" />
                             <TextBox x:Name="FadeOutBox" Width="36" Text="5" TextChanged="OnFadeChanged" ToolTip="Fade out ms" />
                             <TextBlock Text="ms" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="2,0,8,0" FontSize="11" />
-                            <ComboBox x:Name="AutoAdvanceCombo" Width="92" SelectionChanged="OnAutoAdvanceChanged" ToolTip="After placing a note, how far to advance the chart playhead">
+                            <ComboBox x:Name="AutoAdvanceCombo" Width="98" SelectionChanged="OnAutoAdvanceChanged" ToolTip="After placing a note, how far to advance the chart playhead — Grid = one snap step, Beat = one beat, Gap = snap to next onset gap, Off = stay">
                                 <ComboBoxItem Content="Advance: Grid" Tag="grid" />
                                 <ComboBoxItem Content="Advance: Beat" Tag="beat" />
+                                <ComboBoxItem Content="Advance: Gap" Tag="gap" />
                                 <ComboBoxItem Content="Advance: Off" Tag="off" />
                             </ComboBox>
                             <CheckBox x:Name="AutoPlaceCheck" Content="Auto-place" IsChecked="True" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="When creating a slice via lane key, also place a note at the chart playhead" />
@@ -488,6 +499,44 @@
                                 <TextBlock Text="Lane" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
                                 <ComboBox Grid.Column="1" x:Name="InspectorLane" SelectionChanged="OnInspectorLaneChanged" />
                             </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Fade in/out" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" ToolTip="Per-slice fades; global defaults are 2/5 ms" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox x:Name="InspectorFadeIn" Width="48" VerticalAlignment="Center" TextChanged="OnInspectorFadeChanged" ToolTip="Fade in ms for this slice" />
+                                    <TextBlock Text="/" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="InspectorFadeOut" Width="48" VerticalAlignment="Center" TextChanged="OnInspectorFadeChanged" ToolTip="Fade out ms for this slice" />
+                                    <TextBlock Text="ms" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0,0,0" VerticalAlignment="Center" FontSize="10" />
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Zero-X" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" ToolTip="Non-destructive Zero-X: render nudged vs logical" />
+                                <ComboBox Grid.Column="1" x:Name="InspectorZeroCrossCombo" SelectionChanged="OnInspectorZeroCrossChanged" ToolTip="Per-slice Zero-X override">
+                                    <ComboBoxItem Content="Global (project)" Tag="global" />
+                                    <ComboBoxItem Content="On for this slice" Tag="on" />
+                                    <ComboBoxItem Content="Off for this slice" Tag="off" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Normalize" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="InspectorNormalizeCombo" SelectionChanged="OnInspectorNormalizeChanged" ToolTip="Per-slice normalize override">
+                                    <ComboBoxItem Content="Global (project)" Tag="global" />
+                                    <ComboBoxItem Content="On for this slice" Tag="on" />
+                                    <ComboBoxItem Content="Off for this slice" Tag="off" />
+                                </ComboBox>
+                            </Grid>
+                            <TextBlock x:Name="InspectorZeroDelta" Foreground="{StaticResource Brush.TextMuted}" FontSize="10" Margin="80,2,0,0" TextWrapping="Wrap" />
 
                             <Separator Margin="0,10" />
                             <TextBlock Text="SOURCE" Style="{StaticResource Slicer.Header}" />

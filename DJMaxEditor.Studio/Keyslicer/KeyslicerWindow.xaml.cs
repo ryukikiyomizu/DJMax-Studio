@@ -70,7 +70,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             SensSlider.Value = _vm.DetectorSettings.Sensitivity;
 
             // Snap + advance: best defaults without nagging the user.
-            SnapCombo.ItemsSource = new[] { "Free", "1/4", "1/8", "1/16", "1/32" };
+            SnapCombo.ItemsSource = new[] { "Free", "1/4", "1/8", "1/16", "1/32", "1/64", "1/192" };
             SnapCombo.SelectedIndex = SnapIndexFromDenom(_vm.SnapDenominator);
             foreach (ComboBoxItem it in AutoAdvanceCombo.Items)
                 if ((string)it.Tag == (_vm.AutoAdvanceMode ?? "grid")) { AutoAdvanceCombo.SelectedItem = it; break; }
@@ -129,6 +129,8 @@ namespace DJMaxEditor.Studio.Keyslicer
                 case 8: return 2;
                 case 16: return 3;
                 case 32: return 4;
+                case 64: return 5;
+                case 192: return 6;
                 default: return 3;
             }
         }
@@ -141,6 +143,8 @@ namespace DJMaxEditor.Studio.Keyslicer
                 case 2: return 8;
                 case 3: return 16;
                 case 4: return 32;
+                case 5: return 64;
+                case 6: return 192;
                 default: return 16;
             }
         }
@@ -436,6 +440,28 @@ namespace DJMaxEditor.Studio.Keyslicer
                     if (item != null && (int)item.Tag == s.Lane) { idx = i; break; }
                 }
                 InspectorLane.SelectedIndex = idx;
+                // Per-slice fades
+                InspectorFadeIn.Text = s.FadeInMs.ToString("0.#", CultureInfo.InvariantCulture);
+                InspectorFadeOut.Text = s.FadeOutMs.ToString("0.#", CultureInfo.InvariantCulture);
+                // Per-slice Zero-X override
+                if (s.SnapToZeroCrossing == null) InspectorZeroCrossCombo.SelectedIndex = 0;
+                else if (s.SnapToZeroCrossing == true) InspectorZeroCrossCombo.SelectedIndex = 1;
+                else InspectorZeroCrossCombo.SelectedIndex = 2;
+                // Per-slice normalize override
+                if (s.Normalize == null) InspectorNormalizeCombo.SelectedIndex = 0;
+                else if (s.Normalize == true) InspectorNormalizeCombo.SelectedIndex = 1;
+                else InspectorNormalizeCombo.SelectedIndex = 2;
+                // Delta display: render vs logical
+                if (s.RenderStartMs.HasValue || s.RenderEndMs.HasValue)
+                {
+                    double dS = (s.RenderStartMs ?? s.StartMs) - s.StartMs;
+                    double dE = (s.RenderEndMs ?? s.EndMs) - s.EndMs;
+                    InspectorZeroDelta.Text = string.Format(CultureInfo.InvariantCulture, "Render Δ {0:+0.0;-0.0;0} ms / {1:+0.0;-0.0;0} ms  eff {2:0.#}-{3:0.#} ms", dS, dE, s.EffectiveStartMs, s.EffectiveEndMs);
+                }
+                else
+                {
+                    InspectorZeroDelta.Text = "Render = logical (no nudge or Zero-X off)";
+                }
                 InspectorHint.Text = s.IsConfirmed ? "confirmed" : "draft";
             }
             _suppressInspectorEvents = false;
@@ -607,6 +633,55 @@ namespace DJMaxEditor.Studio.Keyslicer
             RefreshSources();
             RefreshLists();
             UpdateAll();
+        }
+
+        private void OnImportBmsFile(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Filter = "BMS charts|*.bms;*.bme;*.bml;*.pms;*.bmson;*.bms.json|All files|*.*",
+                Title = "Import BMS/BMSE/BMSON (round-trip) — wav map + notes become virtual slices",
+                Multiselect = false
+            };
+            if (dlg.ShowDialog(this) != true) return;
+            var result = BmsClipboardParser.ParseFile(dlg.FileName);
+            if (!result.Success)
+            {
+                MessageBox.Show(this, result.Error ?? "Import failed.", "Import BMS", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            string folder = System.IO.Path.GetDirectoryName(dlg.FileName);
+            var preview = new BmsImportPreviewWindow(result, folder) { Owner = this };
+            if (preview.ShowDialog() != true || !preview.DidImport) return;
+            int added = BmsClipboardParser.ApplyToViewModel(result, _vm, folder);
+            RefreshLists();
+            UpdateAll();
+            StatusLabel.Text = $"Imported {added} note(s) from {System.IO.Path.GetFileName(dlg.FileName)} ({result.DistinctWavs} wavs)";
+            StatusBarText.Text = StatusLabel.Text;
+        }
+
+        private void OnPasteClipboard(object sender, RoutedEventArgs e)
+        {
+            string text = null;
+            try { if (System.Windows.Clipboard.ContainsText()) text = System.Windows.Clipboard.GetText(); } catch {}
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                MessageBox.Show(this, "Clipboard has no text.\n\nCopy from BMSE/iBMSC (Ctrl+C on notes) or copy a .bms snippet, then Paste again.", "Paste BMS", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var result = BmsClipboardParser.Parse(text);
+            if (!result.Success)
+            {
+                MessageBox.Show(this, result.Error ?? "Parse failed.\n\nText preview:\n" + text.Substring(0, Math.Min(500, text.Length)), "Paste BMS", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var preview = new BmsImportPreviewWindow(result) { Owner = this };
+            if (preview.ShowDialog() != true || !preview.DidImport) return;
+            int added = BmsClipboardParser.ApplyToViewModel(result, _vm);
+            RefreshLists();
+            UpdateAll();
+            StatusLabel.Text = $"Pasted {added} note(s) from clipboard ({result.DistinctWavs} wavs, {result.Notes.Count} total)";
+            StatusBarText.Text = StatusLabel.Text;
         }
 
         private void OnSourceChanged(object sender, SelectionChangedEventArgs e)
@@ -990,6 +1065,43 @@ namespace DJMaxEditor.Studio.Keyslicer
             var item = InspectorLane.SelectedItem as ComboBoxItem;
             if (item == null) return;
             _vm.SelectedSlice.Lane = (int)item.Tag;
+            RefreshLists();
+        }
+
+        private void OnInspectorFadeChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressInspectorEvents || _vm.SelectedSlice == null) return;
+            if (double.TryParse(InspectorFadeIn.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double fin))
+                _vm.SelectedSlice.FadeInMs = Math.Max(0, Math.Min(50, fin));
+            if (double.TryParse(InspectorFadeOut.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double fout))
+                _vm.SelectedSlice.FadeOutMs = Math.Max(0, Math.Min(200, fout));
+            ExportPreviewLabel.Text = string.Format("{0}.ogg  ({1:F0} ms, {2:F2}x, {3:0.#}/{4:0.#} ms fade)", _vm.SelectedSlice.Id, _vm.SelectedSlice.RenderDurationMs > 0 ? _vm.SelectedSlice.RenderDurationMs : _vm.SelectedSlice.DurationMs, _vm.SelectedSlice.Gain, _vm.SelectedSlice.FadeInMs, _vm.SelectedSlice.FadeOutMs);
+        }
+
+        private void OnInspectorZeroCrossChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressInspectorEvents || _vm.SelectedSlice == null) return;
+            var item = InspectorZeroCrossCombo.SelectedItem as ComboBoxItem;
+            if (item == null) return;
+            string tag = item.Tag as string;
+            if (tag == "global") _vm.SelectedSlice.SnapToZeroCrossing = null;
+            else if (tag == "on") _vm.SelectedSlice.SnapToZeroCrossing = true;
+            else _vm.SelectedSlice.SnapToZeroCrossing = false;
+            _vm.RecomputeRenderForSlice(_vm.SelectedSlice);
+            UpdateInspector();
+            RefreshLists();
+        }
+
+        private void OnInspectorNormalizeChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressInspectorEvents || _vm.SelectedSlice == null) return;
+            var item = InspectorNormalizeCombo.SelectedItem as ComboBoxItem;
+            if (item == null) return;
+            string tag = item.Tag as string;
+            if (tag == "global") _vm.SelectedSlice.Normalize = null;
+            else if (tag == "on") _vm.SelectedSlice.Normalize = true;
+            else _vm.SelectedSlice.Normalize = false;
+            ExportPreviewLabel.Text = string.Format("{0}.ogg  ({1:F0} ms, {2:F2}x)", _vm.SelectedSlice.Id, _vm.SelectedSlice.RenderDurationMs > 0 ? _vm.SelectedSlice.RenderDurationMs : _vm.SelectedSlice.DurationMs, _vm.SelectedSlice.Gain);
             RefreshLists();
         }
 
@@ -1397,6 +1509,11 @@ namespace DJMaxEditor.Studio.Keyslicer
             else if (e.Key == Key.P)
             {
                 OnPlayDraft(null, null);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                OnPasteClipboard(null, null);
                 e.Handled = true;
             }
         }

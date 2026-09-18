@@ -284,6 +284,76 @@ namespace DJMaxEditor.Studio.Keyslicer
             set { Project.SnapToZeroCrossing = value; MarkDirty(); OnPropertyChanged(); }
         }
 
+        public bool EffectiveZeroCross(KeysoundSlice slice)
+        {
+            if (slice == null) return SnapToZeroCrossing;
+            return slice.SnapToZeroCrossing ?? SnapToZeroCrossing;
+        }
+
+        public bool EffectiveNormalize(KeysoundSlice slice)
+        {
+            if (slice == null) return Project.Export.Normalize;
+            return slice.Normalize ?? Project.Export.Normalize;
+        }
+
+        public void RecomputeRenderForSlice(KeysoundSlice slice)
+        {
+            if (slice == null) return;
+            bool useX = EffectiveZeroCross(slice);
+            if (useX && Waveform != null)
+            {
+                double sN = FindNearestZeroCrossingInternal(slice.StartMs, useX);
+                double eN = FindNearestZeroCrossingInternal(slice.EndMs, useX);
+                if (eN <= sN) eN = sN + 10;
+                // keep within duration
+                if (Waveform != null) { sN = Math.Max(0, Math.Min(sN, Waveform.DurationMs - 10)); eN = Math.Max(sN + 10, Math.Min(eN, Waveform.DurationMs)); }
+                if (Math.Abs(sN - slice.StartMs) > 0.35 || Math.Abs(eN - slice.EndMs) > 0.35)
+                {
+                    slice.RenderStartMs = sN;
+                    slice.RenderEndMs = eN;
+                }
+                else
+                {
+                    slice.RenderStartMs = null;
+                    slice.RenderEndMs = null;
+                }
+            }
+            else
+            {
+                slice.RenderStartMs = null;
+                slice.RenderEndMs = null;
+            }
+        }
+
+        private double FindNearestZeroCrossingInternal(double ms, bool useZero)
+        {
+            if (!useZero || Waveform == null || Waveform.ZoomSamples == null || Waveform.ZoomSamples.Length < 16)
+                return ms;
+            double sr = Waveform.SampleRate > 0 ? Waveform.SampleRate : 44100;
+            int win = (int)(sr * 0.0025);
+            double frac = ms / Math.Max(1, Waveform.DurationMs);
+            int center = (int)(frac * Waveform.ZoomSamples.Length);
+            center = Math.Max(0, Math.Min(Waveform.ZoomSamples.Length - 1, center));
+            int bestIdx = center;
+            double bestDist = double.MaxValue;
+            int lo = Math.Max(1, center - win);
+            int hi = Math.Min(Waveform.ZoomSamples.Length - 1, center + win);
+            for (int i = lo; i < hi; i++)
+            {
+                float a = Waveform.ZoomSamples[i - 1];
+                float b = Waveform.ZoomSamples[i];
+                if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
+                {
+                    double estMs = (i / (double)Waveform.ZoomSamples.Length) * Waveform.DurationMs;
+                    double dist = Math.Abs(estMs - ms);
+                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                }
+            }
+            if (bestDist < 2.6)
+                return (bestIdx / (double)Waveform.ZoomSamples.Length) * Waveform.DurationMs;
+            return ms;
+        }
+
         /// <summary>Called when the open chart changes: sync BPM/offset into the slicer project
         /// without marking it dirty unless the chart's tempo is meaningfully different. Best
         /// default is to follow the chart, because the chart is the source of truth for where
@@ -438,10 +508,8 @@ namespace DJMaxEditor.Studio.Keyslicer
             double s = Math.Min(DraftStartMs, DraftEndMs);
             double e = Math.Max(DraftStartMs, DraftEndMs);
             if (e - s < 10) return null; // too short
-            if (SnapToZeroCrossing) { s = FindNearestZeroCrossing(s); e = FindNearestZeroCrossing(e); if (e <= s) e = s + 10; }
-            // Keep within source duration
+            // Keep within source duration (logical)
             if (Waveform != null) { s = Math.Max(0, Math.Min(s, Waveform.DurationMs - 10)); e = Math.Max(s + 10, Math.Min(e, Waveform.DurationMs)); }
-
             var slice = new KeysoundSlice
             {
                 Id = Project.AllocateId(),
@@ -456,13 +524,16 @@ namespace DJMaxEditor.Studio.Keyslicer
                 Label = label ?? string.Empty,
                 IsConfirmed = true
             };
+            // Non-destructive Zero-X: store nudged render coordinates separately
+            RecomputeRenderForSlice(slice);
+            double effDur = (slice.RenderEndMs ?? slice.EndMs) - (slice.RenderStartMs ?? slice.StartMs);
             Slices.Add(slice);
             PushUndo(new AddSliceUndo(slice));
             MarkDirty();
             SlicesChanged?.Invoke(this, EventArgs.Empty);
             SelectedSlice = slice;
             ClearDraft();
-            Status = "Created " + slice.Id + " " + (e - s).ToString("0.#") + " ms";
+            Status = "Created " + slice.Id + " " + effDur.ToString("0.#") + " ms" + (slice.RenderStartMs.HasValue ? " (Zero-X Δ " + (slice.RenderStartMs.Value - slice.StartMs).ToString("+0.0;-0.0") + "/" + (slice.RenderEndMs.Value - slice.EndMs).ToString("+0.0;-0.0") + " ms)" : "");
             return slice;
         }
 
@@ -482,6 +553,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 Lane = lane,
                 IsConfirmed = true
             };
+            RecomputeRenderForSlice(slice);
             Slices.Add(slice);
             MarkDirty();
             SlicesChanged?.Invoke(this, EventArgs.Empty);
@@ -508,6 +580,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             slice.EndMs = Math.Max(slice.StartMs + 10, Math.Max(newStartMs, newEndMs));
             if (SelectedSource != null && Waveform != null)
                 slice.EndMs = Math.Min(slice.EndMs, Waveform.DurationMs);
+            RecomputeRenderForSlice(slice);
             MarkDirty();
             SlicesChanged?.Invoke(this, EventArgs.Empty);
             OnPropertyChanged(nameof(Slices));
@@ -706,33 +779,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         public double FindNearestZeroCrossing(double ms)
         {
-            if (!SnapToZeroCrossing || Waveform == null || Waveform.ZoomSamples == null || Waveform.ZoomSamples.Length < 16)
-                return ms;
-            // Search in zoomSamples (mono) within +/- 2.5 ms window.
-            double sr = Waveform.SampleRate > 0 ? Waveform.SampleRate : 44100;
-            int win = (int)(sr * 0.0025); // 2.5 ms each side
-            // Approximate sample index for ms: zoomSamples is downsampled but roughly proportional to duration
-            double frac = ms / Math.Max(1, Waveform.DurationMs);
-            int center = (int)(frac * Waveform.ZoomSamples.Length);
-            center = Math.Max(0, Math.Min(Waveform.ZoomSamples.Length - 1, center));
-            int bestIdx = center;
-            double bestDist = double.MaxValue;
-            int lo = Math.Max(1, center - win);
-            int hi = Math.Min(Waveform.ZoomSamples.Length - 1, center + win);
-            for (int i = lo; i < hi; i++)
-            {
-                float a = Waveform.ZoomSamples[i - 1];
-                float b = Waveform.ZoomSamples[i];
-                if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0))
-                {
-                    double estMs = (i / (double)Waveform.ZoomSamples.Length) * Waveform.DurationMs;
-                    double dist = Math.Abs(estMs - ms);
-                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-                }
-            }
-            if (bestDist < 2.6) // found within window
-                return (bestIdx / (double)Waveform.ZoomSamples.Length) * Waveform.DurationMs;
-            return ms;
+            return FindNearestZeroCrossingInternal(ms, SnapToZeroCrossing);
         }
 
         public double ComputeAutoAdvanceMs(KeysoundSlice justMade = null)

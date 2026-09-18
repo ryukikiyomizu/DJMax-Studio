@@ -128,7 +128,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private static void RenderSlice(string sourcePath, KeysoundSlice slice, string outPath, ExportFormat format, bool normalize)
         {
-            // Decode, crop, apply gain+fades, write.
+            // Decode, crop, apply gain+fades, write. Uses render (Zero-X nudged) coords if present.
             IDisposable readerDisp = null;
             ISampleProvider reader;
             try
@@ -141,8 +141,12 @@ namespace DJMaxEditor.Studio.Keyslicer
             {
                 int sampleRate = reader.WaveFormat.SampleRate;
                 int channels = reader.WaveFormat.Channels;
-                double startSec = slice.StartMs / 1000.0;
-                double endSec = slice.EndMs / 1000.0;
+                double effStartMs = slice.EffectiveStartMs;
+                double effEndMs = slice.EffectiveEndMs;
+                // Per-slice normalize override
+                bool effNormalize = slice.Normalize ?? normalize;
+                double startSec = effStartMs / 1000.0;
+                double endSec = effEndMs / 1000.0;
                 double durationSec = Math.Max(0, endSec - startSec);
 
                 if (durationSec <= 0.001)
@@ -196,7 +200,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 fadeInSamples = Math.Min(fadeInSamples, outSamples.Count / 2);
                 fadeOutSamples = Math.Min(fadeOutSamples, outSamples.Count / 2);
 
-                if (normalize)
+                if (effNormalize)
                 {
                     float peak = 0;
                     foreach (float s in outSamples) peak = Math.Max(peak, Math.Abs(s));
@@ -271,13 +275,22 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
-            bool ogg = string.Equals(Path.GetExtension(path), ".ogg", StringComparison.OrdinalIgnoreCase);
-            if (ogg)
+            string ext = Path.GetExtension(path) ?? string.Empty;
+            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase);
+            // Opus inside Ogg: VorbisWaveReader handles .ogg, but .opus may need same path; try Vorbis first for those.
+            if (isVorbisExt)
             {
-                var v = new VorbisWaveReader(path);
-                disposable = v;
-                return v;
+                try
+                {
+                    var v = new VorbisWaveReader(path);
+                    disposable = v;
+                    return v;
+                }
+                catch { /* fall through */ }
             }
+            // Primary: AudioFileReader handles WAV/AIFF/MP3/FLAC/WMA/AAC/M4A and most 24/32-bit PCM via MediaFoundation
             try
             {
                 var a = new AudioFileReader(path);
@@ -286,9 +299,14 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
             catch
             {
-                var v = new VorbisWaveReader(path);
-                disposable = v;
-                return v;
+                // Last resort: try Vorbis again (covers FLAC-as-Ogg edge)
+                try
+                {
+                    var v = new VorbisWaveReader(path);
+                    disposable = v;
+                    return v;
+                }
+                catch (Exception ex) { throw new InvalidOperationException("unsupported audio format for " + path + ": " + ex.Message, ex); }
             }
         }
 

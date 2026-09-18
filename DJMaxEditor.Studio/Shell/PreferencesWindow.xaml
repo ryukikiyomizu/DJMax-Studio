@@ -682,7 +682,7 @@
                             <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
-                                       Text="Only the five the slicer toolbar shows — Free, 1/4, 1/8, 1/16, 1/32. 1/64 and 1/192 are planned for a later update." />
+                                       Text="All seven the slicer toolbar shows — Free, 1/4, 1/8, 1/16, 1/32, 1/64 and 1/192. 1/192 matches iBMSC's 192nd limit; beyond that the ruler still draws ghosts." />
                         </StackPanel>
                     </ScrollViewer>
 

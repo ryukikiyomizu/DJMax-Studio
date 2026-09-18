@@ -486,7 +486,7 @@ namespace DJMaxEditor.Studio.Settings
         internal void Clamp()
         {
             DefaultSlicerMode = StudioSettings.Clamp(DefaultSlicerMode, 0, 2);
-            if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 && DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 && DefaultSnapDenominator != 32)
+            if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 && DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 && DefaultSnapDenominator != 32 && DefaultSnapDenominator != 64 && DefaultSnapDenominator != 192)
                 DefaultSnapDenominator = 16;
         }
 

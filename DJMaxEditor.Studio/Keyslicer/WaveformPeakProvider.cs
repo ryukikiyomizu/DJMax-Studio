@@ -58,33 +58,35 @@ namespace DJMaxEditor.Studio.Keyslicer
                 int srcRate = reader.WaveFormat.SampleRate;
                 int srcCh = reader.WaveFormat.Channels;
 
-                // Resample to 44.1k mono for peak building to bound memory on large sources.
+                // Downmix to mono for peak building — 24/32-bit float is already normalized by NAudio.
                 if (srcCh > 1)
                     reader = new StereoToMonoSampleProvider(reader) { LeftVolume = 0.5f, RightVolume = 0.5f };
-                // Keep original rate; duration calc uses it directly. Downmix only.
 
-                // Read in blocks.
+                reader = BoundReader(reader, readerDisp);
+
+                // Try to estimate total mono samples for streaming tile-cache build (avoids List for >2GB).
+                long estimatedTotal = EstimateTotalMonoSamples(readerDisp, srcRate, srcCh);
+                // If estimate available and file is large, use streaming direct-to-peaks to avoid >2GB List growth.
+                if (estimatedTotal > 8_000_000)
+                {
+                    return BuildStreaming(reader, readerDisp, srcRate, srcCh, widthPixels, estimatedTotal, token);
+                }
+
+                // Small/medium file: keep existing in-memory path (simpler, gives exact ZoomSamples).
                 const int blockSize = 4096;
                 float[] block = new float[blockSize];
-                var samples = new List<float>(1 << 20); // up to ~1M before downsample
-
-                // Bound with file length where possible (see KeysoundDecoder.Bound).
-                reader = BoundReader(reader, readerDisp);
+                var samples = new List<float>(1 << 20);
 
                 while (true)
                 {
                     token.ThrowIfCancellationRequested();
                     int read = reader.Read(block, 0, block.Length);
                     if (read <= 0) break;
-                    // Append, but cap at ~10 minutes at 44.1k mono = 26M floats ~100 MB.
-                    // For hour-long sessions, downsample as we go.
                     for (int i = 0; i < read; i++)
                     {
-                        // Simple decimation for huge files: keep every Nth if growing too large.
                         samples.Add(block[i]);
                         if (samples.Count > 8_000_000)
                         {
-                            // Halve by keeping every 2nd sample.
                             for (int j = 0, k = 0; j < samples.Count; j += 2, k++)
                                 samples[k] = samples[j];
                             samples.RemoveRange(samples.Count / 2, samples.Count - samples.Count / 2);
@@ -94,8 +96,14 @@ namespace DJMaxEditor.Studio.Keyslicer
 
                 long totalMonoSamples = samples.Count;
                 double durationMs = srcRate > 0 ? (totalMonoSamples / (double)srcRate) * 1000.0 : 0;
+                // If we halved, estimate true duration from estimatedTotal if available
+                if (estimatedTotal > 0 && totalMonoSamples < estimatedTotal / 2)
+                {
+                    // We decimated, so duration should reflect original rate
+                    durationMs = srcRate > 0 ? (estimatedTotal / (double)srcRate) * 1000.0 : durationMs;
+                    totalMonoSamples = estimatedTotal;
+                }
 
-                // Build per-pixel peaks.
                 WaveformPeak[] peaks = new WaveformPeak[widthPixels];
                 if (samples.Count == 0)
                 {
@@ -130,7 +138,6 @@ namespace DJMaxEditor.Studio.Keyslicer
                     }
                 }
 
-                // Zoom samples: keep a downsampled copy for detailed view (max ~200k).
                 float[] zoom = samples.ToArray();
                 if (zoom.Length > 200_000)
                 {
@@ -162,14 +169,103 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
         }
 
+        private static WaveformData BuildStreaming(ISampleProvider reader, IDisposable disp, int srcRate, int srcCh, int widthPixels, long estimatedTotal, CancellationToken token)
+        {
+            // Tile-cache streaming: one pass, O(width) memory, supports >2GB (tile = blockSize)
+            var peaks = new WaveformPeak[widthPixels];
+            var mins = new float[widthPixels];
+            var maxs = new float[widthPixels];
+            var sumSq = new double[widthPixels];
+            var counts = new int[widthPixels];
+            for (int i = 0; i < widthPixels; i++) { mins[i] = float.MaxValue; maxs[i] = float.MinValue; }
+
+            // ZoomSamples: collect decimated copy up to 200k via reservoir (every Nth)
+            const int zoomCap = 200_000;
+            var zoomBuf = new float[zoomCap];
+            long zoomWritten = 0;
+            long zoomStride = Math.Max(1, estimatedTotal / zoomCap);
+            if (zoomStride < 1) zoomStride = 1;
+
+            long sampleIdx = 0;
+            const int blockSize = 8192;
+            float[] block = new float[blockSize];
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                int read = reader.Read(block, 0, block.Length);
+                if (read <= 0) break;
+                for (int i = 0; i < read; i++, sampleIdx++)
+                {
+                    float v = block[i];
+                    int px = (int)(sampleIdx * widthPixels / Math.Max(1, estimatedTotal));
+                    if (px < 0) px = 0; if (px >= widthPixels) px = widthPixels - 1;
+                    if (v < mins[px]) mins[px] = v;
+                    if (v > maxs[px]) maxs[px] = v;
+                    sumSq[px] += v * v;
+                    counts[px]++;
+
+                    // Zoom decimation: keep every zoomStride-th
+                    if (sampleIdx % zoomStride == 0 && zoomWritten < zoomCap)
+                        zoomBuf[zoomWritten++] = v;
+                }
+            }
+
+            for (int i = 0; i < widthPixels; i++)
+            {
+                peaks[i] = new WaveformPeak
+                {
+                    Min = mins[i] == float.MaxValue ? 0 : mins[i],
+                    Max = maxs[i] == float.MinValue ? 0 : maxs[i],
+                    Rms = counts[i] > 0 ? (float)Math.Sqrt(sumSq[i] / counts[i]) : 0
+                };
+            }
+            float[] zoom = zoomWritten == zoomCap ? zoomBuf : new ArraySegment<float>(zoomBuf, 0, (int)zoomWritten).ToArray();
+            double durationMs = srcRate > 0 ? (estimatedTotal / (double)srcRate) * 1000.0 : 0;
+            return new WaveformData
+            {
+                Peaks = peaks,
+                SampleRate = srcRate,
+                Channels = srcCh,
+                DurationMs = durationMs,
+                TotalSamples = estimatedTotal,
+                ZoomSamples = zoom
+            };
+        }
+
+        private static long EstimateTotalMonoSamples(IDisposable disp, int srcRate, int srcCh)
+        {
+            try
+            {
+                if (disp is VorbisWaveReader vbr && vbr.TotalTime.Ticks > 0)
+                    return (long)(vbr.TotalTime.TotalSeconds * srcRate);
+                if (disp is AudioFileReader afr)
+                {
+                    // AudioFileReader.Length is bytes of decoded PCM (after MediaFoundation). Use it if available.
+                    if (afr.Length > 0 && afr.WaveFormat.BitsPerSample > 0 && afr.WaveFormat.Channels > 0)
+                    {
+                        long bytesPerSample = afr.WaveFormat.BitsPerSample / 8;
+                        long totalFrames = afr.Length / (bytesPerSample * afr.WaveFormat.Channels);
+                        // Mono estimate: frames == mono samples after downmix
+                        return totalFrames;
+                    }
+                    if (afr.TotalTime.Ticks > 0)
+                        return (long)(afr.TotalTime.TotalSeconds * srcRate);
+                }
+            } catch {}
+            return 0;
+        }
+
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
-            bool looksVorbis = string.Equals(Path.GetExtension(path), ".ogg", StringComparison.OrdinalIgnoreCase);
-            if (looksVorbis)
+            string ext = Path.GetExtension(path) ?? string.Empty;
+            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".flac", StringComparison.OrdinalIgnoreCase);
+            // Opus/Ogg/FLAC: Vorbis reader first (handles Ogg Opus, FLAC via Vorbis path may fail → fallback)
+            if (isVorbisExt)
             {
-                var v = new VorbisWaveReader(path);
-                disposable = v;
-                return v;
+                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch {}
             }
             try
             {
@@ -179,9 +275,8 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
             catch
             {
-                var v = new VorbisWaveReader(path);
-                disposable = v;
-                return v;
+                // Last resort try Vorbis for any mis-detected container
+                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch (Exception ex) { throw new InvalidOperationException("unsupported audio format: " + path + " — " + ex.Message, ex); }
             }
         }
 

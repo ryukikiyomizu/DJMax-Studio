@@ -21,11 +21,26 @@ namespace DJMaxEditor.Studio.Keyslicer
         [JsonIgnore]
         public string ResolvedSourcePath { get; set; } = string.Empty;
 
-        /// <summary>Start of the interval in milliseconds from the source start.</summary>
+        /// <summary>Start of the interval in milliseconds from the source start (logical, as dragged).</summary>
         public double StartMs { get; set; }
 
-        /// <summary>End of the interval in milliseconds.</summary>
+        /// <summary>End of the interval in milliseconds (logical).</summary>
         public double EndMs { get; set; }
+
+        /// <summary>
+        /// Render-time start/end (after Zero-X nudge). Null means render == logical.
+        /// Keeping both lets the chart keep exact musical time while the audio avoids clicks —
+        /// the core of the non-destructive A/B fix for Sayaslicer's >192th warning.
+        /// </summary>
+        public double? RenderStartMs { get; set; }
+
+        public double? RenderEndMs { get; set; }
+
+        /// <summary>Per-slice Zero-X override: null = use project SnapToZeroCrossing, else forced.</summary>
+        public bool? SnapToZeroCrossing { get; set; }
+
+        /// <summary>Per-slice normalize override: null = use project Export.Normalize.</summary>
+        public bool? Normalize { get; set; }
 
         /// <summary>Linear gain (1.0 = unity).</summary>
         public double Gain { get; set; } = 1.0;
@@ -55,6 +70,15 @@ namespace DJMaxEditor.Studio.Keyslicer
         public double DurationMs => Math.Max(0, EndMs - StartMs);
 
         [JsonIgnore]
+        public double RenderDurationMs => Math.Max(0, (RenderEndMs ?? EndMs) - (RenderStartMs ?? StartMs));
+
+        [JsonIgnore]
+        public double EffectiveStartMs => RenderStartMs ?? StartMs;
+
+        [JsonIgnore]
+        public double EffectiveEndMs => RenderEndMs ?? EndMs;
+
+        [JsonIgnore]
         public bool IsValid => !string.IsNullOrEmpty(Id)
                                && !string.IsNullOrEmpty(SourceFile)
                                && EndMs > StartMs
@@ -69,6 +93,10 @@ namespace DJMaxEditor.Studio.Keyslicer
                 ResolvedSourcePath = ResolvedSourcePath,
                 StartMs = StartMs,
                 EndMs = EndMs,
+                RenderStartMs = RenderStartMs,
+                RenderEndMs = RenderEndMs,
+                SnapToZeroCrossing = SnapToZeroCrossing,
+                Normalize = Normalize,
                 Gain = Gain,
                 FadeInMs = FadeInMs,
                 FadeOutMs = FadeOutMs,
