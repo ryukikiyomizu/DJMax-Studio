@@ -171,13 +171,21 @@ namespace DJMaxEditor.Studio.Keyslicer
             // Edge vignette left/right to hint scroll
             if (scroll > 1 && w > 40)
             {
-                var grad = new LinearGradientBrush(Color.FromArgb(60, 0, 0, 0), Colors.Transparent, 0, 1) { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+                var grad = new LinearGradientBrush();
+                grad.StartPoint = new Point(0, 0.5);
+                grad.EndPoint = new Point(1, 0.5);
+                grad.GradientStops.Add(new GradientStop(Color.FromArgb(60, 0, 0, 0), 0));
+                grad.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
                 grad.Freeze();
                 dc.DrawRectangle(grad, null, new Rect(0, 0, 16, h));
             }
             if (scroll + visible < dur - 1 && w > 40)
             {
-                var grad = new LinearGradientBrush(Colors.Transparent, Color.FromArgb(60, 0, 0, 0), 0, 1) { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+                var grad = new LinearGradientBrush();
+                grad.StartPoint = new Point(0, 0.5);
+                grad.EndPoint = new Point(1, 0.5);
+                grad.GradientStops.Add(new GradientStop(Colors.Transparent, 0));
+                grad.GradientStops.Add(new GradientStop(Color.FromArgb(60, 0, 0, 0), 1));
                 grad.Freeze();
                 dc.DrawRectangle(grad, null, new Rect(w - 16, 0, 16, h));
             }

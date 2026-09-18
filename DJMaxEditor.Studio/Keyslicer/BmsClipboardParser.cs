@@ -75,12 +75,13 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
             catch (DJMaxEditor.Files.ChartLoadException ex)
             {
-                // Try as bmson (iBMSC can put bmson-ish JSON on clipboard rarely)
+                // Try as bmson (iBMSC can put bmson-ish JSON on clipboard rarely) — bmson is JSON via byte[] parse
                 if (IsJson(text))
                 {
                     try
                     {
-                        player = DJMaxEditor.Files.bms.BmsonChartParser.Parse(text);
+                        byte[] jsonBytes = System.Text.Encoding.UTF8.GetBytes(text);
+                        player = DJMaxEditor.Files.bms.BmsonChartSerializer.Parse(jsonBytes);
                         res.Warnings.Add("Detected BMSON JSON — parsed as bmson.");
                     }
                     catch (Exception ex2)
