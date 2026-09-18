@@ -722,20 +722,28 @@ jobs:
           }
 
   firecrawl-research:
-    if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: arena/01a0b1fa-djmax-studio
+      - name: Check secret
+        run: |
+          if [ -z "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
+            echo "FIRECRAWL_API_KEY not set, skipping"
+            exit 0
+          fi
       - name: Setup Node 22
+        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install deps
+        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
         run: npm install firecrawl zod
       - name: Run Firecrawl agent (spark-2)
+        if: ${{ secrets.FIRECRAWL_API_KEY != '' }}
         env:
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
         run: |
@@ -744,7 +752,7 @@ jobs:
           ls -lh firecrawl-result.json docs/keyslicer-research-firecrawl.json || true
           head -300 firecrawl-result.json || true
       - name: Upload research artifact
-        if: always()
+        if: ${{ always() && secrets.FIRECRAWL_API_KEY != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: keyslicer-research-firecrawl
@@ -754,7 +762,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
       - name: Commit result to branch
-        if: success()
+        if: ${{ success() && secrets.FIRECRAWL_API_KEY != '' }}
         run: |
           git config user.name "arena-ai-coding-agent[bot]"
           git config user.email "bot@users.noreply.github.com"
