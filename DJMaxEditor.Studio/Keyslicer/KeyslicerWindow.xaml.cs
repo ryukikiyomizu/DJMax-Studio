@@ -38,7 +38,7 @@ namespace DJMaxEditor.Studio.Keyslicer
         private bool _ready;
         private bool _syncingWaveScroll;
         private WaveOutEvent _previewOut;
-        private AudioFileReader _previewReader;
+        private WaveStream _previewReader;
         private KeysoundSlice _bandlabClipboardSlice;
         private bool _bandlabClipboardIsCut;
         private int _lastSnapBeforeFree = 16;
@@ -1163,7 +1163,9 @@ namespace DJMaxEditor.Studio.Keyslicer
         // ----------------------------------------------------------------
         private void OnPlaySource(object sender, RoutedEventArgs e)
         {
-            _ = AuditionAtAsync(_vm.PlayheadMs, 2000);
+            double total = _vm.Waveform?.DurationMs ?? _vm.SelectedSource?.DurationMs ?? 0;
+            double remain = total > 0 ? Math.Max(500, total - _vm.PlayheadMs) : 5000;
+            _ = AuditionAtAsync(_vm.PlayheadMs, remain);
         }
 
         private void OnPlayDraft(object sender, RoutedEventArgs e)
@@ -1195,77 +1197,137 @@ namespace DJMaxEditor.Studio.Keyslicer
             _vm.IsPlayingSource = false;
         }
 
+        private WaveStream CreatePlaybackReader(string path)
+        {
+            // Try Vorbis for .ogg/.oga/.opus first, then AudioFileReader (handles wav/mp3/flac/aiff/m4a), fallback to Vorbis again
+            string ext = System.IO.Path.GetExtension(path) ?? string.Empty;
+            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase);
+            if (isVorbisExt)
+            {
+                try { return new NAudio.Vorbis.VorbisWaveReader(path); } catch { }
+            }
+            try { return new AudioFileReader(path); } catch { }
+            try { return new NAudio.Vorbis.VorbisWaveReader(path); } catch (Exception ex) { throw new InvalidOperationException("unsupported audio format for " + path + ": " + ex.Message, ex); }
+        }
+
         private async Task AuditionAtAsync(double startMs, double previewMs)
         {
-            if (_vm.SelectedSource == null) return;
+            if (_vm.SelectedSource == null)
+            {
+                StatusLabel.Text = "No source loaded — import audio first";
+                StatusBarText.Text = StatusLabel.Text;
+                _vm.IsPlayingSource = false;
+                return;
+            }
             // Stop any previous preview first so Space toggles and overlapping plays don't stack
             try { _previewOut?.Stop(); } catch {}
             try { _previewOut?.Dispose(); } catch {}
             try { _previewReader?.Dispose(); } catch {}
             _previewOut = null; _previewReader = null;
             _vm.IsPlayingSource = true;
+
+            string path = _vm.SelectedSource.ResolvedPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                path = _vm.SelectedSource.FilePath;
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    StatusLabel.Text = "Source file not found: " + (_vm.SelectedSource.FileName ?? path);
+                    StatusBarText.Text = StatusLabel.Text;
+                    _vm.IsPlayingSource = false;
+                    return;
+                }
+            }
+            if (previewMs <= 0) previewMs = 800;
+            // clamp startMs
+            double totalMs = _vm.Waveform?.DurationMs ?? 0;
+            if (totalMs > 0) startMs = Math.Max(0, Math.Min(startMs, totalMs - 1));
+            else startMs = Math.Max(0, startMs);
+
+            StatusLabel.Text = string.Format("Playing {0} ms @ {1:0} ms ({2:0} ms)", _vm.SelectedSource.FileName, startMs, previewMs);
+            StatusBarText.Text = StatusLabel.Text;
+
             try
             {
-                string path = _vm.SelectedSource.ResolvedPath;
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) { _vm.IsPlayingSource = false; return; }
-                var slice = new KeysoundSlice
-                {
-                    SourceFile = path,
-                    ResolvedSourcePath = path,
-                    StartMs = startMs,
-                    EndMs = startMs + previewMs,
-                    Gain = 1.0,
-                    FadeInMs = 2,
-                    FadeOutMs = 10
-                };
-                string tmpDir = Path.Combine(Path.GetTempPath(), "djmax_slicer_audition_" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(tmpDir);
+                // Open reader on background thread to avoid UI hitch on large mp3
+                WaveStream reader = null;
+                string openError = null;
                 await Task.Run(() =>
+                {
+                    try { reader = CreatePlaybackReader(path); }
+                    catch (Exception ex) { openError = ex.Message; }
+                });
+                if (reader == null)
+                {
+                    StatusLabel.Text = "Play failed: " + (openError ?? "cannot open source");
+                    StatusBarText.Text = StatusLabel.Text;
+                    _vm.IsPlayingSource = false;
+                    return;
+                }
+
+                // Seek to startMs on UI thread (WaveStream.CurrentTime is thread-affine for some readers)
+                try
+                {
+                    if (startMs > 1)
+                    {
+                        try { reader.CurrentTime = TimeSpan.FromMilliseconds(startMs); } catch { }
+                    }
+                } catch { }
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     try
                     {
-                        var exp = SliceExporter.Export(new[] { slice }, tmpDir, SliceExporter.ExportFormat.Wav, false, null, false);
-                        string wav = exp.Files.FirstOrDefault()?.FullPath;
-                        if (!string.IsNullOrEmpty(wav) && File.Exists(wav))
+                        var wo = new WaveOutEvent();
+                        try { wo.DeviceNumber = -1; } catch { }
+                        wo.Init(reader);
+                        _previewReader = reader;
+                        _previewOut = wo;
+                        bool stopped = false;
+                        wo.PlaybackStopped += (s, e) =>
                         {
-                            Application.Current?.Dispatcher?.Invoke(() =>
-                            {
-                                try
-                                {
-                                    var reader = new AudioFileReader(wav);
-                                    var wo = new WaveOutEvent();
-                                    wo.Init(reader);
-                                    // keep references so Space can stop
-                                    _previewReader = reader;
-                                    _previewOut = wo;
-                                    wo.PlaybackStopped += (s, e) =>
-                                    {
-                                        _vm.IsPlayingSource = false;
-                                        try { wo.Dispose(); } catch {}
-                                        try { reader.Dispose(); } catch {}
-                                        if (_previewOut == wo) _previewOut = null;
-                                        if (_previewReader == reader) _previewReader = null;
-                                        try { Directory.Delete(tmpDir, true); } catch {}
-                                    };
-                                    wo.Play();
-                                    Task.Delay((int)Math.Min(5000, previewMs + 400)).ContinueWith(_ =>
-                                    {
-                                        try { if (wo.PlaybackState == PlaybackState.Playing) wo.Stop(); } catch {}
-                                    });
-                                }
-                                catch { _vm.IsPlayingSource = false; try { Directory.Delete(tmpDir, true); } catch {} }
-                            });
-                        }
-                        else
-                        {
+                            if (stopped) return;
+                            stopped = true;
                             _vm.IsPlayingSource = false;
-                            try { Directory.Delete(tmpDir, true); } catch {}
-                        }
+                            try { wo.Dispose(); } catch {}
+                            try { reader.Dispose(); } catch {}
+                            if (_previewOut == wo) _previewOut = null;
+                            if (_previewReader == reader) _previewReader = null;
+                            StatusLabel.Text = "Stopped";
+                            StatusBarText.Text = StatusLabel.Text;
+                            if (e != null && e.Exception != null)
+                            {
+                                StatusLabel.Text = "Play error: " + e.Exception.Message;
+                                StatusBarText.Text = StatusLabel.Text;
+                            }
+                        };
+                        wo.Play();
+                        // Auto-stop after previewMs + small tail, unless previewMs is very long (full song)
+                        int stopMs = (int)Math.Min(120000, previewMs + 300);
+                        if (previewMs > 60000) stopMs = (int)Math.Min(300000, previewMs + 500);
+                        Task.Delay(stopMs).ContinueWith(_ =>
+                        {
+                            try { Application.Current?.Dispatcher?.Invoke(() => { try { if (wo.PlaybackState == PlaybackState.Playing) wo.Stop(); } catch { } }); } catch { }
+                        });
                     }
-                    catch { _vm.IsPlayingSource = false; try { Directory.Delete(tmpDir, true); } catch {} }
+                    catch (Exception ex)
+                    {
+                        _vm.IsPlayingSource = false;
+                        try { reader.Dispose(); } catch {}
+                        _previewReader = null;
+                        StatusLabel.Text = "Play failed: " + ex.Message;
+                        StatusBarText.Text = StatusLabel.Text;
+                    }
                 });
             }
-            catch { _vm.IsPlayingSource = false; }
+            catch (Exception ex)
+            {
+                _vm.IsPlayingSource = false;
+                StatusLabel.Text = "Play failed: " + ex.Message;
+                StatusBarText.Text = StatusLabel.Text;
+            }
         }
 
         private async Task AuditionSliceAsync(KeysoundSlice slice)
@@ -1859,7 +1921,12 @@ namespace DJMaxEditor.Studio.Keyslicer
                         if (_vm.SelectedSource == null) { StatusLabel.Text = "No source loaded — import audio first (Space)"; StatusBarText.Text = StatusLabel.Text; }
                         else if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs));
                         else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice);
-                        else _ = AuditionAtAsync(_vm.PlayheadMs, 800);
+                        else
+                        {
+                            double total = _vm.Waveform?.DurationMs ?? _vm.SelectedSource?.DurationMs ?? 0;
+                            double remain = total > 0 ? Math.Max(500, total - _vm.PlayheadMs) : 5000;
+                            _ = AuditionAtAsync(_vm.PlayheadMs, remain);
+                        }
                     }
                     e.Handled = true; return;
                 }
