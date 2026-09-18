@@ -86,6 +86,7 @@ namespace DJMaxEditor.Studio.Keyslicer
             Loaded += OnLoaded;
             Closing += OnClosing;
             PreviewKeyDown += OnPreviewKeyDown;
+            AddHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDown), true);
         }
 
         public void AttachChartContext(EditorDocumentContext context)
@@ -1716,6 +1717,7 @@ namespace DJMaxEditor.Studio.Keyslicer
         // ----------------------------------------------------------------
         private void OnPreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Handled) return;
             bool isTextInput = Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox || Keyboard.FocusedElement is RichTextBox;
             bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
             bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
@@ -1844,14 +1846,18 @@ namespace DJMaxEditor.Studio.Keyslicer
                 }
                 else
                 {
+                    // Debug: show Space was received (helps user see handler fired)
+                    // StatusLabel.Text = "Space pressed"; // uncomment for debug
                     bool isPlaying = (_previewOut != null && _previewOut.PlaybackState == PlaybackState.Playing) || _vm.IsPlayingSource;
                     if (isPlaying)
                     {
+                        StatusLabel.Text = "Stop (Space)"; StatusBarText.Text = StatusLabel.Text;
                         OnStopSource(null, null);
                     }
                     else
                     {
-                        if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs));
+                        if (_vm.SelectedSource == null) { StatusLabel.Text = "No source loaded — import audio first (Space)"; StatusBarText.Text = StatusLabel.Text; }
+                        else if (_vm.HasDraft) _ = AuditionAtAsync(Math.Min(_vm.DraftStartMs, _vm.DraftEndMs), Math.Abs(_vm.DraftEndMs - _vm.DraftStartMs));
                         else if (_vm.SelectedSlice != null) _ = AuditionSliceAsync(_vm.SelectedSlice);
                         else _ = AuditionAtAsync(_vm.PlayheadMs, 800);
                     }
