@@ -17,9 +17,9 @@
     <Window.Resources>
         <!-- Slicer: Large variant for top bar where user said icons still small; Palette is 18 globally, Large is 20 for hero actions only. -->
         <Style x:Key="Icon.Glyph.Large" TargetType="Path" BasedOn="{StaticResource Icon.Glyph}">
-            <Setter Property="Width" Value="20" />
-            <Setter Property="Height" Value="20" />
-            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="StrokeThickness" Value="1.8" />
         </Style>
         <Style x:Key="Slicer.Header" TargetType="TextBlock">
             <Setter Property="FontSize" Value="10" />
@@ -28,8 +28,15 @@
             <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
         <Style x:Key="Slicer.Button" TargetType="Button" BasedOn="{StaticResource Button.Tool}">
-            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Padding" Value="4,2" />
             <Setter Property="Margin" Value="2,0" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
+        </Style>
+        <Style x:Key="Slicer.IconButton" TargetType="Button" BasedOn="{StaticResource Slicer.Button}">
+            <Setter Property="Padding" Value="3,1" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
         </Style>
     </Window.Resources>
 
