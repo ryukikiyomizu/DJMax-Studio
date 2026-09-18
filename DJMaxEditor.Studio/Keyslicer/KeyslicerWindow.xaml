@@ -67,10 +67,10 @@
                         <TextBlock Text="Save As..." VerticalAlignment="Center" />
                     </Button>
                     <Separator Margin="8,0" />
-                    <Button Style="{StaticResource Slicer.Button}" Click="OnExportSlices" ToolTip="Export virtual slices to audio files">
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnExportSlices" ToolTip="Finalize — render virtual slices to WAV/OGG and optionally a .tech (wizard with budget check)">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Save}" Margin="0,0,4,0" />
-                            <TextBlock Text="Export Wavs" VerticalAlignment="Center" />
+                            <TextBlock Text="Finalize..." VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Slicer.Button}" Click="OnExportTech" ToolTip="Export a Techmania .tech chart from the placed notes">

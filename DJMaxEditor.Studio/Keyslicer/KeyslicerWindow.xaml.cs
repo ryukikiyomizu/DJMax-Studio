@@ -1023,24 +1023,37 @@ namespace DJMaxEditor.Studio.Keyslicer
         // ----------------------------------------------------------------
         private void OnExportSlices(object sender, RoutedEventArgs e)
         {
+            // Finalize wizard — the only place virtual slices become files.
             if (_vm.Slices.Count == 0)
             {
-                MessageBox.Show(this, "No slices to export.", "Export", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, "No slices to export.\n\nDrag on the waveform to make a yellow draft, then D/F/J/K or Enter to make slices.", "Finalize", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var dlg = new System.Windows.Forms.FolderBrowserDialog
+            try
             {
-                Description = "Choose output folder for exported slices",
-                ShowNewFolderButton = true
-            };
-            if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-            bool normalize = _vm.Project.Export.Normalize;
-            var result = SliceExporter.Export(_vm.Slices, dlg.SelectedPath, SliceExporter.ExportFormat.Wav, false, null, normalize);
-            MessageBox.Show(this,
-                string.Format("Exported {0} slice(s) to:\n{1}{2}", result.Files.Count(f => f.FullPath != null), dlg.SelectedPath, normalize ? "\n(normalized)" : string.Empty),
-                "Export", MessageBoxButton.OK, MessageBoxImage.Information);
-            StatusLabel.Text = "Exported " + result.Files.Count(f => f.FullPath != null) + " file(s)";
-            StatusBarText.Text = StatusLabel.Text;
+                string suggested = null;
+                try
+                {
+                    if (!string.IsNullOrEmpty(_vm.ProjectPath))
+                        suggested = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_vm.ProjectPath) ?? ".", (_vm.Project.Title ?? "slices") + "_finalized");
+                    else if (!string.IsNullOrEmpty(_vm.Project.Title))
+                        suggested = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), (_vm.Project.Title ?? "slices") + "_finalized");
+                } catch {}
+                var wiz = new KeyslicerFinalizeWindow(_vm, suggested) { Owner = this };
+                bool? ok = wiz.ShowDialog();
+                if (ok == true)
+                {
+                    RefreshLists();
+                    UpdateModeButtons();
+                    UpdateBudget();
+                    StatusLabel.Text = "Finalized " + _vm.Slices.Count + " slice(s)";
+                    StatusBarText.Text = StatusLabel.Text;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Finalize failed:\n" + ex.Message, "Finalize", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void OnExportTech(object sender, RoutedEventArgs e)
