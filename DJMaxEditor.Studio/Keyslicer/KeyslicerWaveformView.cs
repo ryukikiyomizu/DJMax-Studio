@@ -709,27 +709,28 @@ namespace DJMaxEditor.Studio.Keyslicer
             }
         }
 
-        protected override void OnMouseDoubleClick(MouseButtonEventArgs e)
+        protected override void OnMouseDown(MouseButtonEventArgs e)
         {
-            base.OnMouseDoubleClick(e);
-            if (_viewModel == null) return;
-            Point pt = e.GetPosition(this);
-            var hit = HitTestSlice(pt);
-            if (hit != null)
+            base.OnMouseDown(e);
+            if (e.ClickCount == 2 && e.ChangedButton == MouseButton.Left)
             {
-                // Audition slice on double-click (request playback).
-                PlayheadSeekRequested?.Invoke(this, (hit.StartMs + hit.EndMs) * 0.5);
-                _viewModel.PlayheadMs = (hit.StartMs + hit.EndMs) * 0.5;
-                SliceClicked?.Invoke(this, hit);
-                e.Handled = true;
-            }
-            else
-            {
-                // Seek playhead.
-                double ms = XToMs(pt.X);
-                _viewModel.PlayheadMs = ms;
-                PlayheadSeekRequested?.Invoke(this, ms);
-                e.Handled = true;
+                if (_viewModel == null) return;
+                Point pt = e.GetPosition(this);
+                var hit = HitTestSlice(pt);
+                if (hit != null)
+                {
+                    PlayheadSeekRequested?.Invoke(this, (hit.StartMs + hit.EndMs) * 0.5);
+                    _viewModel.PlayheadMs = (hit.StartMs + hit.EndMs) * 0.5;
+                    SliceClicked?.Invoke(this, hit);
+                    e.Handled = true;
+                }
+                else
+                {
+                    double ms = XToMs(pt.X);
+                    _viewModel.PlayheadMs = ms;
+                    PlayheadSeekRequested?.Invoke(this, ms);
+                    e.Handled = true;
+                }
             }
         }
 
