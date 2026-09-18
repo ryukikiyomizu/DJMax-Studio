@@ -151,7 +151,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 var settings = settingsStore.Load();
                 int latency = settings?.Audio?.OutputLatencyMs ?? 60;
                 _auditionOutput = new NAudioDeviceOutput(latency);
-                _auditionPlayer = new NAudioKeysoundPlayer(_auditionOutput, 512 * 1024 * 1024L);
+                _auditionPlayer = new NAudioKeysoundPlayer(_auditionOutput, true, 512L * 1024L * 1024L);
             }
             catch
             {
@@ -1053,7 +1053,10 @@ namespace DJMaxEditor.Studio.Keyslicer
                 track.AddEvent(evt);
                 added++;
             }
-            _chartContext.UndoManager.Clear(); // simplest: clear undo since we added directly; proper Undo action would be better.
+            // We mutated the model directly; the chart's UndoManager already reflects that
+            // the chart is now dirty. The simplest shelf-correct behaviour is to leave
+            // the undo history alone — a proper UndoRedoAction that wraps the injected
+            // notes can be added later without breaking the build.
             MessageBox.Show(this,
                 string.Format("Sent {0} note(s) into the open chart.\n\nRemember to Export WAVs into the same folder as the chart so the keysounds play.", added),
                 "Send to Editor", MessageBoxButton.OK, MessageBoxImage.Information);
