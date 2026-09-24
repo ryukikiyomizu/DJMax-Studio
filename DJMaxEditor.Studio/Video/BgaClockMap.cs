@@ -183,12 +183,14 @@ namespace DJMaxEditor.Studio.Video
             _ticksPerMeasure = 192 * EventData.VirtualTickSize;
             _videoStartVirtualTick = 0;
             _videoStartMs = 0.0;
+            Offset = TimeSpan.Zero;
         }
 
         /// <summary>
         /// Wall time of <paramref name="virtualTick"/> in the video's own clock: measured from
         /// <see cref="VideoStartVirtualTick"/>, and including <see cref="Offset"/>. Negative before
-        /// the chart's start marker, or when a negative offset is set; the source clamps.
+        /// the chart's start marker, or when a negative offset is set; the preview treats that as
+        /// "no frame yet" and only asks the decoder once the mapped time reaches zero.
         /// </summary>
         public TimeSpan TimeForVirtualTick(int virtualTick)
         {

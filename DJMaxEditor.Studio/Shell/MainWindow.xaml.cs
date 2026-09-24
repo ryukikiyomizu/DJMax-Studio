@@ -1100,6 +1100,7 @@ namespace DJMaxEditor.Studio.Shell
             // deliberately left attached: swapping charts in the same folder is the common case, and
             // re-picking the same file every time would be tedious.
             _bgaClock.Load(model);
+            _bgaClock.Offset = BgaOffsetFor(model);
             SyncBga();
             DiscoverBga(path);
             long tBga = adopt.ElapsedMilliseconds;
@@ -1382,6 +1383,21 @@ namespace DJMaxEditor.Studio.Shell
                 }
             }
             return notes;
+        }
+
+        /// <summary>
+        /// Extra offset the source format asks the BGA to carry, on top of the chart's own start
+        /// marker. TECHMANIA stores it in seconds beside the BGA filename; every other supported
+        /// format currently carries no such field.
+        /// </summary>
+        private static TimeSpan BgaOffsetFor(PlayerData model)
+        {
+            TechMetadata tech = model == null ? null : model.TechMetadata;
+            if (tech == null || double.IsNaN(tech.BgaOffset) || double.IsInfinity(tech.BgaOffset))
+            {
+                return TimeSpan.Zero;
+            }
+            return TimeSpan.FromSeconds(tech.BgaOffset);
         }
 
         // ===================================================================================
