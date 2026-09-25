@@ -183,6 +183,19 @@ namespace DJMaxEditor.Studio.Shell
         private double _lastFrameMilliseconds;
 
         /// <summary>
+        /// True while a scrub-triggered BGA refresh has been queued onto the dispatcher.
+        ///
+        /// The decoder is precise but not free, and wheel-scrubbing can produce a burst of seek
+        /// requests faster than the user can see distinct frames. Coalescing those requests keeps
+        /// the timeline responsive: input moves the caret first and the BGA catches up to the most
+        /// recent tick once the dispatcher gets a moment.
+        /// </summary>
+        private bool _bgaSyncQueued;
+
+        /// <summary>The most recent chart-time position a queued BGA refresh should show.</summary>
+        private TimeSpan _queuedBgaPosition = TimeSpan.Zero;
+
+        /// <summary>
         /// False until the constructor has finished.
         ///
         /// Slider and ComboBox raise ValueChanged/SelectionChanged *during* XAML parsing - setting
@@ -1101,7 +1114,7 @@ namespace DJMaxEditor.Studio.Shell
             // re-picking the same file every time would be tedious.
             _bgaClock.Load(model);
             _bgaClock.Offset = BgaOffsetFor(model);
-            SyncBga();
+            RequestBgaSync();
             DiscoverBga(path);
             long tBga = adopt.ElapsedMilliseconds;
 
@@ -1787,7 +1800,7 @@ namespace DJMaxEditor.Studio.Shell
                 Play(e.VirtualTick / EventData.VirtualTickSize);
             }
             UpdateTimeReadout();
-            SyncBga();
+            RequestBgaSync();
             if (_activePlayfield != null)
             {
                 _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
@@ -2905,6 +2918,10 @@ namespace DJMaxEditor.Studio.Shell
             }
 
             BgaPanel.Visibility = BgaToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            if (BgaPanel.Visibility == Visibility.Visible)
+            {
+                RequestBgaSync();
+            }
         }
 
         private void OnTogglePlayfield(object sender, RoutedEventArgs e)
@@ -3377,7 +3394,7 @@ namespace DJMaxEditor.Studio.Shell
 
             // Show the frame under the caret straight away, so loading a video is not a black
             // rectangle until you press play.
-            SyncBga();
+            RequestBgaSync();
         }
 
         /// <summary>
@@ -3427,16 +3444,52 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// Schedules a BGA refresh from the current playhead position, coalescing repeated requests.
+        ///
+        /// Manual scrubbing can emit wheel notches faster than the user can see unique frames. The
+        /// timeline must stay responsive under that burst, so the expensive part - decoding the
+        /// preview frame - is queued once and always uses the most recent requested position.
+        /// Playback does not go through this path: the render pump already runs at frame cadence and
+        /// asks for one BGA sync per drawn frame directly.
+        /// </summary>
+        private void RequestBgaSync()
+        {
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            _queuedBgaPosition = _bgaClock.TimeForVirtualTick(_viewModel.PlayheadVirtualTick);
+            if (_bgaSyncQueued)
+            {
+                return;
+            }
+
+            _bgaSyncQueued = true;
+            Dispatcher.BeginInvoke(new Action(FlushBgaSync), DispatcherPriority.Background);
+        }
+
+        private void FlushBgaSync()
+        {
+            _bgaSyncQueued = false;
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            _bga.Seek(_queuedBgaPosition);
+        }
+
+        /// <summary>
         /// Puts the frame belonging to the current playhead tick on screen.
         ///
-        /// Called from the playback pump and after every seek. Tick to time goes through
-        /// <see cref="BgaClockMap"/> rather than the sequencer's own accumulated millisecond count,
-        /// because that count only means anything while a take is running - scrubbing a stopped
-        /// chart has to map the tick directly.
+        /// Called from the playback pump. Tick to time goes through <see cref="BgaClockMap"/>
+        /// rather than the sequencer's own accumulated millisecond count, because that count only
+        /// means anything while a take is running.
         /// </summary>
         private void SyncBga()
         {
-            if (_bga.Source == null || !_bga.Source.IsOpen)
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
             {
                 return;
             }

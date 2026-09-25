@@ -115,6 +115,11 @@ namespace DJMaxEditor.Studio.Video
         /// <c>&lt;song&gt;_pre.bik</c>. Probing the folder name before the chart stem is what makes
         /// opening any of a song's four patterns find the one preview they share.
         /// </para>
+        /// <para>
+        /// When none of the conventional names exists, a folder containing exactly one supported
+        /// video still counts as self-describing and that lone file is attached. This is the common
+        /// manual setup for a .pt chart copied out with its BGA beside it under an arbitrary name.
+        /// </para>
         /// <para>Returns null when there is nothing to attach, which is the ordinary case.</para>
         /// </summary>
         internal static string FindForChart(string chartPath)
@@ -175,7 +180,44 @@ namespace DJMaxEditor.Studio.Video
                 }
             }
 
-            return null;
+            // Final fallback: one video file in the chart's folder is unambiguous even if it is
+            // not named after the song. More than one is not, so that case still returns null
+            // rather than guessing wrong.
+            try
+            {
+                string lone = null;
+                foreach (string file in Directory.EnumerateFiles(folder))
+                {
+                    string extension = Path.GetExtension(file);
+                    bool supported = false;
+                    for (int i = 0; i < DiscoveryExtensions.Length; i++)
+                    {
+                        if (string.Equals(extension, DiscoveryExtensions[i], StringComparison.OrdinalIgnoreCase))
+                        {
+                            supported = true;
+                            break;
+                        }
+                    }
+
+                    if (!supported)
+                    {
+                        continue;
+                    }
+
+                    if (lone != null)
+                    {
+                        return null;
+                    }
+
+                    lone = file;
+                }
+
+                return lone;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>
