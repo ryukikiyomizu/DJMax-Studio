@@ -134,6 +134,9 @@ namespace DJMaxEditor.Studio.Design
         /// <summary>Status bar, matching ptSequencer's SEL/GRID/TOT/time readout row.</summary>
         public const double StatusBarHeight = 24;
 
+        /// <summary>Panel section headers inside the docks.</summary>
+        public const double PanelHeaderHeight = 24;
+
         /// <summary>Left dock: track preset, view options, sample list.</summary>
         public const double LeftDockWidth = 260;
         public const double LeftDockMinWidth = 200;
@@ -156,8 +159,6 @@ namespace DJMaxEditor.Studio.Design
 
         /// <summary>Splitter grab width. 4 is the smallest that is comfortably hittable.</summary>
         public const double SplitterSize = 4;
-
-        public const double PanelHeaderHeight = 26;
         public const double CornerRadius = 3;
     }
 }

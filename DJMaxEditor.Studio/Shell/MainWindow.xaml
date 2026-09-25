@@ -280,7 +280,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- View Options: ptSequencer's own sliders, same intent -->
-                    <StackPanel Grid.Row="0" Margin="10,8,10,10">
+                    <StackPanel Grid.Row="0" Margin="8,6,8,8">
                         <TextBlock Text="VIEW OPTIONS" Style="{StaticResource Text.Section}" />
 
                         <Grid Margin="0,4,0,0">
@@ -337,7 +337,7 @@
                     <StackPanel Grid.Row="1" x:Name="NotePalettePanel" Margin="0,0,0,0"
                                 Visibility="Collapsed">
                         <Border Height="1" Background="{StaticResource Brush.Edge}" />
-                        <StackPanel Margin="10,8,10,10">
+                        <StackPanel Margin="8,6,8,8">
                             <TextBlock Text="NOTE KIND" Style="{StaticResource Text.Section}" />
                         <UniformGrid x:Name="NotePaletteGrid" Columns="2" Margin="0,4,0,0">
                             <!-- Each button wears the same arcade frame the timeline draws for the
@@ -428,7 +428,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" Margin="10,8,10,4">
+                        <Grid Grid.Row="0" Margin="8,6,8,2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -438,7 +438,7 @@
                                        Style="{StaticResource Text.Readout}"
                                        Foreground="{StaticResource Brush.TextMuted}" />
                         </Grid>
-                        <ListBox Grid.Row="1" x:Name="SampleList" Margin="4,0,4,4"
+                        <ListBox Grid.Row="1" x:Name="SampleList" Margin="2,0,2,2"
                                  Background="Transparent" BorderThickness="0"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  VirtualizingPanel.IsVirtualizing="True"
@@ -542,7 +542,7 @@
                          just moves BgaHost.Height and persists the answer. -->
                     <Grid x:Name="BgaPanel" Grid.Row="0" Visibility="Collapsed">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="24" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="5" />
                         </Grid.RowDefinitions>
@@ -556,17 +556,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
-                                      Data="{StaticResource Icon.Film}" Margin="8,0,6,0" />
+                                      Data="{StaticResource Icon.Film}" Margin="6,0,4,0" />
                                 <TextBlock Grid.Column="1" Text="BGA" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="2" x:Name="BgaStatus" Text="no video loaded"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextDisabled}"
-                                           TextTrimming="CharacterEllipsis" Margin="10,0,4,0" />
+                                           TextTrimming="CharacterEllipsis" Margin="8,0,4,0" />
                                 <Button Grid.Column="3" Style="{StaticResource Button.Tool}"
-                                        Width="24" Height="22" Click="OnLoadBga"
+                                        Width="22" Height="20" Click="OnLoadBga"
                                         ToolTip="Load a BGA video for this chart">
-                                    <Path Style="{StaticResource Icon.Glyph}" Width="13" Height="13"
+                                    <Path Style="{StaticResource Icon.Glyph}" Width="12" Height="12"
                                           Data="{StaticResource Icon.FolderOpen}" />
                                 </Button>
                             </Grid>
@@ -604,7 +604,7 @@
                          without this. It appears only for TECHNIKA charts. -->
                     <Grid x:Name="PlayfieldPanel" Grid.Row="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="24" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -617,13 +617,13 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
-                                      Data="{StaticResource Icon.Rows3}" Margin="8,0,6,0" />
+                                      Data="{StaticResource Icon.Rows3}" Margin="6,0,4,0" />
                                 <TextBlock Grid.Column="1" Text="PLAYFIELD" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="2" x:Name="PlayfieldStatus" Text="no chart loaded"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextDisabled}"
-                                           TextTrimming="CharacterEllipsis" Margin="10,0,8,0" />
+                                           TextTrimming="CharacterEllipsis" Margin="8,0,6,0" />
                             </Grid>
                         </Border>
                         <!-- TECHNIKA-only effector strip. The arcade offers these on the pre-song
@@ -690,14 +690,14 @@
                     <!-- Inspector -->
                     <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="24" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="{StaticResource Brush.Raised}"
                                 BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}"
-                                      Margin="8,0,6,0" />
+                                      Margin="6,0,4,0" />
                                 <TextBlock Text="INSPECTOR" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                             </StackPanel>
@@ -705,7 +705,7 @@
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="10,10,10,10">
+                            <StackPanel Margin="8,8,8,8">
                                 <TextBlock x:Name="InspectorSelection" Text="Nothing selected"
                                            Foreground="{StaticResource Brush.TextMuted}"
                                            TextWrapping="Wrap" />
@@ -714,7 +714,7 @@
                                      AdjustSelectionVolume with undo grouping, so this is a slider
                                      over an existing edit, not a new feature in the model. -->
                                 <TextBlock Text="NOTE VOLUME" Style="{StaticResource Text.Section}"
-                                           Margin="0,16,0,2" />
+                                           Margin="0,14,0,2" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -728,13 +728,13 @@
                                                VerticalAlignment="Center" Margin="8,0,0,0" />
                                 </Grid>
 
-                                <TextBlock Text="CHART" Style="{StaticResource Text.Section}" Margin="0,18,0,2" />
+                                <TextBlock Text="CHART" Style="{StaticResource Text.Section}" Margin="0,16,0,2" />
                                 <TextBlock x:Name="InspectorChart" Text="--"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            TextWrapping="Wrap" />
 
-                                <TextBlock Text="LANE" Style="{StaticResource Text.Section}" Margin="0,18,0,2" />
+                                <TextBlock Text="LANE" Style="{StaticResource Text.Section}" Margin="0,16,0,2" />
                                 <TextBlock x:Name="InspectorLane" Text="--"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextSecondary}"
@@ -749,7 +749,7 @@
                     <Border x:Name="PerfReadoutPanel" Grid.Row="3"
                             Background="{StaticResource Brush.Raised}"
                             BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0"
-                            Padding="10,5">
+                            Padding="8,4">
                         <TextBlock x:Name="PerfReadout" Text="idle"
                                    Style="{StaticResource Text.Readout}"
                                    Foreground="{StaticResource Brush.TextMuted}" />
@@ -762,7 +762,7 @@
                     BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0">
                 <!-- ptSequencer's status row reads "SEL:0 GRID:0 | TOT:0 | 0:0.0 / 0.0 sec".
                      Same fields, same order, so a ptSequencer user reads it without relearning. -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
                     <TextBlock x:Name="StatusSelection" Text="SEL 0" Style="{StaticResource Text.Readout}" />
                     <TextBlock Text=" | " Foreground="{StaticResource Brush.TextDisabled}" VerticalAlignment="Center" />
                     <TextBlock x:Name="StatusGrid" Text="GRID 1/16" Style="{StaticResource Text.Readout}" />
