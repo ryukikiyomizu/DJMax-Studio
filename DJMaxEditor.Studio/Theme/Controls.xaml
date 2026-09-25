@@ -114,6 +114,23 @@
         <Setter Property="Padding" Value="12,3" />
     </Style>
 
+    <Style x:Key="Button.Accent" TargetType="{x:Type Button}" BasedOn="{StaticResource Button.Base}">
+        <Setter Property="Background" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.AccentDim}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
+        <Setter Property="Padding" Value="12,3" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Brush.AccentBright}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Brush.AccentBright}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource Brush.AccentDim}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Brush.AccentDim}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Square icon-only toolbar button. -->
     <Style x:Key="Button.Tool" TargetType="{x:Type Button}" BasedOn="{StaticResource Button.Base}">
         <Setter Property="Width" Value="{StaticResource Metric.ToolButtonSize}" />

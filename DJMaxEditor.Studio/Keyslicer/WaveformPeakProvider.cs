@@ -60,7 +60,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
                 // Downmix to mono for peak building — 24/32-bit float is already normalized by NAudio.
                 if (srcCh > 1)
-                    reader = new StereoToMonoSampleProvider(reader) { LeftVolume = 0.5f, RightVolume = 0.5f };
+                    reader = KeyslicerAudioReader.DownmixToMono(reader);
 
                 reader = BoundReader(reader, readerDisp);
 
