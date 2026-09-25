@@ -24,6 +24,7 @@ using DJMaxEditor.Studio.Documents;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Preview;
 using DJMaxEditor.Studio.Settings;
+using DJMaxEditor.Studio.Keyslicer;
 using DJMaxEditor.Studio.Timeline;
 using DJMaxEditor.Studio.Tracks;
 using DJMaxEditor.Studio.Video;
@@ -98,6 +99,24 @@ namespace DJMaxEditor.Studio.Shell
         private StudioSettings _settings;
 
         /// <summary>
+        /// The output preference the live mixer is currently following. Kept separately from the
+        /// settings object because the preferences window edits settings optimistically, while the
+        /// mixer only changes endpoints when the chosen id actually differs from the one it is
+        /// already bound to.
+        /// </summary>
+        private string _appliedPreferredOutputDeviceId = string.Empty;
+
+        /// <summary>
+        /// Buffer size the live audio graph was opened with.
+        /// <para>
+        /// Output-device switching is live, but the latency slider is still restart-only: reusing
+        /// this value when an endpoint is rebound preserves that contract instead of silently
+        /// applying a yet-unrestarted buffer-size edit along with a device change.
+        /// </para>
+        /// </summary>
+        private int _liveOutputLatencyMs = 60;
+
+        /// <summary>
         /// The open preferences window, if there is one. Non-modal and single-instance: it edits the
         /// same <see cref="_settings"/> object this window holds, so a second copy would be two
         /// views of one model racing each other, and modal would stop you seeing your own change.
@@ -111,6 +130,13 @@ namespace DJMaxEditor.Studio.Shell
         /// the chart you are judging the palette on.
         /// </summary>
         private ThemePickerWindow _themePicker;
+
+        /// <summary>
+        /// The keysound slicer scene, if it is open. Single-instance: it owns its own project and
+        /// waveform cache, and letting two copies race the same source recording would be wasteful
+        /// and confusing.
+        /// </summary>
+        private KeyslicerWindow _slicerWindow;
 
         /// <summary>Set by the BGA file picker; the decoder attaches to it in <see cref="AttachBgaAsync"/>.</summary>
         private string _bgaPath;
@@ -183,6 +209,18 @@ namespace DJMaxEditor.Studio.Shell
         private double _lastFrameMilliseconds;
 
         /// <summary>
+        /// One-shot timer that delays scrub-triggered BGA decodes until the wheel settles.
+        ///
+        /// The timeline should react immediately to scroll input; decoding video frames on every
+        /// notch makes the BGA preview the pacing item instead. So manual scrubs only arm this timer
+        /// and the preview catches up once the user pauses briefly. Playback does not use it.
+        /// </summary>
+        private readonly DispatcherTimer _bgaSyncTimer = new DispatcherTimer();
+
+        /// <summary>The most recent chart-time position a delayed BGA refresh should show.</summary>
+        private TimeSpan _queuedBgaPosition = TimeSpan.Zero;
+
+        /// <summary>
         /// False until the constructor has finished.
         ///
         /// Slider and ComboBox raise ValueChanged/SelectionChanged *during* XAML parsing - setting
@@ -200,6 +238,13 @@ namespace DJMaxEditor.Studio.Shell
         /// <see cref="LoadKeysounds"/>.
         /// </summary>
         private CancellationTokenSource _keysoundLoad;
+
+        /// <summary>
+        /// Generation token returned by <see cref="NAudioKeysoundPlayer.ResetLoadedSounds"/> for the
+        /// chart whose keysounds are currently being loaded. A late-finishing worker from an older
+        /// chart must present the generation it started under or its decoded sample is discarded.
+        /// </summary>
+        private int _keysoundCacheGeneration;
 
         public MainWindow()
         {
@@ -248,6 +293,9 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.Beats = BeatDisplay.Default;
             _canvas.ShowNoteLabels = false;
             _canvas.ShowNoteAssets = AssetsToggle.IsChecked == true;
+
+            _bgaSyncTimer.Interval = TimeSpan.FromMilliseconds(45);
+            _bgaSyncTimer.Tick += OnBgaSyncTimer;
 
             // Derived rather than assigned, from the two toggles' declared states: vertical and
             // "gameplay order" is Upward. One code path decides it, so the buttons cannot start out
@@ -355,9 +403,9 @@ namespace DJMaxEditor.Studio.Shell
         /// <para>
         /// The output latency and the keysound cache budget are read from the settings here and
         /// nowhere else, because both are constructor arguments rather than properties: a device is
-        /// opened with a buffer size and a cache is created with a ceiling, and neither can be
-        /// re-negotiated afterwards without tearing down every loaded sample. That is why the
-        /// preferences window says those two take effect on restart instead of pretending otherwise.
+        /// opened with a buffer size and a cache is created with a ceiling. The preferred output
+        /// endpoint is read here too, but unlike those two it can later be handed off live by
+        /// swapping the graph onto a new output object.
         /// </para>
         /// </summary>
         private void InitialiseAudio()
@@ -366,8 +414,12 @@ namespace DJMaxEditor.Studio.Shell
             try
             {
                 long cacheBytes = (long)audio.KeysoundCacheBudgetMb * 1024L * 1024L;
-                _audio = new NAudioKeysoundPlayer(
-                    new NAudioDeviceOutput(audio.OutputLatencyMs), true, cacheBytes);
+                _liveOutputLatencyMs = audio.OutputLatencyMs;
+                _appliedPreferredOutputDeviceId = string.IsNullOrWhiteSpace(audio.PreferredOutputDeviceId)
+                    ? string.Empty
+                    : audio.PreferredOutputDeviceId.Trim();
+                var output = new NAudioDeviceOutput(_liveOutputLatencyMs, _appliedPreferredOutputDeviceId);
+                _audio = new NAudioKeysoundPlayer(output, true, cacheBytes);
                 _audio.Log = message => Logs.Write(message);
                 _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
             }
@@ -411,7 +463,8 @@ namespace DJMaxEditor.Studio.Shell
         /// Two things deliberately do not happen here. The output latency and cache budget are
         /// constructor arguments (see <see cref="InitialiseAudio"/>), and the master and audition
         /// volumes are read at the gain sites rather than pushed, because a stored gain has to apply
-        /// to notes that have not been played yet.
+        /// to notes that have not been played yet. The preferred output endpoint is the exception:
+        /// that one is re-bound live in <see cref="ApplyAudioSettings"/>.
         /// </para>
         /// </summary>
         private void ApplySettings(StudioSettings settings)
@@ -451,9 +504,30 @@ namespace DJMaxEditor.Studio.Shell
             {
                 return;
             }
-            // The only audio setting that can change under a running mixer: it decides whether a
-            // retriggered channel layers or cuts, which is a decision the graph makes per note.
+
+            // This one is genuinely live: the graph's retrigger rule is consulted per note.
             _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
+
+            string wantedDeviceId = string.IsNullOrWhiteSpace(audio.PreferredOutputDeviceId)
+                ? string.Empty
+                : audio.PreferredOutputDeviceId.Trim();
+            if (string.Equals(wantedDeviceId, _appliedPreferredOutputDeviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (_audio.RebindOutputDevice(_liveOutputLatencyMs, wantedDeviceId))
+            {
+                _appliedPreferredOutputDeviceId = wantedDeviceId;
+                Logs.Write("Audio output switched to " + (_audio.Output?.Name ?? "none"));
+            }
+            else
+            {
+                // Remember the user's new preference even if the live handoff failed; the next
+                // launch should still try that endpoint first.
+                _appliedPreferredOutputDeviceId = wantedDeviceId;
+                Logs.Write("Audio output switch request could not be applied live; keeping current output.");
+            }
         }
 
         private void ApplyTimelineSettings(TimelineSettings timeline)
@@ -488,6 +562,7 @@ namespace DJMaxEditor.Studio.Shell
             AssetsToggle.IsChecked = timeline.ShowNoteArt;
             _canvas.ShowNoteAssets = timeline.ShowNoteArt;
             _canvas.InverseScrolling = timeline.InverseScrolling;
+            _canvas.LockVerticalMovement = timeline.LockVerticalMovement;
 
             GridDivision division = GridDivision.FromDenominator(timeline.GridDenominator);
             if (division != null)
@@ -755,6 +830,58 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// Opens the keysound slicer, or brings the open one forward, attaching the current chart so
+        /// the slicer can send notes into it.
+        /// </summary>
+        private void OnOpenSlicer(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_slicerWindow != null)
+                {
+                    _slicerWindow.AttachChartContext(_document);
+                    _slicerWindow.Activate();
+                    return;
+                }
+
+                _slicerWindow = new KeyslicerWindow();
+                _slicerWindow.Owner = this;
+                _slicerWindow.AttachChartContext(_document);
+                _slicerWindow.Closed += OnSlicerClosed;
+                _slicerWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                Logs.Write("Keyslicer open failed: " + ex);
+                MessageBox.Show(
+                    this,
+                    "Keysound Slicer failed to open.\n\n" + ex.GetType().Name + ": " + ex.Message +
+                    "\n\nSee Help → Open log folder for the full trace. The main editor will stay open.",
+                    "Keysound Slicer",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                try
+                {
+                    _slicerWindow?.Close();
+                }
+                catch (Exception)
+                {
+                }
+                _slicerWindow = null;
+            }
+        }
+
+        private void OnSlicerClosed(object sender, EventArgs e)
+        {
+            KeyslicerWindow window = sender as KeyslicerWindow;
+            if (window != null)
+            {
+                window.Closed -= OnSlicerClosed;
+            }
+            _slicerWindow = null;
+        }
+
+        /// <summary>
         /// Writes the settings out, folding in the state the shell owns rather than the window.
         ///
         /// <para>
@@ -853,6 +980,18 @@ namespace DJMaxEditor.Studio.Shell
 
         private void OnClosed(object sender, EventArgs e)
         {
+            if (_slicerWindow != null)
+            {
+                try
+                {
+                    _slicerWindow.Close();
+                }
+                catch (Exception)
+                {
+                }
+                _slicerWindow = null;
+            }
+
             // First, and before the harvest below: the preferences window writes on its own close,
             // and letting it do that after the shell has already saved would put a file on disk
             // without the toolbar state in it.
@@ -1096,11 +1235,13 @@ namespace DJMaxEditor.Studio.Shell
             LoadKeysounds(model, path);
             long tKeysounds = adopt.ElapsedMilliseconds;
 
-            // The BGA's own clock is rebuilt from the new chart's tempo map. The video itself is
-            // deliberately left attached: swapping charts in the same folder is the common case, and
-            // re-picking the same file every time would be tedious.
+            // A newly opened chart starts with no inherited video: a BGA picked or discovered for
+            // the previous chart must not stay attached and play against this one's timing. Clearing
+            // it here also invalidates any in-flight async attach from the previous chart, because
+            // AttachBgaAsync re-checks _bgaPath before it can claim the panel.
+            ResetBgaAttachment();
             _bgaClock.Load(model);
-            SyncBga();
+            _bgaClock.Offset = BgaOffsetFor(model);
             DiscoverBga(path);
             long tBga = adopt.ElapsedMilliseconds;
 
@@ -1119,6 +1260,11 @@ namespace DJMaxEditor.Studio.Shell
                 ? "Read-only: this format cannot be written back"
                 : "Ready";
             long tPanels = adopt.ElapsedMilliseconds;
+
+            if (_slicerWindow != null)
+            {
+                _slicerWindow.AttachChartContext(_document);
+            }
 
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
@@ -1158,6 +1304,11 @@ namespace DJMaxEditor.Studio.Shell
             // Whatever the previous chart was still loading is no longer wanted, and its samples
             // would land in the cache under this chart's instrument indices.
             CancelKeysoundLoad();
+
+            if (_audio != null)
+            {
+                _keysoundCacheGeneration = _audio.ResetLoadedSounds();
+            }
 
             if (model.Instruments == null || _audio == null)
             {
@@ -1205,10 +1356,11 @@ namespace DJMaxEditor.Studio.Shell
 
             // Deliberately not awaited: adopting a document must not block on audio. Faults are
             // handled inside, so nothing escapes to the unobserved-task handler.
-            _ = LoadKeysoundsAsync(requests, _keysoundLoad.Token);
+            _ = LoadKeysoundsAsync(requests, _keysoundCacheGeneration, _keysoundLoad.Token);
         }
 
-        private async Task LoadKeysoundsAsync(List<KeysoundRequest> requests, CancellationToken token)
+        private async Task LoadKeysoundsAsync(
+            List<KeysoundRequest> requests, int cacheGeneration, CancellationToken token)
         {
             Stopwatch clock = Stopwatch.StartNew();
             int loaded = 0;
@@ -1229,7 +1381,9 @@ namespace DJMaxEditor.Studio.Shell
                         new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = token },
                         request =>
                         {
-                            if (_audio.LoadSound(request.Index, request.Path, request.Mode))
+                            token.ThrowIfCancellationRequested();
+
+                            if (_audio.LoadSound(request.Index, request.Path, request.Mode, cacheGeneration))
                             {
                                 Interlocked.Increment(ref loaded);
                             }
@@ -1382,6 +1536,21 @@ namespace DJMaxEditor.Studio.Shell
                 }
             }
             return notes;
+        }
+
+        /// <summary>
+        /// Extra offset the source format asks the BGA to carry, on top of the chart's own start
+        /// marker. TECHMANIA stores it in seconds beside the BGA filename; every other supported
+        /// format currently carries no such field.
+        /// </summary>
+        private static TimeSpan BgaOffsetFor(PlayerData model)
+        {
+            TechMetadata tech = model == null ? null : model.TechMetadata;
+            if (tech == null || double.IsNaN(tech.BgaOffset) || double.IsInfinity(tech.BgaOffset))
+            {
+                return TimeSpan.Zero;
+            }
+            return TimeSpan.FromSeconds(tech.BgaOffset);
         }
 
         // ===================================================================================
@@ -1771,7 +1940,7 @@ namespace DJMaxEditor.Studio.Shell
                 Play(e.VirtualTick / EventData.VirtualTickSize);
             }
             UpdateTimeReadout();
-            SyncBga();
+            RequestBgaSync();
             if (_activePlayfield != null)
             {
                 _activePlayfield.Sync(_viewModel.PlayheadVirtualTick);
@@ -2889,6 +3058,10 @@ namespace DJMaxEditor.Studio.Shell
             }
 
             BgaPanel.Visibility = BgaToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            if (BgaPanel.Visibility == Visibility.Visible)
+            {
+                RequestBgaSync();
+            }
         }
 
         private void OnTogglePlayfield(object sender, RoutedEventArgs e)
@@ -3361,24 +3534,35 @@ namespace DJMaxEditor.Studio.Shell
 
             // Show the frame under the caret straight away, so loading a video is not a black
             // rectangle until you press play.
-            SyncBga();
+            RequestBgaSync();
         }
 
         /// <summary>
-        /// Attaches the video that sits beside a freshly opened chart, if there is one and the user
-        /// has not already picked something themselves.
+        /// Drops any BGA attachment left by the previous chart.
+        ///
+        /// A chart switch is a document switch, not a seek inside one document: the newly opened
+        /// chart gets to discover its own video, and an asynchronous attach still finishing for the
+        /// previous chart is neutered because it re-checks <see cref="_bgaPath"/> before taking the
+        /// panel over.
+        /// </summary>
+        private void ResetBgaAttachment()
+        {
+            _bgaSyncTimer.Stop();
+            _bgaPath = null;
+            _bga.Clear();
+            BgaStatus.Text = "no video loaded";
+            BgaStatus.ToolTip = null;
+        }
+
+        /// <summary>
+        /// Attaches the video that sits beside a freshly opened chart, if there is one.
         /// <para>
         /// This is what makes a Technika song folder just work: extract <c>Preview.pak</c> into the
-        /// pattern folders and every chart opens with its own BGA already on the panel. A manual pick
-        /// always wins - once <see cref="_bgaPath"/> is set, only the file dialog changes it.
+        /// pattern folders and every chart opens with its own BGA already on the panel.
         /// </para>
         /// </summary>
         private void DiscoverBga(string chartPath)
         {
-            if (!string.IsNullOrEmpty(_bgaPath))
-            {
-                return;
-            }
 
             // Off is off: a folder full of previews is convenient right up until it is a folder you
             // did not want the editor reading, and the discovery is the part that touches the disk.
@@ -3411,16 +3595,46 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// Schedules a BGA refresh from the current playhead position, debounced for manual scrubs.
+        ///
+        /// Wheel scrubbing can generate dozens of intermediate ticks a second. The timeline stays
+        /// responsive by moving immediately and only decoding the BGA after 45 ms without another
+        /// scrub request, always for the newest requested position.
+        /// </summary>
+        private void RequestBgaSync()
+        {
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
+            {
+                _bgaSyncTimer.Stop();
+                return;
+            }
+
+            _queuedBgaPosition = _bgaClock.TimeForVirtualTick(_viewModel.PlayheadVirtualTick);
+            _bgaSyncTimer.Stop();
+            _bgaSyncTimer.Start();
+        }
+
+        private void OnBgaSyncTimer(object sender, EventArgs e)
+        {
+            _bgaSyncTimer.Stop();
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            _bga.Seek(_queuedBgaPosition);
+        }
+
+        /// <summary>
         /// Puts the frame belonging to the current playhead tick on screen.
         ///
-        /// Called from the playback pump and after every seek. Tick to time goes through
-        /// <see cref="BgaClockMap"/> rather than the sequencer's own accumulated millisecond count,
-        /// because that count only means anything while a take is running - scrubbing a stopped
-        /// chart has to map the tick directly.
+        /// Called from the playback pump. Tick to time goes through <see cref="BgaClockMap"/>
+        /// rather than the sequencer's own accumulated millisecond count, because that count only
+        /// means anything while a take is running.
         /// </summary>
         private void SyncBga()
         {
-            if (_bga.Source == null || !_bga.Source.IsOpen)
+            if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
             {
                 return;
             }

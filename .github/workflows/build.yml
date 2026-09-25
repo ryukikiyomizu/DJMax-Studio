@@ -141,14 +141,21 @@ jobs:
               <Compile Include="..\Shared\Files\bms\BmsonLaneMap.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
               <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
+              <Compile Include="..\Shared\Files\bytes\TrailerChartReader.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineEventIndex.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineItem.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineRowRange.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineTimeRange.cs" />
+              <Compile Include="..\Shared\Controls\Vertical\VerticalTimelineProjection.cs" />
               <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
               <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
               <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
               <Compile Include="..\Shared\Files\ChartLoadException.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
               <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
+              <Compile Include="..\DJMaxEditor.Studio\Video\BgaClockMap.cs" />
               <Compile Include="..\Shared\Logs.cs" />
               <Compile Include="..\Shared\Diagnostics\DiagnosticLog.cs" />
             </ItemGroup>
@@ -166,10 +173,12 @@ jobs:
           using DJMaxEditor.Files;
           using DJMaxEditor.Files.bms;
           using DJMaxEditor.Files.Tech;
+          using DJMaxEditor.Files.bytes;
           using DJMaxEditor.Files.FormatDetection;
           using DJMaxEditor.Preview;
           using DJMaxEditor.Controls.Vertical;
           using DJMaxEditor.Controls.TimelineV2;
+          using DJMaxEditor.Studio.Video;
           int checks = 0;
           void Check(bool condition, string what)
           {
@@ -243,6 +252,34 @@ jobs:
           var detectedBms = ChartFormatDetector.Detect(Encoding.UTF8.GetBytes(bms.ToString()), ".bms");
           Check(detectedBms.Format == ChartFormat.BmsClassic && detectedBms.IsOpenable,
                 "detector still identifies classic BMS");
+
+          // Real Respect V / trailer-format chart fetched from R2: detector, parser and the BGA
+          // start clock all need to agree it is a button-style chart whose BGA cues from track 1.
+          string trailerPath = Path.Combine(
+              "smoke", "r2", "djmax", "By_DLC", "Arcaea", "Songs", "#1f1e33 [736]",
+              "Chart and OGG", "ar1f1e33_4b_hd.pt");
+          byte[] trailerBytes = File.ReadAllBytes(trailerPath);
+          var detectedTrailer = ChartFormatDetector.Detect(trailerBytes, ".pt");
+          Check(detectedTrailer.Format == ChartFormat.TrailerRespectV && detectedTrailer.IsOpenable,
+                "detector identifies the fetched trailer chart");
+          TrailerReadResult trailerStats;
+          PlayerData trailer = TrailerChartReader.Read(trailerBytes, false, out trailerStats);
+          Check(trailer.SourceFormat == ChartFormat.TrailerRespectV,
+                "trailer reader stamps TrailerRespectV");
+          Check(trailer.TickPerMinute == 192 && Math.Abs(trailer.Tempo - 181f) < 0.001f,
+                "fetched trailer chart keeps its timing header");
+          Check(trailer.Tracks.Count == 64 && trailerStats.InstrumentsRead == 1663,
+                "fetched trailer chart opens with all tracks and instruments");
+          Check(!VerticalTimelineProjection.IsTechnikaShaped(trailer),
+                "fetched trailer chart stays in button layout, not TECHNIKA");
+          var trailerBgaTrack = trailer.Tracks.GetTrackAtIndex(1);
+          var trailerBgaEvents = trailerBgaTrack.Events.Where(e => e.EventType == EventType.Note).ToList();
+          Check(trailerBgaEvents.Count == 1 && trailerBgaEvents[0].Tick == 504,
+                "fetched trailer chart keeps the BGA sync note on track 1 at tick 504");
+          var trailerClock = new BgaClockMap();
+          trailerClock.Load(trailer);
+          Check(trailerClock.VideoStartVirtualTick == 504 * EventData.VirtualTickSize,
+                "BGA clock starts the fetched trailer chart from its BGA sync lane");
 
           // TECHMANIA track.tech (format v3): every note family, extended fields, a drag
           // with node-derived duration, a tempo event, an end-of-scan marker, and notes
@@ -702,9 +739,11 @@ jobs:
           Console.WriteLine("SMOKE PASS (" + checks + " checks)");
           return 0;
           SMOKE_PROG_EOF
-          # Real-world charts shipped with the repo: a 3-lane single-pattern file and a
-          # two-difficulty container, both with null metadata, fingerprints and overrides.
+          # Real-world charts shipped with the repo: two .tech fixtures plus one fetched
+          # Respect V trailer chart used to pin BGA sync and trailer parsing behaviour.
           cp test-fixtures/tech/*.tech smoke/
+          mkdir -p smoke/r2
+          cp -R test-fixtures/r2/* smoke/r2/
           ls -la smoke/
       - name: Run smoke test
         shell: pwsh

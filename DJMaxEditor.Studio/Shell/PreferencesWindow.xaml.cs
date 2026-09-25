@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.Diagnostics;
+using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Settings;
 using DJMaxEditor.Studio.Tracks;
@@ -21,9 +22,9 @@ namespace DJMaxEditor.Studio.Shell
     /// It edits the shell's live settings object rather than a copy, and every control writes
     /// through on change - so there is no OK button and no Cancel. That is a deliberate choice and
     /// not a shortcut: all of these are cheap and all of them are visible on the surface behind the
-    /// window, so watching one happen is better feedback than a dialog that promises it. The two
-    /// that cannot apply live (the driver buffer size and the decoded-audio budget, both
-    /// constructor arguments to the audio graph) say so on the page instead of pretending.
+    /// window, so watching one happen is better feedback than a dialog that promises it. The audio
+    /// settings that cannot apply live (driver buffer size and the decoded-audio budget - both
+    /// constructor-time choices for the audio graph) say so on the page instead of pretending.
     /// </para>
     /// <para>
     /// <see cref="PullFromSettings"/> and <see cref="CommitFromControls"/> are the whole contract,
@@ -73,7 +74,7 @@ namespace DJMaxEditor.Studio.Shell
 
             _pages = new UIElement[]
             {
-                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, AboutPage,
+                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, SlicerPage, AboutPage,
             };
 
             InitialiseCombos();
@@ -174,6 +175,83 @@ namespace DJMaxEditor.Studio.Shell
                 VerticalTrackLayout.TechnikaMode, "TECHNIKA (4 lanes + scans)"));
             choices.Add(new LayoutChoice(VerticalTrackLayout.BmsMode, "BMS (channels)"));
             LayoutCombo.ItemsSource = choices;
+
+            SlicerModeCombo.ItemsSource = new[]
+            {
+                "BMS — 1295 (safe)",
+                "RESPECT — 2047",
+                "TECHNIKA — no limit",
+            };
+            SlicerSnapCombo.ItemsSource = new[]
+            {
+                "Free",
+                "1/4",
+                "1/8",
+                "1/16",
+                "1/32",
+                "1/64",
+                "1/192",
+            };
+
+            RefreshOutputChoices(string.Empty);
+        }
+
+        private void RefreshOutputChoices(string selectedDeviceId)
+        {
+            string wanted = string.IsNullOrWhiteSpace(selectedDeviceId)
+                ? string.Empty
+                : selectedDeviceId.Trim();
+
+            IReadOnlyList<NAudioDeviceOutput.OutputDeviceInfo> devices =
+                NAudioDeviceOutput.EnumerateRenderDevices();
+            List<OutputDeviceChoice> choices = new List<OutputDeviceChoice>();
+
+            string defaultName = "System default";
+            foreach (NAudioDeviceOutput.OutputDeviceInfo device in devices)
+            {
+                if (device != null && device.IsDefault)
+                {
+                    defaultName = "System default (" + device.Name + ")";
+                    break;
+                }
+            }
+            choices.Add(new OutputDeviceChoice(string.Empty, defaultName));
+
+            bool matched = string.IsNullOrEmpty(wanted);
+            foreach (NAudioDeviceOutput.OutputDeviceInfo device in devices)
+            {
+                if (device == null)
+                {
+                    continue;
+                }
+
+                string label = device.Name + (device.IsDefault ? " (default)" : string.Empty);
+                choices.Add(new OutputDeviceChoice(device.Id, label));
+                if (string.Equals(device.Id, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = true;
+                }
+            }
+
+            if (!matched && !string.IsNullOrEmpty(wanted))
+            {
+                choices.Add(new OutputDeviceChoice(
+                    wanted,
+                    "Previously selected device (currently unavailable)"));
+            }
+
+            OutputDeviceCombo.ItemsSource = choices;
+
+            foreach (OutputDeviceChoice choice in choices)
+            {
+                if (string.Equals(choice.DeviceId, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    OutputDeviceCombo.SelectedItem = choice;
+                    return;
+                }
+            }
+
+            OutputDeviceCombo.SelectedIndex = choices.Count == 0 ? -1 : 0;
         }
 
         // ===================================================================================
@@ -193,6 +271,7 @@ namespace DJMaxEditor.Studio.Shell
                 _settings.Normalise();
 
                 AudioSettings audio = _settings.Audio;
+                RefreshOutputChoices(audio.PreferredOutputDeviceId);
                 LatencySlider.Value = audio.OutputLatencyMs;
                 MasterVolumeSlider.Value = audio.MasterVolume;
                 AuditionVolumeSlider.Value = audio.AuditionVolume;
@@ -213,6 +292,7 @@ namespace DJMaxEditor.Studio.Shell
                 GameplayDirectionCheck.IsChecked = timeline.GameplayTimeDirection;
                 HorizontalCheck.IsChecked = timeline.HorizontalOrientation;
                 InverseScrollingCheck.IsChecked = timeline.InverseScrolling;
+                LockVerticalCheck.IsChecked = timeline.LockVerticalMovement;
                 // Normalise has already guaranteed both denominators name a real entry, so the
                 // fallbacks below are belt and braces rather than a live path.
                 GridCombo.SelectedItem =
@@ -235,6 +315,19 @@ namespace DJMaxEditor.Studio.Shell
                 RightDockCheck.IsChecked = workspace.ShowRightDock;
                 VolumeLaneCheck.IsChecked = workspace.ShowVolumeLane;
                 PerfReadoutCheck.IsChecked = workspace.ShowPerformanceReadout;
+
+                KeyslicerSettings slicer = _settings.Keyslicer;
+                SlicerModeCombo.SelectedIndex = Math.Max(0, Math.Min(2, slicer.DefaultSlicerMode));
+                SlicerSuppressCheck.IsChecked = slicer.SuppressModeChooser;
+                int snapIndex = slicer.DefaultSnapDenominator == 0 ? 0
+                    : slicer.DefaultSnapDenominator == 4 ? 1
+                    : slicer.DefaultSnapDenominator == 8 ? 2
+                    : slicer.DefaultSnapDenominator == 16 ? 3
+                    : slicer.DefaultSnapDenominator == 32 ? 4
+                    : slicer.DefaultSnapDenominator == 64 ? 5
+                    : slicer.DefaultSnapDenominator == 192 ? 6
+                    : 3;
+                SlicerSnapCombo.SelectedIndex = snapIndex;
             }
             finally
             {
@@ -282,6 +375,8 @@ namespace DJMaxEditor.Studio.Shell
             audio.MasterVolume = MasterVolumeSlider.Value;
             audio.AuditionVolume = AuditionVolumeSlider.Value;
             audio.AllowOverlappingRetrigger = OverlapCheck.IsChecked == true;
+            OutputDeviceChoice outputChoice = OutputDeviceCombo.SelectedItem as OutputDeviceChoice;
+            audio.PreferredOutputDeviceId = outputChoice == null ? string.Empty : outputChoice.DeviceId;
             audio.KeysoundCacheBudgetMb = (int)Math.Round(CacheBudgetSlider.Value);
             audio.LoadKeysoundsOnOpen = LoadKeysoundsCheck.IsChecked == true;
             audio.PlayKeysoundOnClick = PlayKeysoundOnClickCheck.IsChecked == true;
@@ -298,6 +393,7 @@ namespace DJMaxEditor.Studio.Shell
             timeline.GameplayTimeDirection = GameplayDirectionCheck.IsChecked == true;
             timeline.HorizontalOrientation = HorizontalCheck.IsChecked == true;
             timeline.InverseScrolling = InverseScrollingCheck.IsChecked == true;
+            timeline.LockVerticalMovement = LockVerticalCheck.IsChecked == true;
 
             // A ComboBox with nothing selected must leave the stored value alone rather than
             // writing a zero: 0 is a real value for both of these (Free, and beat lines off).
@@ -331,6 +427,18 @@ namespace DJMaxEditor.Studio.Shell
             workspace.ShowRightDock = RightDockCheck.IsChecked == true;
             workspace.ShowVolumeLane = VolumeLaneCheck.IsChecked == true;
             workspace.ShowPerformanceReadout = PerfReadoutCheck.IsChecked == true;
+
+            KeyslicerSettings slicer = _settings.Keyslicer;
+            if (SlicerModeCombo.SelectedIndex >= 0)
+            {
+                slicer.DefaultSlicerMode = SlicerModeCombo.SelectedIndex;
+            }
+            slicer.SuppressModeChooser = SlicerSuppressCheck.IsChecked == true;
+            int[] snapMap = new[] { 0, 4, 8, 16, 32, 64, 192 };
+            if (SlicerSnapCombo.SelectedIndex >= 0 && SlicerSnapCombo.SelectedIndex < snapMap.Length)
+            {
+                slicer.DefaultSnapDenominator = snapMap[SlicerSnapCombo.SelectedIndex];
+            }
 
             _settings.Normalise();
             UpdateReadouts();
@@ -368,6 +476,32 @@ namespace DJMaxEditor.Studio.Shell
             if (_ready)
             {
                 CommitFromControls();
+            }
+        }
+
+        /// <summary>
+        /// Re-reads the live device list at the moment the user opens it, so plugging headphones in
+        /// after the preferences window is already open still lets them be picked without closing and
+        /// reopening the dialog.
+        /// </summary>
+        private void OnOutputDeviceDropDownOpened(object sender, EventArgs e)
+        {
+            string selectedDeviceId = _settings?.Audio?.PreferredOutputDeviceId ?? string.Empty;
+            OutputDeviceChoice choice = OutputDeviceCombo.SelectedItem as OutputDeviceChoice;
+            if (choice != null)
+            {
+                selectedDeviceId = choice.DeviceId;
+            }
+
+            bool wasReady = _ready;
+            _ready = false;
+            try
+            {
+                RefreshOutputChoices(selectedDeviceId);
+            }
+            finally
+            {
+                _ready = wasReady;
             }
         }
 
@@ -591,6 +725,24 @@ namespace DJMaxEditor.Studio.Shell
             {
                 e.Handled = true;
                 Close();
+            }
+        }
+
+        private sealed class OutputDeviceChoice
+        {
+            public OutputDeviceChoice(string deviceId, string label)
+            {
+                DeviceId = string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId.Trim();
+                Label = label ?? string.Empty;
+            }
+
+            public string DeviceId { get; private set; }
+
+            public string Label { get; private set; }
+
+            public override string ToString()
+            {
+                return Label;
             }
         }
 

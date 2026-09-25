@@ -33,9 +33,9 @@
     <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32" />
+                <RowDefinition Height="28" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="46" />
+                <RowDefinition Height="42" />
             </Grid.RowDefinitions>
 
             <!-- ============================ title bar ============================ -->
@@ -52,7 +52,7 @@
                     <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
                           Data="{StaticResource Icon.Settings}"
                           Stroke="{StaticResource Brush.Accent}"
-                          Margin="10,0,8,0" VerticalAlignment="Center" />
+                          Margin="8,0,6,0" VerticalAlignment="Center" />
 
                     <TextBlock Grid.Column="1" Text="PREFERENCES"
                                FontFamily="{StaticResource Font.UiDisplay}"
@@ -63,7 +63,7 @@
                     <Button Grid.Column="2" Style="{StaticResource Button.CaptionClose}"
                             Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
                             ToolTip="Close (Esc)">
-                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                        <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.X}" />
                     </Button>
                 </Grid>
             </Border>
@@ -71,7 +71,7 @@
             <!-- ============================ body ============================ -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="184" />
+                    <ColumnDefinition Width="176" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -79,45 +79,52 @@
                 <ListBox Grid.Column="0" x:Name="NavList"
                          Background="{StaticResource Brush.Surface}"
                          BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,1,0"
-                         Padding="6,8,6,8"
+                         Padding="5,6,5,6"
                          SelectionChanged="OnSectionChanged"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Headphones}" Margin="0,0,8,0" />
                             <TextBlock Text="Audio" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Rows3}" Margin="0,0,8,0" />
                             <TextBlock Text="Timeline" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Film}" Margin="0,0,8,0" />
                             <TextBlock Text="BGA" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Layers}" Margin="0,0,8,0" />
                             <TextBlock Text="Format" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.PanelLeft}" Margin="0,0,8,0" />
                             <TextBlock Text="Workspace" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Padding="8,6">
+                    <ListBoxItem Padding="8,5">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Scissors}" Margin="0,0,8,0" />
+                            <TextBlock Text="Slicer" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Info}" Margin="0,0,8,0" />
@@ -138,6 +145,26 @@
 
                             <TextBlock Text="OUTPUT" Style="{StaticResource Text.Section}" />
                             <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Playback device"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="OutputDeviceCombo"
+                                          MinWidth="280"
+                                          DropDownOpened="OnOutputDeviceDropDownOpened"
+                                          SelectionChanged="OnComboChanged"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Choose a specific output or follow the computer's system default. Picking a device moves the running mixer there immediately; if that device later becomes unavailable or is unplugged, the mixer falls back to the current system default." />
+
+                            <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="190" />
                                     <ColumnDefinition Width="*" />
@@ -447,6 +474,14 @@
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
                                        Text="Wheel up walks the playhead to later bars instead of earlier, and pans the columns the other way. Zoom and grid cycling are not inverted." />
+
+                            <CheckBox x:Name="LockVerticalCheck" Margin="0,12,0,0"
+                                      Content="Lock vertical movement when moving notes"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="When on, dragging notes or nudging with arrow keys only changes lanes - original timing is preserved to avoid delay/latency drift. Turn off to allow free time movement as well." />
                         </StackPanel>
                     </ScrollViewer>
 
@@ -619,6 +654,64 @@
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
                                        Text="On by default, and deliberately so: a tool whose whole complaint history is about frame time has no business hiding its own." />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Slicer ==================== -->
+                    <ScrollViewer x:Name="SlicerPage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Slicer"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="How the keysound slicer starts up and which snap it restores. BMS is the safe 1,295-keysound target, RESPECT allows 2,047, and TECHNIKA has no table limit." />
+
+                            <TextBlock Text="MODE" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Default mode"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="SlicerModeCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <CheckBox x:Name="SlicerSuppressCheck" Margin="0,10,0,0"
+                                      Content="Don't show the mode chooser on first open"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="When off, opening the slicer with an empty project asks whether you want BMS, RESPECT, or TECHNIKA behaviour. The chosen default is still remembered here." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="GRID" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Default snap"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="SlicerSnapCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Matches the slicer toolbar: Free, 1/4, 1/8, 1/16, 1/32, 1/64, and 1/192." />
                         </StackPanel>
                     </ScrollViewer>
 

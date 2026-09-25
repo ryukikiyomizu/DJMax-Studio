@@ -7,11 +7,12 @@ namespace DJMaxEditor.Studio.Settings
     /// <summary>
     /// Audio backend preferences.
     ///
-    /// Two of these cannot be changed on a running graph and say so in the preferences window:
-    /// <see cref="OutputLatencyMs"/> is the buffer size a driver was opened with, and
+    /// Two of these are startup choices rather than live ones and say so in the preferences
+    /// window: <see cref="OutputLatencyMs"/> is the buffer size a driver was opened with, and
     /// <see cref="KeysoundCacheBudgetMb"/> is the decoded-PCM budget the mixer was constructed with.
-    /// Reopening the device under a playing chart would drop every sounding voice, so both are read
-    /// once, at startup, by the code that builds the player.
+    /// <see cref="PreferredOutputDeviceId"/> is different: it is still read at startup, but the
+    /// shell also uses it as the live handoff target when the user picks a new playback device in
+    /// the already-open editor.
     /// </summary>
     public sealed class AudioSettings
     {
@@ -48,6 +49,13 @@ namespace DJMaxEditor.Studio.Settings
         /// </summary>
         public bool AllowOverlappingRetrigger { get; set; } = true;
 
+        /// <summary>
+        /// Preferred render endpoint id, or blank to follow the computer's current default output.
+        /// When changed in the running editor the shell immediately tries to hand the live mixer to
+        /// that endpoint.
+        /// </summary>
+        public string PreferredOutputDeviceId { get; set; } = string.Empty;
+
         /// <summary>Total decoded-PCM budget, in MiB. 512 is the player's own default.</summary>
         public int KeysoundCacheBudgetMb { get; set; } = 512;
 
@@ -65,6 +73,9 @@ namespace DJMaxEditor.Studio.Settings
             MasterVolume = StudioSettings.Clamp(MasterVolume, 0.0, 1.0, 1.0);
             AuditionVolume = StudioSettings.Clamp(AuditionVolume, 0.0, 1.0, 1.0);
             KeysoundCacheBudgetMb = StudioSettings.Clamp(KeysoundCacheBudgetMb, 32, 4096);
+            PreferredOutputDeviceId = string.IsNullOrWhiteSpace(PreferredOutputDeviceId)
+                ? string.Empty
+                : PreferredOutputDeviceId.Trim();
         }
 
         internal AudioSettings Clone()
@@ -75,6 +86,7 @@ namespace DJMaxEditor.Studio.Settings
                 MasterVolume = MasterVolume,
                 AuditionVolume = AuditionVolume,
                 AllowOverlappingRetrigger = AllowOverlappingRetrigger,
+                PreferredOutputDeviceId = PreferredOutputDeviceId,
                 KeysoundCacheBudgetMb = KeysoundCacheBudgetMb,
                 LoadKeysoundsOnOpen = LoadKeysoundsOnOpen,
                 PlayKeysoundOnClick = PlayKeysoundOnClick,
@@ -87,6 +99,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "audio.masterVolume", MasterVolume);
             StudioSettings.Line(text, "audio.auditionVolume", AuditionVolume);
             StudioSettings.Line(text, "audio.overlappingRetrigger", AllowOverlappingRetrigger);
+            StudioSettings.Line(text, "audio.preferredOutputDeviceId", PreferredOutputDeviceId);
             StudioSettings.Line(text, "audio.cacheBudgetMb", KeysoundCacheBudgetMb);
             StudioSettings.Line(text, "audio.loadKeysoundsOnOpen", LoadKeysoundsOnOpen);
             StudioSettings.Line(text, "audio.playKeysoundOnClick", PlayKeysoundOnClick);
@@ -176,6 +189,13 @@ namespace DJMaxEditor.Studio.Settings
         /// </summary>
         public double ZoomStep { get; set; } = 1.25;
 
+        /// <summary>
+        /// When true, vertical (time) movement of notes is locked so a drag or nudge can never
+        /// change a note's original timing - preserving timing and avoiding delay/latency drift
+        /// during lane reassignment. When false, notes can move freely in time as well as lanes.
+        /// </summary>
+        public bool LockVerticalMovement { get; set; } = true;
+
         internal void Clamp()
         {
             TrackWidthScale = StudioSettings.Clamp(
@@ -225,6 +245,7 @@ namespace DJMaxEditor.Studio.Settings
                 GridDenominator = GridDenominator,
                 BeatDenominator = BeatDenominator,
                 ZoomStep = ZoomStep,
+                LockVerticalMovement = LockVerticalMovement,
             };
         }
 
@@ -243,6 +264,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "timeline.grid", GridDenominator);
             StudioSettings.Line(text, "timeline.beat", BeatDenominator);
             StudioSettings.Line(text, "timeline.zoomStep", ZoomStep);
+            StudioSettings.Line(text, "timeline.lockVertical", LockVerticalMovement);
         }
     }
 
@@ -458,6 +480,53 @@ namespace DJMaxEditor.Studio.Settings
         internal void Describe(StringBuilder text)
         {
             StudioSettings.Line(text, "appearance.chartTheme", ChartThemeId);
+        }
+    }
+
+    /// <summary>
+    /// Keysound slicer defaults: which export target it opens in and which snap division it restores.
+    /// </summary>
+    public sealed class KeyslicerSettings
+    {
+        /// <summary>
+        /// Default slicer mode for a new project or when the chooser is suppressed:
+        /// 0 = BMS (1295), 1 = RESPECT (2047), 2 = TECHNIKA (no limit).
+        /// </summary>
+        public int DefaultSlicerMode { get; set; } = 0;
+
+        /// <summary>Whether to skip the first-open mode chooser.</summary>
+        public bool SuppressModeChooser { get; set; } = false;
+
+        /// <summary>Default slicer snap denominator: 0, 4, 8, 16, 32, 64 or 192.</summary>
+        public int DefaultSnapDenominator { get; set; } = 16;
+
+        internal void Clamp()
+        {
+            DefaultSlicerMode = StudioSettings.Clamp(DefaultSlicerMode, 0, 2);
+            if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 &&
+                DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 &&
+                DefaultSnapDenominator != 32 && DefaultSnapDenominator != 64 &&
+                DefaultSnapDenominator != 192)
+            {
+                DefaultSnapDenominator = 16;
+            }
+        }
+
+        internal KeyslicerSettings Clone()
+        {
+            return new KeyslicerSettings
+            {
+                DefaultSlicerMode = DefaultSlicerMode,
+                SuppressModeChooser = SuppressModeChooser,
+                DefaultSnapDenominator = DefaultSnapDenominator,
+            };
+        }
+
+        internal void Describe(StringBuilder text)
+        {
+            StudioSettings.Line(text, "keyslicer.defaultMode", DefaultSlicerMode);
+            StudioSettings.Line(text, "keyslicer.suppressChooser", SuppressModeChooser);
+            StudioSettings.Line(text, "keyslicer.snap", DefaultSnapDenominator);
         }
     }
 }

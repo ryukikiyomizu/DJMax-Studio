@@ -121,18 +121,21 @@ namespace DJMaxEditor.Studio.Design
     /// </summary>
     internal static class StudioMetrics
     {
-        /// <summary>Custom title bar height. V6 uses a slim flat title bar; 32 is the smallest
-        /// height that still hits the 44x32 minimum for the caption buttons.</summary>
-        public const double TitleBarHeight = 32;
+        /// <summary>Custom title bar height. Trimmed a little further so the custom chrome reads
+        /// closer to a native desktop window instead of a game HUD.</summary>
+        public const double TitleBarHeight = 28;
 
-        /// <summary>Main toolbar. ptSequencer's is a single 28px row of 22px buttons; we give the
-        /// icons a little more air because they are vector, not 16px bitmaps.</summary>
-        public const double ToolbarHeight = 38;
-        public const double ToolButtonSize = 28;
-        public const double IconSize = 16;
+        /// <summary>Main toolbar. Slightly denser than the first pass, but still comfortably
+        /// clickable with vector icons.</summary>
+        public const double ToolbarHeight = 34;
+        public const double ToolButtonSize = 24;
+        public const double IconSize = 15;
 
-        /// <summary>Status bar, matching ptSequencer's SEL/GRID/TOT/time readout row.</summary>
-        public const double StatusBarHeight = 24;
+        /// <summary>Status bar, matching ptSequencer's compact readout row.</summary>
+        public const double StatusBarHeight = 22;
+
+        /// <summary>Panel section headers inside the docks.</summary>
+        public const double PanelHeaderHeight = 22;
 
         /// <summary>Left dock: track preset, view options, sample list.</summary>
         public const double LeftDockWidth = 260;
@@ -156,8 +159,6 @@ namespace DJMaxEditor.Studio.Design
 
         /// <summary>Splitter grab width. 4 is the smallest that is comfortably hittable.</summary>
         public const double SplitterSize = 4;
-
-        public const double PanelHeaderHeight = 26;
         public const double CornerRadius = 3;
     }
 }

@@ -27,10 +27,10 @@
     <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32" />
-                <RowDefinition Height="38" />
+                <RowDefinition Height="28" />
+                <RowDefinition Height="34" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="24" />
+                <RowDefinition Height="22" />
             </Grid.RowDefinitions>
 
             <!-- ============================ title bar ============================ -->
@@ -48,13 +48,13 @@
                     <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
                           Data="{StaticResource Icon.Disc3}"
                           Stroke="{StaticResource Brush.Accent}"
-                          Margin="10,0,8,0" VerticalAlignment="Center" />
+                          Margin="8,0,6,0" VerticalAlignment="Center" />
 
                     <TextBlock Grid.Column="1" Text="DJMAX STUDIO"
                                FontFamily="{StaticResource Font.UiDisplay}"
                                FontSize="{StaticResource Font.Size.Small}"
                                Foreground="{StaticResource Brush.TextSecondary}"
-                               VerticalAlignment="Center" Margin="0,0,14,0" />
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
 
                     <!-- Document name, centred and ellipsised. A long path must never push the
                          caption buttons off the window. -->
@@ -64,20 +64,20 @@
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" HorizontalAlignment="Center" />
 
-                    <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0">
                         <Button Style="{StaticResource Button.Caption}"
                                 Command="{x:Static sh:SystemCommands.MinimizeWindowCommand}"
                                 ToolTip="Minimise">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Minus}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.Minus}" />
                         </Button>
                         <Button Style="{StaticResource Button.Caption}"
                                 Click="OnToggleMaximise" ToolTip="Maximise / restore">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Square}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.Square}" />
                         </Button>
                         <Button Style="{StaticResource Button.CaptionClose}"
                                 Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
                                 ToolTip="Close">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.X}" />
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -87,7 +87,7 @@
             <Border Grid.Row="1" Background="{StaticResource Brush.Surface}"
                     BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1">
                 <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
-                    <StackPanel Orientation="Horizontal" Margin="6,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
 
                         <!-- file -->
                         <Button Style="{StaticResource Button.Tool}" Click="OnNew" ToolTip="New chart (Ctrl+N)">
@@ -167,11 +167,11 @@
                         <!-- grid + detailed grid: ptSequencer's two combos -->
                         <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Grid3x3}"
                               Margin="4,0,4,0" VerticalAlignment="Center" />
-                        <ComboBox x:Name="GridCombo" Width="72" SelectionChanged="OnGridChanged"
+                        <ComboBox x:Name="GridCombo" Width="68" SelectionChanged="OnGridChanged"
                                   ToolTip="Grid: notes snap to this division of a bar. Ctrl+wheel steps it, wheel scrubs the playhead by it" />
                         <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Ruler}"
                               Margin="8,0,4,0" VerticalAlignment="Center" />
-                        <ComboBox x:Name="BeatCombo" Width="64" SelectionChanged="OnBeatChanged"
+                        <ComboBox x:Name="BeatCombo" Width="60" SelectionChanged="OnBeatChanged"
                                   ToolTip="Detailed grid: which subdivision gets a drawn line. Never snaps." />
 
                         <Separator />
@@ -179,7 +179,7 @@
                         <!-- track preset (key mode) -->
                         <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Columns3}"
                               Margin="4,0,4,0" VerticalAlignment="Center" />
-                        <ComboBox x:Name="PresetCombo" Width="128" SelectionChanged="OnPresetChanged"
+                        <ComboBox x:Name="PresetCombo" Width="120" SelectionChanged="OnPresetChanged"
                                   ToolTip="Track preset: the lane layout, from ptSequencer's .pst files" />
 
                         <Separator />
@@ -242,6 +242,11 @@
                                       Click="OnTogglePlayfield" ToolTip="Show the TECHNIKA gameplay playfield">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Rows3}" />
                         </ToggleButton>
+                        <Button Style="{StaticResource Button.Tool}" Click="OnOpenSlicer"
+                                ToolTip="Keysound Slicer - non-destructive slicer (long source to virtual keysounds to notes)">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}"
+                                  Stroke="{StaticResource Brush.Accent}" />
+                        </Button>
 
                         <Separator />
 
@@ -263,11 +268,11 @@
             <!-- ============================= body ============================= -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="LeftDockColumn" Width="252" MinWidth="180" />
+                    <ColumnDefinition x:Name="LeftDockColumn" Width="244" MinWidth="176" />
                     <ColumnDefinition x:Name="LeftSplitterColumn" Width="4" />
                     <ColumnDefinition Width="*" MinWidth="320" />
                     <ColumnDefinition x:Name="RightSplitterColumn" Width="4" />
-                    <ColumnDefinition x:Name="RightDockColumn" Width="288" MinWidth="200" />
+                    <ColumnDefinition x:Name="RightDockColumn" Width="272" MinWidth="192" />
                 </Grid.ColumnDefinitions>
 
                 <!-- left dock -->
@@ -280,7 +285,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- View Options: ptSequencer's own sliders, same intent -->
-                    <StackPanel Grid.Row="0" Margin="10,8,10,10">
+                    <StackPanel Grid.Row="0" Margin="8,6,8,8">
                         <TextBlock Text="VIEW OPTIONS" Style="{StaticResource Text.Section}" />
 
                         <Grid Margin="0,4,0,0">
@@ -337,7 +342,7 @@
                     <StackPanel Grid.Row="1" x:Name="NotePalettePanel" Margin="0,0,0,0"
                                 Visibility="Collapsed">
                         <Border Height="1" Background="{StaticResource Brush.Edge}" />
-                        <StackPanel Margin="10,8,10,10">
+                        <StackPanel Margin="8,6,8,8">
                             <TextBlock Text="NOTE KIND" Style="{StaticResource Text.Section}" />
                         <UniformGrid x:Name="NotePaletteGrid" Columns="2" Margin="0,4,0,0">
                             <!-- Each button wears the same arcade frame the timeline draws for the
@@ -345,7 +350,7 @@
                                  Icons are sliced in code (see LoadPaletteIcons) so the BAML never
                                  has to parse a pack URI into a CroppedBitmap at load time. -->
                             <ToggleButton x:Name="PaletteTap"
-                                          Height="28" Margin="0,2,2,2" Padding="6,2" IsChecked="True"
+                                          Height="26" Margin="0,2,2,2" Padding="5,1" IsChecked="True"
                                           Click="OnPalettePick" Tag="0"
                                           ToolTip="Tap note (short press)">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -354,7 +359,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteDrag"
-                                          Height="28" Margin="2,2,0,2" Padding="6,2"
+                                          Height="26" Margin="2,2,0,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="0|long"
                                           ToolTip="Drag note: slide, starts long">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -363,7 +368,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteChain"
-                                          Height="28" Margin="0,2,2,2" Padding="6,2"
+                                          Height="26" Margin="0,2,2,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="5"
                                           ToolTip="Chain head (attribute 5)">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -372,7 +377,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteChainNode"
-                                          Height="28" Margin="2,2,0,2" Padding="6,2"
+                                          Height="26" Margin="2,2,0,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="6"
                                           ToolTip="Chain node (attribute 6)">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -381,7 +386,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteHold"
-                                          Height="28" Margin="0,2,2,2" Padding="6,2"
+                                          Height="26" Margin="0,2,2,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="12|long"
                                           ToolTip="Hold note (attribute 12), starts long">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -390,7 +395,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeat"
-                                          Height="28" Margin="2,2,0,2" Padding="6,2"
+                                          Height="26" Margin="2,2,0,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="10|long"
                                           ToolTip="Repeat-hold head (attribute 10), starts long">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -399,7 +404,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatTap"
-                                          Height="28" Margin="0,2,2,2" Padding="6,2"
+                                          Height="26" Margin="0,2,2,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="10"
                                           ToolTip="Repeat head (attribute 10)">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -408,7 +413,7 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton x:Name="PaletteRepeatRoll"
-                                          Height="28" Margin="2,2,0,2" Padding="6,2"
+                                          Height="26" Margin="2,2,0,2" Padding="5,1"
                                           Click="OnPalettePick" Tag="11"
                                           ToolTip="Repeating roll note (attribute 11)">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -428,7 +433,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" Margin="10,8,10,4">
+                        <Grid Grid.Row="0" Margin="8,6,8,2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -438,7 +443,7 @@
                                        Style="{StaticResource Text.Readout}"
                                        Foreground="{StaticResource Brush.TextMuted}" />
                         </Grid>
-                        <ListBox Grid.Row="1" x:Name="SampleList" Margin="4,0,4,4"
+                        <ListBox Grid.Row="1" x:Name="SampleList" Margin="2,0,2,2"
                                  Background="Transparent" BorderThickness="0"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  VirtualizingPanel.IsVirtualizing="True"
@@ -449,7 +454,7 @@
                                 <DataTemplate>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="38" />
+                                            <ColumnDefinition Width="34" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding InsNum}"
@@ -471,7 +476,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="200" />
                         <ColumnDefinition x:Name="VolumeSplitterColumn" Width="4" />
-                        <ColumnDefinition x:Name="VolumeLaneColumn" Width="92" MinWidth="48" />
+                        <ColumnDefinition x:Name="VolumeLaneColumn" Width="84" MinWidth="44" />
                     </Grid.ColumnDefinitions>
                     <!-- Both axes are defined and only one is ever open. Which one holds the volume
                          lane is the orientation's business (OnToggleOrientation -> DockVolumeLane);
@@ -542,7 +547,7 @@
                          just moves BgaHost.Height and persists the answer. -->
                     <Grid x:Name="BgaPanel" Grid.Row="0" Visibility="Collapsed">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="22" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="5" />
                         </Grid.RowDefinitions>
@@ -556,22 +561,22 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
-                                      Data="{StaticResource Icon.Film}" Margin="8,0,6,0" />
+                                      Data="{StaticResource Icon.Film}" Margin="5,0,3,0" />
                                 <TextBlock Grid.Column="1" Text="BGA" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="2" x:Name="BgaStatus" Text="no video loaded"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextDisabled}"
-                                           TextTrimming="CharacterEllipsis" Margin="10,0,4,0" />
+                                           TextTrimming="CharacterEllipsis" Margin="6,0,4,0" />
                                 <Button Grid.Column="3" Style="{StaticResource Button.Tool}"
-                                        Width="24" Height="22" Click="OnLoadBga"
+                                        Width="20" Height="18" Click="OnLoadBga"
                                         ToolTip="Load a BGA video for this chart">
-                                    <Path Style="{StaticResource Icon.Glyph}" Width="13" Height="13"
+                                    <Path Style="{StaticResource Icon.Glyph}" Width="11" Height="11"
                                           Data="{StaticResource Icon.FolderOpen}" />
                                 </Button>
                             </Grid>
                         </Border>
-                        <Border Grid.Row="1" x:Name="BgaHost" Height="158"
+                        <Border Grid.Row="1" x:Name="BgaHost" Height="150"
                                 Background="Black" ClipToBounds="True" />
                         <Thumb Grid.Row="2" x:Name="BgaGrip"
                                Cursor="SizeNS"
@@ -604,7 +609,7 @@
                          without this. It appears only for TECHNIKA charts. -->
                     <Grid x:Name="PlayfieldPanel" Grid.Row="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="22" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -617,13 +622,13 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
-                                      Data="{StaticResource Icon.Rows3}" Margin="8,0,6,0" />
+                                      Data="{StaticResource Icon.Rows3}" Margin="5,0,3,0" />
                                 <TextBlock Grid.Column="1" Text="PLAYFIELD" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="2" x:Name="PlayfieldStatus" Text="no chart loaded"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextDisabled}"
-                                           TextTrimming="CharacterEllipsis" Margin="10,0,8,0" />
+                                           TextTrimming="CharacterEllipsis" Margin="6,0,5,0" />
                             </Grid>
                         </Border>
                         <!-- TECHNIKA-only effector strip. The arcade offers these on the pre-song
@@ -690,14 +695,14 @@
                     <!-- Inspector -->
                     <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="26" />
+                            <RowDefinition Height="22" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="{StaticResource Brush.Raised}"
                                 BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}"
-                                      Margin="8,0,6,0" />
+                                      Margin="5,0,3,0" />
                                 <TextBlock Text="INSPECTOR" Style="{StaticResource Text.Section}"
                                            Margin="0" VerticalAlignment="Center" />
                             </StackPanel>
@@ -705,7 +710,7 @@
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="10,10,10,10">
+                            <StackPanel Margin="8,7,8,7">
                                 <TextBlock x:Name="InspectorSelection" Text="Nothing selected"
                                            Foreground="{StaticResource Brush.TextMuted}"
                                            TextWrapping="Wrap" />
@@ -714,7 +719,7 @@
                                      AdjustSelectionVolume with undo grouping, so this is a slider
                                      over an existing edit, not a new feature in the model. -->
                                 <TextBlock Text="NOTE VOLUME" Style="{StaticResource Text.Section}"
-                                           Margin="0,16,0,2" />
+                                           Margin="0,12,0,2" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -728,13 +733,13 @@
                                                VerticalAlignment="Center" Margin="8,0,0,0" />
                                 </Grid>
 
-                                <TextBlock Text="CHART" Style="{StaticResource Text.Section}" Margin="0,18,0,2" />
+                                <TextBlock Text="CHART" Style="{StaticResource Text.Section}" Margin="0,14,0,2" />
                                 <TextBlock x:Name="InspectorChart" Text="--"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            TextWrapping="Wrap" />
 
-                                <TextBlock Text="LANE" Style="{StaticResource Text.Section}" Margin="0,18,0,2" />
+                                <TextBlock Text="LANE" Style="{StaticResource Text.Section}" Margin="0,14,0,2" />
                                 <TextBlock x:Name="InspectorLane" Text="--"
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextSecondary}"
@@ -749,7 +754,7 @@
                     <Border x:Name="PerfReadoutPanel" Grid.Row="3"
                             Background="{StaticResource Brush.Raised}"
                             BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0"
-                            Padding="10,5">
+                            Padding="6,3">
                         <TextBlock x:Name="PerfReadout" Text="idle"
                                    Style="{StaticResource Text.Readout}"
                                    Foreground="{StaticResource Brush.TextMuted}" />
@@ -762,7 +767,7 @@
                     BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0">
                 <!-- ptSequencer's status row reads "SEL:0 GRID:0 | TOT:0 | 0:0.0 / 0.0 sec".
                      Same fields, same order, so a ptSequencer user reads it without relearning. -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0">
                     <TextBlock x:Name="StatusSelection" Text="SEL 0" Style="{StaticResource Text.Readout}" />
                     <TextBlock Text=" | " Foreground="{StaticResource Brush.TextDisabled}" VerticalAlignment="Center" />
                     <TextBlock x:Name="StatusGrid" Text="GRID 1/16" Style="{StaticResource Text.Readout}" />
