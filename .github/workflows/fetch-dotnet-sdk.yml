@@ -1,0 +1,42 @@
+name: Fetch .NET SDK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/01a0d381-djmax-studio
+    paths:
+      - .github/workflows/fetch-dotnet-sdk.yml
+
+jobs:
+  fetch-dotnet-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Package SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DOTNET_ROOT=$DOTNET_ROOT"
+          dotnet --info
+          mkdir -p dotnet-sdk-artifact
+          tar -C "$DOTNET_ROOT" -czf dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.gz .
+          sha256sum dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.gz | tee dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.gz.sha256
+          split -b 95m -d -a 2 \
+            dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.gz \
+            dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.gz.part-
+          ls -lh dotnet-sdk-artifact
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-sdk-8-linux-x64-split
+          path: dotnet-sdk-artifact/*
+          if-no-files-found: error
+          retention-days: 1
