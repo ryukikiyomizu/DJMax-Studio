@@ -1118,12 +1118,13 @@ namespace DJMaxEditor.Studio.Shell
             LoadKeysounds(model, path);
             long tKeysounds = adopt.ElapsedMilliseconds;
 
-            // The BGA's own clock is rebuilt from the new chart's tempo map. The video itself is
-            // deliberately left attached: swapping charts in the same folder is the common case, and
-            // re-picking the same file every time would be tedious.
+            // A newly opened chart starts with no inherited video: a BGA picked or discovered for
+            // the previous chart must not stay attached and play against this one's timing. Clearing
+            // it here also invalidates any in-flight async attach from the previous chart, because
+            // AttachBgaAsync re-checks _bgaPath before it can claim the panel.
+            ResetBgaAttachment();
             _bgaClock.Load(model);
             _bgaClock.Offset = BgaOffsetFor(model);
-            RequestBgaSync();
             DiscoverBga(path);
             long tBga = adopt.ElapsedMilliseconds;
 
@@ -3415,20 +3416,31 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
-        /// Attaches the video that sits beside a freshly opened chart, if there is one and the user
-        /// has not already picked something themselves.
+        /// Drops any BGA attachment left by the previous chart.
+        ///
+        /// A chart switch is a document switch, not a seek inside one document: the newly opened
+        /// chart gets to discover its own video, and an asynchronous attach still finishing for the
+        /// previous chart is neutered because it re-checks <see cref="_bgaPath"/> before taking the
+        /// panel over.
+        /// </summary>
+        private void ResetBgaAttachment()
+        {
+            _bgaSyncTimer.Stop();
+            _bgaPath = null;
+            _bga.Clear();
+            BgaStatus.Text = "no video loaded";
+            BgaStatus.ToolTip = null;
+        }
+
+        /// <summary>
+        /// Attaches the video that sits beside a freshly opened chart, if there is one.
         /// <para>
         /// This is what makes a Technika song folder just work: extract <c>Preview.pak</c> into the
-        /// pattern folders and every chart opens with its own BGA already on the panel. A manual pick
-        /// always wins - once <see cref="_bgaPath"/> is set, only the file dialog changes it.
+        /// pattern folders and every chart opens with its own BGA already on the panel.
         /// </para>
         /// </summary>
         private void DiscoverBga(string chartPath)
         {
-            if (!string.IsNullOrEmpty(_bgaPath))
-            {
-                return;
-            }
 
             // Off is off: a folder full of previews is convenient right up until it is a folder you
             // did not want the editor reading, and the discovery is the part that touches the disk.
