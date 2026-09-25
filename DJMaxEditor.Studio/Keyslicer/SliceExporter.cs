@@ -275,39 +275,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
-            string ext = Path.GetExtension(path) ?? string.Empty;
-            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase);
-            // Opus inside Ogg: VorbisWaveReader handles .ogg, but .opus may need same path; try Vorbis first for those.
-            if (isVorbisExt)
-            {
-                try
-                {
-                    var v = new VorbisWaveReader(path);
-                    disposable = v;
-                    return v;
-                }
-                catch { /* fall through */ }
-            }
-            // Primary: AudioFileReader handles WAV/AIFF/MP3/FLAC/WMA/AAC/M4A and most 24/32-bit PCM via MediaFoundation
-            try
-            {
-                var a = new AudioFileReader(path);
-                disposable = a;
-                return a;
-            }
-            catch
-            {
-                // Last resort: try Vorbis again (covers FLAC-as-Ogg edge)
-                try
-                {
-                    var v = new VorbisWaveReader(path);
-                    disposable = v;
-                    return v;
-                }
-                catch (Exception ex) { throw new InvalidOperationException("unsupported audio format for " + path + ": " + ex.Message, ex); }
-            }
+            return KeyslicerAudioReader.OpenSampleProvider(path, out disposable);
         }
 
         private static void WriteSamples(float[] samples, int sampleRate, int channels, string outPath, ExportFormat format)

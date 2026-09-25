@@ -1264,17 +1264,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private WaveStream CreatePlaybackReader(string path)
         {
-            // Try Vorbis for .ogg/.oga/.opus first, then AudioFileReader (handles wav/mp3/flac/aiff/m4a), fallback to Vorbis again
-            string ext = System.IO.Path.GetExtension(path) ?? string.Empty;
-            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase);
-            if (isVorbisExt)
-            {
-                try { return new NAudio.Vorbis.VorbisWaveReader(path); } catch { }
-            }
-            try { return new AudioFileReader(path); } catch { }
-            try { return new NAudio.Vorbis.VorbisWaveReader(path); } catch (Exception ex) { throw new InvalidOperationException("unsupported audio format for " + path + ": " + ex.Message, ex); }
+            return KeyslicerAudioReader.OpenPlaybackReader(path);
         }
 
         private async Task AuditionAtAsync(double startMs, double previewMs)

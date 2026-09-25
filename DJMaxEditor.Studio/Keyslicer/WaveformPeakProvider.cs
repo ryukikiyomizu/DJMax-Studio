@@ -251,33 +251,15 @@ namespace DJMaxEditor.Studio.Keyslicer
                     if (afr.TotalTime.Ticks > 0)
                         return (long)(afr.TotalTime.TotalSeconds * srcRate);
                 }
+                if (disp is MediaFoundationReader mfr && mfr.TotalTime.Ticks > 0)
+                    return (long)(mfr.TotalTime.TotalSeconds * srcRate);
             } catch {}
             return 0;
         }
 
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
-            string ext = Path.GetExtension(path) ?? string.Empty;
-            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".flac", StringComparison.OrdinalIgnoreCase);
-            // Opus/Ogg/FLAC: Vorbis reader first (handles Ogg Opus, FLAC via Vorbis path may fail → fallback)
-            if (isVorbisExt)
-            {
-                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch {}
-            }
-            try
-            {
-                var a = new AudioFileReader(path);
-                disposable = a;
-                return a;
-            }
-            catch
-            {
-                // Last resort try Vorbis for any mis-detected container
-                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch (Exception ex) { throw new InvalidOperationException("unsupported audio format: " + path + " — " + ex.Message, ex); }
-            }
+            return KeyslicerAudioReader.OpenSampleProvider(path, out disposable);
         }
 
         private static ISampleProvider BoundReader(ISampleProvider source, IDisposable reader)
