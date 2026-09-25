@@ -1,0 +1,11 @@
+total 229M
+-rw-r--r-- 1 runner runner 229M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz
+
+total 229M
+-rw-r--r-- 1 runner runner 48M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.part-00
+-rw-r--r-- 1 runner runner 48M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.part-01
+-rw-r--r-- 1 runner runner 48M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.part-02
+-rw-r--r-- 1 runner runner 48M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.part-03
+-rw-r--r-- 1 runner runner 37M Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.part-04
+-rw-r--r-- 1 runner runner 142 Sep 25 07:09 dotnet-sdk-10.0.401-linux-x64.tar.gz.sha256
+-rw-r--r-- 1 runner runner  94 Sep 25 07:09 manifest.txt
