@@ -79,23 +79,32 @@ jobs:
                       raise RuntimeError(
                           "Cloudflare API error: " + "; ".join(str(e.get("message", e)) for e in errors)
                       )
-                  return payload.get("result") or []
+                  return payload.get("result")
 
-              accounts = api("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=50")
+              def bucket_names_for(account_id: str):
+                  result = api(f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/buckets")
+                  if isinstance(result, dict):
+                      result = result.get("buckets", [])
+                  if not isinstance(result, list):
+                      return []
+                  return [b.get("name", "") for b in result if isinstance(b, dict) and b.get("name")]
+
+              accounts = api("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=50") or []
               if not accounts:
                   raise RuntimeError("No Cloudflare accounts are accessible to ACCOUNT_API_TOKEN")
 
               candidates = []
               for account in accounts:
+                  if not isinstance(account, dict):
+                      continue
                   account_id = account.get("id", "")
                   account_name = account.get("name", "")
                   if not account_id:
                       continue
                   try:
-                      buckets = api(f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/buckets")
+                      bucket_names = bucket_names_for(account_id)
                   except Exception:
                       continue
-                  bucket_names = [b.get("name", "") for b in buckets if b.get("name")]
                   if bucket_names:
                       candidates.append((account_id, account_name, bucket_names))
 
