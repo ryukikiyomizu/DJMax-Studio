@@ -68,32 +68,48 @@ jobs:
                   raise SystemExit("Cloudflare API error: " + "; ".join(str(e.get("message", e)) for e in errors))
               return payload.get("result") or []
 
-          accounts = api("https://api.cloudflare.com/client/v4/accounts")
+          accounts = api("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=50")
           if not accounts:
               raise SystemExit("No Cloudflare accounts are accessible to ACCOUNT_API_TOKEN")
-          if len(accounts) != 1:
-              names = ", ".join(f'{a.get("name", "(unnamed)")} ({a.get("id", "?")})' for a in accounts)
+
+          candidates = []
+          for account in accounts:
+              account_id = account.get("id", "")
+              account_name = account.get("name", "")
+              if not account_id:
+                  continue
+              try:
+                  buckets = api(f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/buckets")
+              except Exception:
+                  continue
+              bucket_names = [b.get("name", "") for b in buckets if b.get("name")]
+              if bucket_names:
+                  candidates.append((account_id, account_name, bucket_names))
+
+          if wanted_bucket:
+              candidates = [c for c in candidates if wanted_bucket in c[2]]
+              if not candidates:
+                  raise SystemExit(f"Requested bucket '{wanted_bucket}' was not found in any accessible R2 account")
+
+          if not candidates:
+              raise SystemExit("No accessible R2 buckets were found with ACCOUNT_API_TOKEN")
+
+          if len(candidates) != 1:
+              names = ", ".join(
+                  f'{name or "(unnamed)"} ({acc_id}) [{", ".join(buckets)}]'
+                  for acc_id, name, buckets in candidates
+              )
               raise SystemExit(
-                  "ACCOUNT_API_TOKEN can access multiple accounts; narrow the token or add explicit account selection. "
+                  "Multiple accessible R2 accounts matched; narrow the token or supply a bucket that exists in only one account. "
                   + names
               )
 
-          account_id = accounts[0]["id"]
-          account_name = accounts[0].get("name", "")
-          buckets = api(f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/buckets")
-          bucket_names = [b.get("name", "") for b in buckets if b.get("name")]
+          account_id, account_name, bucket_names = candidates[0]
 
           if wanted_bucket:
-              if wanted_bucket not in bucket_names:
-                  raise SystemExit(
-                      f"Requested bucket '{wanted_bucket}' was not found. Available buckets: {', '.join(bucket_names) or '(none)'}"
-                  )
               selected = [wanted_bucket]
           else:
               selected = bucket_names
-
-          if not selected:
-              raise SystemExit("No R2 buckets found to scan")
 
           endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
           with open("buckets.txt", "w", encoding="utf-8") as fh:
