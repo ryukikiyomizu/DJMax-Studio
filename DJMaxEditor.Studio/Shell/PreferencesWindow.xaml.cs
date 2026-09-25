@@ -74,7 +74,7 @@ namespace DJMaxEditor.Studio.Shell
 
             _pages = new UIElement[]
             {
-                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, AboutPage,
+                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, SlicerPage, AboutPage,
             };
 
             InitialiseCombos();
@@ -175,6 +175,23 @@ namespace DJMaxEditor.Studio.Shell
                 VerticalTrackLayout.TechnikaMode, "TECHNIKA (4 lanes + scans)"));
             choices.Add(new LayoutChoice(VerticalTrackLayout.BmsMode, "BMS (channels)"));
             LayoutCombo.ItemsSource = choices;
+
+            SlicerModeCombo.ItemsSource = new[]
+            {
+                "BMS — 1295 (safe)",
+                "RESPECT — 2047",
+                "TECHNIKA — no limit",
+            };
+            SlicerSnapCombo.ItemsSource = new[]
+            {
+                "Free",
+                "1/4",
+                "1/8",
+                "1/16",
+                "1/32",
+                "1/64",
+                "1/192",
+            };
 
             RefreshOutputChoices(string.Empty);
         }
@@ -298,6 +315,19 @@ namespace DJMaxEditor.Studio.Shell
                 RightDockCheck.IsChecked = workspace.ShowRightDock;
                 VolumeLaneCheck.IsChecked = workspace.ShowVolumeLane;
                 PerfReadoutCheck.IsChecked = workspace.ShowPerformanceReadout;
+
+                KeyslicerSettings slicer = _settings.Keyslicer;
+                SlicerModeCombo.SelectedIndex = Math.Max(0, Math.Min(2, slicer.DefaultSlicerMode));
+                SlicerSuppressCheck.IsChecked = slicer.SuppressModeChooser;
+                int snapIndex = slicer.DefaultSnapDenominator == 0 ? 0
+                    : slicer.DefaultSnapDenominator == 4 ? 1
+                    : slicer.DefaultSnapDenominator == 8 ? 2
+                    : slicer.DefaultSnapDenominator == 16 ? 3
+                    : slicer.DefaultSnapDenominator == 32 ? 4
+                    : slicer.DefaultSnapDenominator == 64 ? 5
+                    : slicer.DefaultSnapDenominator == 192 ? 6
+                    : 3;
+                SlicerSnapCombo.SelectedIndex = snapIndex;
             }
             finally
             {
@@ -397,6 +427,18 @@ namespace DJMaxEditor.Studio.Shell
             workspace.ShowRightDock = RightDockCheck.IsChecked == true;
             workspace.ShowVolumeLane = VolumeLaneCheck.IsChecked == true;
             workspace.ShowPerformanceReadout = PerfReadoutCheck.IsChecked == true;
+
+            KeyslicerSettings slicer = _settings.Keyslicer;
+            if (SlicerModeCombo.SelectedIndex >= 0)
+            {
+                slicer.DefaultSlicerMode = SlicerModeCombo.SelectedIndex;
+            }
+            slicer.SuppressModeChooser = SlicerSuppressCheck.IsChecked == true;
+            int[] snapMap = new[] { 0, 4, 8, 16, 32, 64, 192 };
+            if (SlicerSnapCombo.SelectedIndex >= 0 && SlicerSnapCombo.SelectedIndex < snapMap.Length)
+            {
+                slicer.DefaultSnapDenominator = snapMap[SlicerSnapCombo.SelectedIndex];
+            }
 
             _settings.Normalise();
             UpdateReadouts();

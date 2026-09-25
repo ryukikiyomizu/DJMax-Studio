@@ -24,6 +24,7 @@ using DJMaxEditor.Studio.Documents;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Preview;
 using DJMaxEditor.Studio.Settings;
+using DJMaxEditor.Studio.Keyslicer;
 using DJMaxEditor.Studio.Timeline;
 using DJMaxEditor.Studio.Tracks;
 using DJMaxEditor.Studio.Video;
@@ -129,6 +130,13 @@ namespace DJMaxEditor.Studio.Shell
         /// the chart you are judging the palette on.
         /// </summary>
         private ThemePickerWindow _themePicker;
+
+        /// <summary>
+        /// The keysound slicer scene, if it is open. Single-instance: it owns its own project and
+        /// waveform cache, and letting two copies race the same source recording would be wasteful
+        /// and confusing.
+        /// </summary>
+        private KeyslicerWindow _slicerWindow;
 
         /// <summary>Set by the BGA file picker; the decoder attaches to it in <see cref="AttachBgaAsync"/>.</summary>
         private string _bgaPath;
@@ -822,6 +830,58 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+        /// Opens the keysound slicer, or brings the open one forward, attaching the current chart so
+        /// the slicer can send notes into it.
+        /// </summary>
+        private void OnOpenSlicer(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_slicerWindow != null)
+                {
+                    _slicerWindow.AttachChartContext(_document);
+                    _slicerWindow.Activate();
+                    return;
+                }
+
+                _slicerWindow = new KeyslicerWindow();
+                _slicerWindow.Owner = this;
+                _slicerWindow.AttachChartContext(_document);
+                _slicerWindow.Closed += OnSlicerClosed;
+                _slicerWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                Logs.Write("Keyslicer open failed: " + ex);
+                MessageBox.Show(
+                    this,
+                    "Keysound Slicer failed to open.\n\n" + ex.GetType().Name + ": " + ex.Message +
+                    "\n\nSee Help → Open log folder for the full trace. The main editor will stay open.",
+                    "Keysound Slicer",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                try
+                {
+                    _slicerWindow?.Close();
+                }
+                catch (Exception)
+                {
+                }
+                _slicerWindow = null;
+            }
+        }
+
+        private void OnSlicerClosed(object sender, EventArgs e)
+        {
+            KeyslicerWindow window = sender as KeyslicerWindow;
+            if (window != null)
+            {
+                window.Closed -= OnSlicerClosed;
+            }
+            _slicerWindow = null;
+        }
+
+        /// <summary>
         /// Writes the settings out, folding in the state the shell owns rather than the window.
         ///
         /// <para>
@@ -920,6 +980,18 @@ namespace DJMaxEditor.Studio.Shell
 
         private void OnClosed(object sender, EventArgs e)
         {
+            if (_slicerWindow != null)
+            {
+                try
+                {
+                    _slicerWindow.Close();
+                }
+                catch (Exception)
+                {
+                }
+                _slicerWindow = null;
+            }
+
             // First, and before the harvest below: the preferences window writes on its own close,
             // and letting it do that after the shell has already saved would put a file on disk
             // without the toolbar state in it.
@@ -1188,6 +1260,11 @@ namespace DJMaxEditor.Studio.Shell
                 ? "Read-only: this format cannot be written back"
                 : "Ready";
             long tPanels = adopt.ElapsedMilliseconds;
+
+            if (_slicerWindow != null)
+            {
+                _slicerWindow.AttachChartContext(_document);
+            }
 
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();

@@ -49,6 +49,8 @@ namespace DJMaxEditor.Studio.Settings
 
         public AppearanceSettings Appearance { get; set; } = new AppearanceSettings();
 
+        public KeyslicerSettings Keyslicer { get; set; } = new KeyslicerSettings();
+
         /// <summary>
         /// Replaces missing sections and pulls every value back into range.
         ///
@@ -71,6 +73,7 @@ namespace DJMaxEditor.Studio.Settings
             if (Format == null) { Format = new FormatSettings(); }
             if (Workspace == null) { Workspace = new WorkspaceSettings(); }
             if (Appearance == null) { Appearance = new AppearanceSettings(); }
+            if (Keyslicer == null) { Keyslicer = new KeyslicerSettings(); }
 
             Audio.Clamp();
             Timeline.Clamp();
@@ -78,6 +81,7 @@ namespace DJMaxEditor.Studio.Settings
             Format.Clamp();
             Workspace.Clamp();
             Appearance.Clamp();
+            Keyslicer.Clamp();
         }
 
         /// <summary>
@@ -96,6 +100,7 @@ namespace DJMaxEditor.Studio.Settings
                 Format = Format == null ? new FormatSettings() : Format.Clone(),
                 Workspace = Workspace == null ? new WorkspaceSettings() : Workspace.Clone(),
                 Appearance = Appearance == null ? new AppearanceSettings() : Appearance.Clone(),
+                Keyslicer = Keyslicer == null ? new KeyslicerSettings() : Keyslicer.Clone(),
             };
         }
 
@@ -123,6 +128,7 @@ namespace DJMaxEditor.Studio.Settings
             Appearance = other.Appearance == null
                 ? new AppearanceSettings()
                 : other.Appearance.Clone();
+            Keyslicer = other.Keyslicer == null ? new KeyslicerSettings() : other.Keyslicer.Clone();
             Normalise();
         }
 
@@ -146,6 +152,7 @@ namespace DJMaxEditor.Studio.Settings
             copy.Format.Describe(text);
             copy.Workspace.Describe(text);
             copy.Appearance.Describe(text);
+            copy.Keyslicer.Describe(text);
             return text.ToString();
         }
 

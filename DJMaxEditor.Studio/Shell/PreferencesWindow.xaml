@@ -120,6 +120,13 @@
                     <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Scissors}" Margin="0,0,8,0" />
+                            <TextBlock Text="Slicer" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,5">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Info}" Margin="0,0,8,0" />
                             <TextBlock Text="Diagnostics" VerticalAlignment="Center" />
                         </StackPanel>
@@ -647,6 +654,64 @@
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
                                        Text="On by default, and deliberately so: a tool whose whole complaint history is about frame time has no business hiding its own." />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ==================== Slicer ==================== -->
+                    <ScrollViewer x:Name="SlicerPage" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,16,20,20">
+                            <TextBlock Text="Slicer"
+                                       FontFamily="{StaticResource Font.UiDisplay}"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="How the keysound slicer starts up and which snap it restores. BMS is the safe 1,295-keysound target, RESPECT allows 2,047, and TECHNIKA has no table limit." />
+
+                            <TextBlock Text="MODE" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Default mode"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="SlicerModeCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <CheckBox x:Name="SlicerSuppressCheck" Margin="0,10,0,0"
+                                      Content="Don't show the mode chooser on first open"
+                                      Click="OnToggleChanged" />
+                            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="When off, opening the slicer with an empty project asks whether you want BMS, RESPECT, or TECHNIKA behaviour. The chosen default is still remembered here." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                    Margin="0,14,0,14" />
+
+                            <TextBlock Text="GRID" Style="{StaticResource Text.Section}" />
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Default snap"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="SlicerSnapCombo"
+                                          SelectionChanged="OnComboChanged" />
+                            </Grid>
+                            <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Matches the slicer toolbar: Free, 1/4, 1/8, 1/16, 1/32, 1/64, and 1/192." />
                         </StackPanel>
                     </ScrollViewer>
 

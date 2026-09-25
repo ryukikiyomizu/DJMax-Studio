@@ -242,6 +242,11 @@
                                       Click="OnTogglePlayfield" ToolTip="Show the TECHNIKA gameplay playfield">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Rows3}" />
                         </ToggleButton>
+                        <Button Style="{StaticResource Button.Tool}" Click="OnOpenSlicer"
+                                ToolTip="Keysound Slicer - non-destructive slicer (long source to virtual keysounds to notes)">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}"
+                                  Stroke="{StaticResource Brush.Accent}" />
+                        </Button>
 
                         <Separator />
 

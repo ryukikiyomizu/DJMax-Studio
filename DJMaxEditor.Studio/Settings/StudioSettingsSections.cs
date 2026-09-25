@@ -482,4 +482,51 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "appearance.chartTheme", ChartThemeId);
         }
     }
+
+    /// <summary>
+    /// Keysound slicer defaults: which export target it opens in and which snap division it restores.
+    /// </summary>
+    public sealed class KeyslicerSettings
+    {
+        /// <summary>
+        /// Default slicer mode for a new project or when the chooser is suppressed:
+        /// 0 = BMS (1295), 1 = RESPECT (2047), 2 = TECHNIKA (no limit).
+        /// </summary>
+        public int DefaultSlicerMode { get; set; } = 0;
+
+        /// <summary>Whether to skip the first-open mode chooser.</summary>
+        public bool SuppressModeChooser { get; set; } = false;
+
+        /// <summary>Default slicer snap denominator: 0, 4, 8, 16, 32, 64 or 192.</summary>
+        public int DefaultSnapDenominator { get; set; } = 16;
+
+        internal void Clamp()
+        {
+            DefaultSlicerMode = StudioSettings.Clamp(DefaultSlicerMode, 0, 2);
+            if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 &&
+                DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 &&
+                DefaultSnapDenominator != 32 && DefaultSnapDenominator != 64 &&
+                DefaultSnapDenominator != 192)
+            {
+                DefaultSnapDenominator = 16;
+            }
+        }
+
+        internal KeyslicerSettings Clone()
+        {
+            return new KeyslicerSettings
+            {
+                DefaultSlicerMode = DefaultSlicerMode,
+                SuppressModeChooser = SuppressModeChooser,
+                DefaultSnapDenominator = DefaultSnapDenominator,
+            };
+        }
+
+        internal void Describe(StringBuilder text)
+        {
+            StudioSettings.Line(text, "keyslicer.defaultMode", DefaultSlicerMode);
+            StudioSettings.Line(text, "keyslicer.suppressChooser", SuppressModeChooser);
+            StudioSettings.Line(text, "keyslicer.snap", DefaultSnapDenominator);
+        }
+    }
 }

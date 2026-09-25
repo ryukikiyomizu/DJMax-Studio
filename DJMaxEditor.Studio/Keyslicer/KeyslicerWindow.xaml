@@ -1,0 +1,591 @@
+<Window x:Class="DJMaxEditor.Studio.Keyslicer.KeyslicerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:keyslicer="clr-namespace:DJMaxEditor.Studio.Keyslicer"
+        Title="Keysound Slicer - DJMax Studio"
+        Width="1380" Height="860"
+        MinWidth="980" MinHeight="620"
+        Background="{StaticResource Brush.Abyss}"
+        Foreground="{StaticResource Brush.TextPrimary}"
+        FontFamily="{StaticResource Font.Ui}"
+        FontSize="12"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        SnapsToDevicePixels="True">
+    <Window.Resources>
+        <!-- Slicer: Large variant for top bar where user said icons still small; Palette is 18 globally, Large is 20 for hero actions only. -->
+        <Style x:Key="Icon.Glyph.Large" TargetType="Path" BasedOn="{StaticResource Icon.Glyph}">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="StrokeThickness" Value="1.8" />
+        </Style>
+        <Style x:Key="Slicer.Header" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="Slicer.Button" TargetType="Button" BasedOn="{StaticResource Button.Tool}">
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
+        </Style>
+        <Style x:Key="Slicer.IconButton" TargetType="Button" BasedOn="{StaticResource Slicer.Button}">
+            <Setter Property="Padding" Value="3,1" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="24" />
+        </Grid.RowDefinitions>
+
+        <!-- Top toolbar / project bar -->
+        <Border Grid.Row="0" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                <Grid Margin="8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" MinWidth="420" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="NewBtn" Style="{StaticResource Slicer.Button}" Click="OnNew" ToolTip="New slicer project (Ctrl+N)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.FilePlus}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnOpenProject" ToolTip="Open slicer project (.ksp / json) (Ctrl+O)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.FolderOpen}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnSaveProject" ToolTip="Save slicer project (Ctrl+S)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Save}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnSaveProjectAs" ToolTip="Save slicer project as (Ctrl+Shift+S)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.FilePlus}" />
+                    </Button>
+                    <Separator Margin="8,0" />
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnExportSlices" ToolTip="Finalize — render virtual slices to WAV/OGG and optionally a .tech (Ctrl+E)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Scissors}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnExportTech" ToolTip="Export a Techmania .tech chart from the placed notes">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Music4}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnSendToEditor" ToolTip="Send confirmed slices + notes into the open chart (Ctrl+B)">
+                            <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.ClipboardPaste}" />
+                    </Button>
+                </StackPanel>
+
+                <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="BPM" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox x:Name="BpmBox" Width="56" VerticalAlignment="Center" TextChanged="OnBpmChanged" ToolTip="Chart BPM (for note pulse conversion) - auto-synced from open chart" />
+                    <TextBlock Text="OFFSET" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="10,0,4,0" />
+                    <TextBox x:Name="OffsetBox" Width="56" VerticalAlignment="Center" TextChanged="OnOffsetChanged" ToolTip="Chart offset in ms" />
+                    <TextBlock Text="SNAP" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="10,0,4,0" />
+                    <ComboBox x:Name="SnapCombo" Width="68" SelectionChanged="OnSnapChanged" ToolTip="Grid snap for chart notes and quantize - Free means no snap" />
+                    <TextBlock Text="ZOOM" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="10,0,4,0" />
+                    <Slider x:Name="ZoomSlider" Width="90" Minimum="0.5" Maximum="16" Value="1" ValueChanged="OnZoomChanged" VerticalAlignment="Center" ToolTip="Waveform zoom (Ctrl+wheel also)" />
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnUndo" ToolTip="Undo slicer action (Ctrl+Z)" Margin="8,0,0,0">
+                        <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Undo2}" />
+                    </Button>
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnRedo" ToolTip="Redo (Ctrl+Y)">
+                        <Path Style="{StaticResource Icon.Glyph.Large}" Data="{StaticResource Icon.Redo2}" />
+                    </Button>
+                    <Separator Margin="8,0" />
+                    <!-- Slicer mode switcher (also first-launch chooser) -->
+                    <Border BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1" CornerRadius="4" Margin="0,0,0,0" Padding="2,1" Background="{StaticResource Brush.Raised}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="ModeBmsBtn" Style="{StaticResource Slicer.Button}" Click="OnModeBms" ToolTip="BMS — 1295 keysounds max (turntable, cuts on same lane)" Padding="6,2" Margin="1,0"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Disc3}" /></Button>
+                            <Button x:Name="ModeRespectBtn" Style="{StaticResource Slicer.Button}" Click="OnModeRespect" ToolTip="RESPECT — 2047 keysounds (crown)" Padding="6,2" Margin="1,0"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Crown}" /></Button>
+                            <Button x:Name="ModeTechnikaBtn" Style="{StaticResource Slicer.Button}" Click="OnModeTechnika" ToolTip="TECHNIKA — no limit, voices never cut (technika note)" Padding="6,2" Margin="1,0"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.TechnikaNote}" /></Button>
+                        </StackPanel>
+                    </Border>
+                    <!-- Budget meter: 1295 / 2047 / ∞ -->
+                    <Grid Margin="8,0,0,0" ToolTipService.ToolTip="{Binding BudgetTooltip}" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Height="10" CornerRadius="5" Background="{StaticResource Brush.Abyss}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1" ClipToBounds="True">
+                            <Border x:Name="BudgetFill" HorizontalAlignment="Left" CornerRadius="5" Width="0" />
+                        </Border>
+                        <TextBlock Grid.Column="1" x:Name="BudgetText" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="6,0,0,0" Text="0 / 1295"/>
+                    </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <TextBlock Grid.Column="2" x:Name="ProjectLabel" Text="Untitled slicer project" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusLabel" Text="Ready" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                    <Button Style="{StaticResource Slicer.Button}" Click="OnCloseWindow" ToolTip="Close slicer (project stays in memory)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" /></Button>
+                </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Body: left sources + center waveform + right inspector -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="220" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" MinWidth="520" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="300" MinWidth="220" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: sources + slice library -->
+            <Grid Grid.Column="0" Background="{StaticResource Brush.Surface}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Sources -->
+                <Border Grid.Row="0" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1" Padding="8,6">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="SOURCE RECORDINGS" Style="{StaticResource Slicer.Header}" />
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnImportSource" ToolTip="Import a long source recording (wav/ogg/mp3/opus/flac)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.FolderOpen}" Margin="0,0,4,0" />
+                                        <TextBlock Text="Import audio" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnRemoveSource" ToolTip="Remove selected source">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                                </Button>
+                                <Separator Margin="6,0" />
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnImportBmsFile" ToolTip="Import BMS/BMSE/BMSON keysounds as virtual slices (round-trip)">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Disc3}" />
+                                </Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnPasteClipboard" ToolTip="Paste BMS/iBMSC clipboard fragment (Ctrl+V) — preview before import">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.ClipboardPaste}" />
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <ListBox Grid.Row="1" x:Name="SourceList" Height="92" Margin="4,4,4,4"
+                         Background="Transparent" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1"
+                         SelectionChanged="OnSourceChanged" DisplayMemberPath="FileName" />
+
+                <!-- Detected / Slice library -->
+                <Border Grid.Row="2" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="26" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1" Padding="8,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="SLICE LIBRARY" Style="{StaticResource Text.Section}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SliceCountLabel" Text="0" Style="{StaticResource Text.Readout}" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="BudgetInlineLabel" Text=" / 1295" Style="{StaticResource Text.Readout}" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="2,0,0,0" ToolTip="Budget for current mode" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="6,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnDeleteSlice" ToolTip="Delete selected slice (Del)">
+                                    <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Eraser}" />
+                                </Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnDuplicateSlice" ToolTip="Duplicate selected slice (Ctrl+D)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Copy}" /></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnMergeSlices" ToolTip="Merge selected slices (when 2 selected)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}" /></Button>
+                            <Separator Margin="6,0" />
+                            <TextBlock Text="LANE" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <ComboBox x:Name="LaneCombo" Width="64" SelectionChanged="OnLaneAssigned" ToolTip="Assign lane (D/F/J/K or this picker)">
+                                <ComboBoxItem Content="—" Tag="-1" />
+                                <ComboBoxItem Content="1" Tag="0" />
+                                <ComboBoxItem Content="2" Tag="1" />
+                                <ComboBoxItem Content="3" Tag="2" />
+                                <ComboBoxItem Content="4" Tag="3" />
+                                <ComboBoxItem Content="5" Tag="4" />
+                                <ComboBoxItem Content="6" Tag="5" />
+                                <ComboBoxItem Content="7" Tag="6" />
+                                <ComboBoxItem Content="8" Tag="7" />
+                            </ComboBox>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <ListBox Grid.Row="2" x:Name="SliceList" Margin="4,0,4,4"
+                                 Background="Transparent" BorderThickness="0"
+                                 SelectionMode="Extended"
+                                 SelectionChanged="OnSliceSelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="6,4" Margin="0,1" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1" CornerRadius="3">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Id}" Foreground="{StaticResource Brush.Accent}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Label}" Foreground="{StaticResource Brush.TextPrimary}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock FontSize="10" Foreground="{StaticResource Brush.TextMuted}">
+                                                    <Run Text="{Binding StartMs, StringFormat={}{0:F1} ms, Mode=OneWay}" /><Run Text=" → " /><Run Text="{Binding EndMs, StringFormat={}{0:F1} ms, Mode=OneWay}" /><Run Text="  (" /><Run Text="{Binding DurationMs, StringFormat={}{0:F0} ms, Mode=OneWay}" /><Run Text=")" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding Lane}" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <!-- Detection -->
+                <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch" Background="{StaticResource Brush.Edge}" />
+
+                <Border Grid.Row="4" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0" Padding="8,8">
+                    <StackPanel>
+                        <TextBlock Text="AUTO-DETECT" Style="{StaticResource Slicer.Header}" />
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Sensitivity" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" x:Name="SensLabel" Text="0.55" Style="{StaticResource Text.Readout}" Foreground="{StaticResource Brush.TextMuted}" />
+                        </Grid>
+                        <Slider x:Name="SensSlider" Minimum="0.05" Maximum="0.95" Value="0.55" ValueChanged="OnSensChanged" ToolTip="Higher = stricter, fewer onsets" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnDetect" ToolTip="Run onset detection (suggests slices)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.ZoomIn}" /></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnAccept" ToolTip="Accept current suggestion (Enter)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Check}" /></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnReject" ToolTip="Reject suggestion"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" /></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnAcceptAll" ToolTip="Accept all remaining suggestions"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}" /></Button>
+                        </StackPanel>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="SuggestionLabel" Text="No suggestions" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" />
+                            <TextBlock Grid.Column="1" x:Name="DraftLabel" Text="" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" HorizontalAlignment="Right" />
+                        </Grid>
+                        <TextBlock Text="Shortcuts: drag→draft, Enter = make, S = split (Bandlab), D/F/J/K = lane+make, M = place note, N = snap on/off, Q = quantize, W/E = start/end, F = fit, Space = play/pause, Ctrl+Z/Y undo, Ctrl+X/C/V/D/A cut/copy/paste/duplicate/select, Del = delete, [ / ] suggestions." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextDisabled}" FontSize="10" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource Brush.Edge}" />
+
+            <!-- Center: waveform + transport -->
+            <Grid Grid.Column="2" Background="{StaticResource Brush.Abyss}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Waveform header -->
+                <Border Grid.Row="0" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1" Padding="8,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Music4}" Margin="0,0,6,0" />
+                            <TextBlock Text="WAVEFORM" Style="{StaticResource Text.Section}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="SourceInfoLabel" Text="no source loaded" Foreground="{StaticResource Brush.TextMuted}" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnPlaySource" ToolTip="Play source at playhead (Space)">
+                                <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Play}" />
+                            </Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnPlayDraft" ToolTip="Play draft / selected slice (P)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Play}" Opacity="0.7"/></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnStopSource" ToolTip="Stop (Esc)">
+                                <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Square}" />
+                            </Button>
+                            <Separator Margin="6,0" />
+                            <TextBlock Text="Chart playhead" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="11" />
+                            <TextBox x:Name="ChartPlayheadBox" Width="78" VerticalAlignment="Center" TextChanged="OnChartPlayheadChanged" ToolTip="Where the next lane-press will place a note (song time, ms)" />
+                            <TextBlock Text="ms" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="2,0,0,0" FontSize="11" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Dual ruler: source time + chart bars (synced zoom/scroll) -->
+                <keyslicer:ChartRulerOverlay x:Name="ChartRuler" Grid.Row="1" ToolTip="Top: source time · Bottom: chart bars/beats at current BPM/offset. Ghost lines are snap subdivisions; yellow is draft, playhead follows chart." />
+
+                <!-- Waveform view -->
+                <Border Grid.Row="2" Background="Black" ClipToBounds="True">
+                    <keyslicer:KeyslicerWaveformView x:Name="WaveformView" />
+                </Border>
+                <!-- Horizontal scrollbar — always visible so you can drag to the end (fixes missing slider) -->
+                <Grid Grid.Row="3" Background="{StaticResource Brush.Surface}">
+                    <ScrollBar x:Name="WaveHScroll" Orientation="Horizontal" Minimum="0" Maximum="100" ViewportSize="10" ValueChanged="OnWaveHScroll" Margin="0,1,0,1" ToolTip="Scroll waveform (also drag, wheel, Shift+wheel)" />
+                </Grid>
+
+                <!-- Selection / creation bar: draft -> slice -> note is the core gesture. Zero-cross and auto-advance are best-default extras that keep clicks out and rhythm on-grid without asking. -->
+                <Border Grid.Row="4" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,1" Padding="8,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Draft:" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11" />
+                            <TextBlock x:Name="DraftInfo" Text="—" Foreground="{StaticResource Brush.TextPrimary}" VerticalAlignment="Center" FontSize="11" Margin="0,0,10,0" />
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnCreateSlice" ToolTip="Make slice from draft (Enter)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}" /></Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnClearDraft" ToolTip="Clear draft (Esc)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" /></Button>
+                            <Separator Margin="8,0" />
+                            <TextBlock Text="Lane:" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="11" />
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnLaneD" ToolTip="Lane 1 (D)">D</Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnLaneF" ToolTip="Lane 2 (F)">F</Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnLaneJ" ToolTip="Lane 3 (J)">J</Button>
+                            <Button Style="{StaticResource Slicer.Button}" Click="OnLaneK" ToolTip="Lane 4 (K)">K</Button>
+                            <CheckBox x:Name="ZeroCrossCheck" Content="Zero-X" IsChecked="True" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="Nudge slice edges to nearest zero-crossing (~2.5 ms) to avoid clicks" Click="OnZeroCrossChanged" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="FADE" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="11" />
+                            <TextBox x:Name="FadeInBox" Width="36" Text="2" TextChanged="OnFadeChanged" ToolTip="Fade in ms" />
+                            <TextBlock Text="/" Foreground="{StaticResource Brush.TextMuted}" Margin="2,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="FadeOutBox" Width="36" Text="5" TextChanged="OnFadeChanged" ToolTip="Fade out ms" />
+                            <TextBlock Text="ms" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" Margin="2,0,8,0" FontSize="11" />
+                            <ComboBox x:Name="AutoAdvanceCombo" Width="98" SelectionChanged="OnAutoAdvanceChanged" ToolTip="After placing a note, how far to advance the chart playhead — Grid = one snap step, Beat = one beat, Gap = snap to next onset gap, Off = stay">
+                                <ComboBoxItem Content="Advance: Grid" Tag="grid" />
+                                <ComboBoxItem Content="Advance: Beat" Tag="beat" />
+                                <ComboBoxItem Content="Advance: Gap" Tag="gap" />
+                                <ComboBoxItem Content="Advance: Off" Tag="off" />
+                            </ComboBox>
+                            <CheckBox x:Name="AutoPlaceCheck" Content="Auto-place" IsChecked="True" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="When creating a slice via lane key, also place a note at the chart playhead" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Timeline / notes overview -->
+                <Border Grid.Row="5" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,0" Padding="8,6" MinHeight="86">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="CHART TIMELINE (PLACED NOTES)" Style="{StaticResource Slicer.Header}" Margin="0,0,0,0" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="NoteCountLabel" Text="0 notes" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnClearNotes" ToolTip="Clear all placed notes"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Trash2}" /></Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnQuantizeNotes" ToolTip="Quantize note times to nearest snap (Q)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Ruler}" /></Button>
+                            </StackPanel>
+                        </Grid>
+                        <ListBox Grid.Row="1" x:Name="NoteList" Height="54" Background="{StaticResource Brush.Abyss}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1"
+                                 SelectionMode="Single">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding KeysoundId}" Foreground="{StaticResource Brush.Accent}" FontSize="11" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding ChartTimeMs, StringFormat={}{0:F0} ms}" Foreground="{StaticResource Brush.TextPrimary}" FontSize="11" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding Lane, StringFormat={}lane {0}}" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource Brush.Edge}" />
+
+            <!-- Right: inspector -->
+            <Grid Grid.Column="4" Background="{StaticResource Brush.Surface}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="26" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1" Padding="8,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}" Margin="0,0,6,0" />
+                            <TextBlock Text="INSPECTOR" Style="{StaticResource Text.Section}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" x:Name="InspectorHint" Text="" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,10">
+                    <StackPanel>
+                        <TextBlock Text="SELECTED SLICE" Style="{StaticResource Slicer.Header}" />
+                        <TextBlock x:Name="InspectorNoneLabel" Text="No slice selected" Foreground="{StaticResource Brush.TextMuted}" TextWrapping="Wrap" />
+
+                        <StackPanel x:Name="InspectorForm" Visibility="Collapsed">
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="ID" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" x:Name="FieldId" IsReadOnly="True" Background="{StaticResource Brush.Abyss}" />
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Label" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" x:Name="FieldLabel" TextChanged="OnInspectorLabelChanged" />
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Start" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" x:Name="FieldStart" TextChanged="OnInspectorBoundsChanged" />
+                                <TextBlock Grid.Column="2" Text="ms" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0,0,0" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="End" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" x:Name="FieldEnd" TextChanged="OnInspectorBoundsChanged" />
+                                <TextBlock Grid.Column="2" Text="ms" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0,0,0" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock x:Name="FieldDuration" Text="—" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" Margin="80,2,0,0" />
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gain" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="GainSlider" Minimum="0.1" Maximum="2.0" Value="1.0" ValueChanged="OnGainChanged" />
+                            </Grid>
+                            <TextBlock x:Name="GainLabel" Text="1.00x" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" Margin="80,0,0,0" />
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Lane" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="InspectorLane" SelectionChanged="OnInspectorLaneChanged" />
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Fade in/out" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" ToolTip="Per-slice fades; global defaults are 2/5 ms" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox x:Name="InspectorFadeIn" Width="48" VerticalAlignment="Center" TextChanged="OnInspectorFadeChanged" ToolTip="Fade in ms for this slice" />
+                                    <TextBlock Text="/" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="InspectorFadeOut" Width="48" VerticalAlignment="Center" TextChanged="OnInspectorFadeChanged" ToolTip="Fade out ms for this slice" />
+                                    <TextBlock Text="ms" Foreground="{StaticResource Brush.TextMuted}" Margin="4,0,0,0" VerticalAlignment="Center" FontSize="10" />
+                                </StackPanel>
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Zero-X" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" ToolTip="Non-destructive Zero-X: render nudged vs logical" />
+                                <ComboBox Grid.Column="1" x:Name="InspectorZeroCrossCombo" SelectionChanged="OnInspectorZeroCrossChanged" ToolTip="Per-slice Zero-X override">
+                                    <ComboBoxItem Content="Global (project)" Tag="global" />
+                                    <ComboBoxItem Content="On for this slice" Tag="on" />
+                                    <ComboBoxItem Content="Off for this slice" Tag="off" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Normalize" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="InspectorNormalizeCombo" SelectionChanged="OnInspectorNormalizeChanged" ToolTip="Per-slice normalize override">
+                                    <ComboBoxItem Content="Global (project)" Tag="global" />
+                                    <ComboBoxItem Content="On for this slice" Tag="on" />
+                                    <ComboBoxItem Content="Off for this slice" Tag="off" />
+                                </ComboBox>
+                            </Grid>
+                            <TextBlock x:Name="InspectorZeroDelta" Foreground="{StaticResource Brush.TextMuted}" FontSize="10" Margin="80,2,0,0" TextWrapping="Wrap" />
+
+                            <Separator Margin="0,10" />
+                            <TextBlock Text="SOURCE" Style="{StaticResource Slicer.Header}" />
+                            <TextBlock x:Name="FieldSource" Text="—" Foreground="{StaticResource Brush.TextSecondary}" TextWrapping="Wrap" FontSize="11" />
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnInspectorPlay" ToolTip="Audition this slice"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Play}" /></Button>
+                                <Button Style="{StaticResource Slicer.Button}" Click="OnInspectorPlaceNote" ToolTip="Place a chart note for this slice at the chart playhead (M)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.SquarePlus}" /></Button>
+                            </StackPanel>
+
+                            <Separator Margin="0,10" />
+                            <TextBlock Text="EXPORT PREVIEW" Style="{StaticResource Slicer.Header}" />
+                            <TextBlock Text="At export this slice becomes:" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" />
+                            <TextBlock x:Name="ExportPreviewLabel" Text="ks_0001.ogg" Foreground="{StaticResource Brush.TextSecondary}" FontFamily="Consolas" FontSize="11" Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <Separator Margin="0,14" />
+                        <TextBlock Text="WORKFLOW HINTS" Style="{StaticResource Slicer.Header}" Margin="0,8,0,0" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" LineHeight="16">
+                            <Run Text="• Drag to make yellow draft; S = split (Bandlab), M = place note." /><LineBreak />
+                            <Run Text="• D/F/J/K = lane+make · N = snap · Q = quantize · W/E = start/end" /><LineBreak />
+                            <Run Text="• Ctrl+Z/Y undo · Ctrl+X/C/V cut/copy/paste · Ctrl+D duplicate · Del" /><LineBreak />
+                            <Run Text="• Wheel = scroll, Ctrl+wheel = zoom; drag scrollbar; F = fit" /><LineBreak />
+                            <Run Text="• Double-click to audition · Space = play/pause" />
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Row="2" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0" Padding="10,6">
+                    <StackPanel>
+                        <TextBlock Text="PROJECT" Style="{StaticResource Slicer.Header}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="ProjectSummary" Text="No sources" Foreground="{StaticResource Brush.TextMuted}" FontSize="11" TextWrapping="Wrap" />
+                        <CheckBox x:Name="PortableCheck" Content="Portable (copy sources into project)" Margin="0,6,0,0" ToolTip="When saving, copy the original recording(s) into a sources/ folder next to the project so the project is self-contained" />
+                        <CheckBox x:Name="NormalizeCheck" Content="Normalize exported slices" Margin="0,4,0,0" ToolTip="Peak-normalize each rendered slice on export so keysounds have consistent loudness" Click="OnNormalizeChanged" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0" Padding="10,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusBarText" Text="Ready - Import a source recording to begin." Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" x:Name="ZoomLabel" Text="ZOOM 1.0x" Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center" FontSize="11" Margin="12,0,0,0" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
