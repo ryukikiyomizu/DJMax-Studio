@@ -73,7 +73,7 @@ namespace DJMaxEditor.Studio.Shell
 
             _pages = new UIElement[]
             {
-                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, AboutPage,
+                AudioPage, TimelinePage, BgaPage, FormatPage, WorkspacePage, SlicerPage, AboutPage,
             };
 
             InitialiseCombos();
@@ -174,6 +174,9 @@ namespace DJMaxEditor.Studio.Shell
                 VerticalTrackLayout.TechnikaMode, "TECHNIKA (4 lanes + scans)"));
             choices.Add(new LayoutChoice(VerticalTrackLayout.BmsMode, "BMS (channels)"));
             LayoutCombo.ItemsSource = choices;
+
+            SlicerModeCombo.ItemsSource = new[] { "BMS — 1295 (safe)", "RESPECT — 2047", "TECHNIKA — no limit" };
+            SlicerSnapCombo.ItemsSource = new[] { "Free", "1/4", "1/8", "1/16", "1/32", "1/64", "1/192" };
         }
 
         // ===================================================================================
@@ -235,6 +238,13 @@ namespace DJMaxEditor.Studio.Shell
                 RightDockCheck.IsChecked = workspace.ShowRightDock;
                 VolumeLaneCheck.IsChecked = workspace.ShowVolumeLane;
                 PerfReadoutCheck.IsChecked = workspace.ShowPerformanceReadout;
+
+                KeyslicerSettings ks = _settings.Keyslicer;
+                SlicerModeCombo.SelectedIndex = Math.Max(0, Math.Min(2, ks.DefaultSlicerMode));
+                SlicerSuppressCheck.IsChecked = ks.SuppressModeChooser;
+                // snap denom 0=>0, 4=>1, 8=>2, 16=>3, 32=>4, 64=>5, 192=>6
+                int snapIdx = ks.DefaultSnapDenominator == 0 ? 0 : ks.DefaultSnapDenominator == 4 ? 1 : ks.DefaultSnapDenominator == 8 ? 2 : ks.DefaultSnapDenominator == 16 ? 3 : ks.DefaultSnapDenominator == 32 ? 4 : ks.DefaultSnapDenominator == 64 ? 5 : ks.DefaultSnapDenominator == 192 ? 6 : 3;
+                SlicerSnapCombo.SelectedIndex = snapIdx;
             }
             finally
             {
@@ -331,6 +341,13 @@ namespace DJMaxEditor.Studio.Shell
             workspace.ShowRightDock = RightDockCheck.IsChecked == true;
             workspace.ShowVolumeLane = VolumeLaneCheck.IsChecked == true;
             workspace.ShowPerformanceReadout = PerfReadoutCheck.IsChecked == true;
+
+            KeyslicerSettings ks2 = _settings.Keyslicer;
+            if (SlicerModeCombo.SelectedIndex >= 0) ks2.DefaultSlicerMode = SlicerModeCombo.SelectedIndex;
+            ks2.SuppressModeChooser = SlicerSuppressCheck.IsChecked == true;
+            int[] snapMap = new[] { 0, 4, 8, 16, 32, 64, 192 };
+            if (SlicerSnapCombo.SelectedIndex >= 0 && SlicerSnapCombo.SelectedIndex < snapMap.Length)
+                ks2.DefaultSnapDenominator = snapMap[SlicerSnapCombo.SelectedIndex];
 
             _settings.Normalise();
             UpdateReadouts();

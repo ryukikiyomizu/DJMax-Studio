@@ -1,0 +1,964 @@
+{
+  "tool_audits": [
+    {
+      "tool_name": "Sayaslicer",
+      "tool_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "workflow_steps": [
+        {
+          "value": "Open audio (O) or drag-and-drop wav/mp3/flac (Windows drag-drop only) → waveform loads in ImGui/ImPlot view",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Set Offset, BPM/base grid, Snap 1/1–1/192 (Up/Down for common, Shift+Up/Down for arbitrary) and toggle Zero-crossing / Silent tail remover / Fadeout",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Add markers Z, navigate Left/Right (Shift+Left/Right jumps to snap), Ctrl+Left/Right jumps markers, click marker in table to jump, right-click to delete, Del/Ctrl+X/Ctrl+C/Ctrl+V to edit selection, Space to enter select mode",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Preview current slice with P (auto-advance next) or Enter, optionally import markers from MIDI (Mid2BMS renamer array) or BMSE clipboard B",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Copy markers: V = BMSE clipboard (rounded to 192nd), Shift+V = iBMSC clipboard (arbitrary >192 resolution), K = copy keysound list, Shift+K = append list to .bms in audio folder",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Export: M exports sliced wavs (zero-cross & fade applied) + load/save project Ctrl+O/Ctrl+S; paste clipboard into BMSE/iBMSC/BMHelper to generate #WAV definitions and note placements",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "export_ceremony",
+          "category_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "description": "Still requires manual clipboard ceremony: copy V/Shift+V → switch to BMSE/iBMSC → Ctrl+V. No direct BMS writing unless Shift+K and only if .bms in same folder. Virtual slices not native; export M still creates hundreds of files on finalize.",
+          "description_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "severity": "P1",
+          "severity_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "category": "audio_artifacts",
+          "category_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "description": "Zero-crossing moves markers to reduce clicks but invalidates iBMSC high-res clipboard; docs warn to fall back to BMSE 192nd-rounded clipboard if gamemode changes or missing keysounds after paste.",
+          "description_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "severity": "P0",
+          "severity_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "category": "technical_limit",
+          "category_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "description": "BPM changes only partially supported ('hackish'), grid display not BPM-aware; planned feature explicitly deferred. Users doing tempo-mapped stems must fake it.",
+          "description_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "severity": "P1",
+          "severity_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "category": "ui_ux",
+          "category_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "description": "File drag-and-drop only on Windows; macOS build unsigned (xattr -d required); nightly builds require GitHub login (or nightly.link workaround).",
+          "description_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "severity": "P2",
+          "severity_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url": "https://github.com/SayakaIsBaka/sayaslicer",
+          "source_url_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "category": "file_management",
+          "category_citation": "https://purureko.com/etc/post-1704/",
+          "description": "Export M still writes one wav per slice to folder; downstream definition reuse wizard needed to avoid 1296 base-36 overflow when slices >1295.",
+          "description_citation": "https://purureko.com/etc/post-1704/",
+          "severity": "P1",
+          "severity_citation": "https://purureko.com/etc/post-1704/",
+          "source_url": "https://purureko.com/etc/post-1704/",
+          "source_url_citation": "https://purureko.com/etc/post-1704/"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "192th-rounded BMSE 1296 (01-ZZ base-36) or toggleable base-62 ~3844; practical limit is BMS 1296 unless LRbase62/beatoraja extended; no hard cap inside slicer",
+        "max_slices_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+        "snap_denominators": "1/1 to 1/192 arbitrary snapping; BMSE clipboard auto-rounds to 192nd, iBMSC preserves arbitrary resolution over 192",
+        "snap_denominators_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+        "bpm_handling": "Partial BPM changes for audio slicing only (hackish); BMSE clipboard + full grid BPM import planned but not implemented; no per-measure BPM import yet",
+        "bpm_handling_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+        "format_support": "wav/ogg/flac via libsndfile + mp3; stereo preserved; exports sliced wavs with optional fadeout and silent-tail trim with configurable threshold",
+        "format_support_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      },
+      "user_settings": [
+        {
+          "value": "Offset (ms alignment to bar 0)",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Snap denominator 1/1–1/192 (Up/Down, Shift+Up/Down arbitrary)",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Zero-crossing toggle (reduces clicks, moves markers)",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Silent tail remover threshold",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Fadeout length",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        },
+        {
+          "value": "Base-62 toggle for BMSE clipboard",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "Skip iBMSC temporary file for keysound start detection / list add (commit b6aea7c)",
+          "issue_title_citation": "https://github.com/SayakaIsBaka/sayaslicer/commit/b6aea7c76ee691a8ea1b58450f7dd4a465611cf4",
+          "summary": "Latest fix handles iBMSC temp files polluting keysound detection—shows fragility of clipboard/file round-trip that DJMax Studio virtual slices avoid entirely.",
+          "summary_citation": "https://github.com/SayakaIsBaka/sayaslicer/commit/b6aea7c76ee691a8ea1b58450f7dd4a465611cf4",
+          "url": "https://github.com/SayakaIsBaka/sayaslicer/commit/b6aea7c76ee691a8ea1b58450f7dd4a465611cf4",
+          "url_citation": "https://github.com/SayakaIsBaka/sayaslicer/commit/b6aea7c76ee691a8ea1b58450f7dd4a465611cf4"
+        },
+        {
+          "issue_title": "No open issues; nightly builds require login / xattr macOS quarantine",
+          "issue_title_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "summary": "Repo has 0 open issues (2026-09) indicating small userbase/support burden; README warns macOS unsigned and nightly login friction—UX polish gap.",
+          "summary_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "url": "https://github.com/SayakaIsBaka/sayaslicer/issues",
+          "url_citation": "https://github.com/SayakaIsBaka/sayaslicer/issues"
+        },
+        {
+          "issue_title": "Planned: Better BPM change support (BMSE clipboard + MIDI import + grid display)",
+          "issue_title_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "summary": "Author lists full BPM-aware grid as low-priority—validates need for DJMax Studio to do it natively with chart-ruler sync.",
+          "summary_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+          "url": "https://github.com/SayakaIsBaka/sayaslicer",
+          "url_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        }
+      ]
+    },
+    {
+      "tool_name": "Woslicer II (wosderge)",
+      "tool_name_citation": "https://github.com/SayakaIsBaka/woslicerII-english",
+      "workflow_steps": [
+        {
+          "value": "Prepare loop wav (mp3→wav conversion required) — many tutorials warn 'mp3からwavに変換することを忘れずに！'",
+          "value_citation": "https://note.com/tiv_03sk/n/n97ce18606798"
+        },
+        {
+          "value": "Generate source via BMHelper/Mid2BMS (MIDI → renamer array → concatenated wav + cut positions) OR load raw loop wav for butsu-giri manual cutting",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "value": "Drag wav onto WoslicerII, set BPM/offset/fade (initmod patch zeroes fade/offset to fix defaults), add markers with Z / mouse",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "value": "BMHelper: click '切断位置をコピー' → WoslicerII: File→クリップボード読込 → paste cut positions; verify filename in lower textbox (click black area if 総出力 disabled)",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "value": "Click 総出力 to export hundreds of sliced wavs (01_000.ogg pattern) to BMS folder; then BMSE: drag-drop all wavs to auto-generate #WAV definitions",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "value": "File→クリップボード出力 → enter start #WAV index in base-36 (01,02...ZZ) → BMSE/BMHelper paste to arrange notes; reuse definitions for repeated phrases to stay under 1296",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "export_ceremony",
+          "category_citation": "https://purureko.com/etc/post-1704/",
+          "description": "Three-app ceremony: DAW → BMHelper (MIDI→wav) → WoslicerII (clipboard read) → 総出力 → BMSE drag-drop → clipboard out. Single misclick breaks sync; '総出力が押せない' common when filename textbox empty.",
+          "description_citation": "https://purureko.com/etc/post-1704/",
+          "severity": "P0",
+          "severity_citation": "https://purureko.com/etc/post-1704/",
+          "source_url": "https://purureko.com/etc/post-1704/",
+          "source_url_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "category": "file_management",
+          "category_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "description": "Exports one file per slice (01_000.ogg…57_023.ogg); final folder lists 50+ slices plus Mid2BMS b_3x Osc files; manual naming/cleanup required, no virtual slices.",
+          "description_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "severity": "P0",
+          "severity_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "source_url": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "source_url_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "category": "overflow",
+          "category_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+          "description": "BMS base-36 WAV cap 01-ZZ = 1296 definitions; modern BMS still limited to 1295 (1296 inc 00). Exceeding forces risky definition-reuse wizard ('同じ音の定義を使い回す') or relegation to BGM (<60s) splits.",
+          "description_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+          "severity": "P0",
+          "severity_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+          "source_url": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+          "source_url_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm"
+        },
+        {
+          "category": "ui_ux",
+          "category_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "description": "Win32 Japanese UI, no mouse polish; antivirus false positives ('ウイルス判定されて消された'); English patch by SayakaIsBaka required for non-JP users; abandoned—author says 'CAUTION: woslicerII is not maintained any longer.'",
+          "description_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "severity": "P1",
+          "severity_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url_citation": "https://yuinore.net/2017/04/otokiri-software/"
+        },
+        {
+          "category": "audio_artifacts",
+          "category_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "description": "Fixed-sensitivity auto-slicing creates 'ズレ譜面' (drift charts) when transient detection misaligns; requires manual '犯人捜し' by converting text6_bms_blue.txt → .bms to diagnose.",
+          "description_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "severity": "P1",
+          "severity_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "source_url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "source_url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "1296 base-36 (01-ZZ) hard BMS limit; BMSE supports 01-ZZ only; exceeding requires reuse wizard or #BASE 62 extension (LRbase62) which breaks courses/Extra Mode",
+        "max_slices_citation": "https://cosmic.mearie.org/f/sonorous/bmsexts",
+        "snap_denominators": "Coarse snap steps via Up/Down; arbitrary 1/192 not native—must use BMSE rounding workaround",
+        "snap_denominators_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+        "bpm_handling": "Single global BPM/offset only; no per-measure BPM changes; off-grid loops require manual offset fiddling",
+        "bpm_handling_citation": "https://purureko.com/etc/post-1704/",
+        "format_support": "WAV only input reliably; MP3 requires manual wav conversion; mono/stereo preserved but no fade/zero-cross preview in minimal version",
+        "format_support_citation": "https://note.com/tiv_03sk/n/n97ce18606798"
+      },
+      "user_settings": [
+        {
+          "value": "BPM + offset (global, applied before slicing)",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        },
+        {
+          "value": "Fade / ずらし (shift) — traditionally 0 for butsu-giri",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "value": "Snap via keyboard Up/Down",
+          "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "woslicerII_english initmod patch (fade/offset init to 0, FL 20.9 fix)",
+          "issue_title_citation": "https://github.com/SayakaIsBaka/woslicerII-english",
+          "summary": "Community patch zeroes bad defaults (cutting volume enabled) that caused silent slices—shows legacy defaults harm UX.",
+          "summary_citation": "https://github.com/SayakaIsBaka/woslicerII-english",
+          "url": "https://github.com/SayakaIsBaka/woslicerII-english",
+          "url_citation": "https://github.com/SayakaIsBaka/woslicerII-english"
+        }
+      ]
+    },
+    {
+      "tool_name": "Woslicer III",
+      "tool_name_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+      "workflow_steps": [
+        {
+          "value": "Drag wav onto mslider waveform (mouse-draggable markers, unlike II); click to add cut points while watching center line",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "value": "Set BPM, ずらし 0, フェード 0 for manual butsu-giri; background waveform shows transient centers",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "value": "File→クリップボード出力 → enter start definition number (base-36 01-ZZ) matching #WAV index of first exported file",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "value": "総出力 to write sliced wavs; BMSE: drag-drop wavs to auto-define #WAV; Ctrl+V pastes sequence (start at #001, avoid #000)",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+        },
+        {
+          "value": "For reuse: File→wosファイル読み込み Snare.wos → File→クリップボード出力 with existing #WAV01 to deduplicate repeated hits and stay under cap",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "ui_ux",
+          "category_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "description": "Virus false positives common ('woslicerIIIの方だとなんかウイルス判定されて消されたり'); users revert to II despite III mouse improvements. XP support only added Sept 2013, now abandoned.",
+          "description_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "severity": "P1",
+          "severity_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url_citation": "https://yuinore.net/2017/04/otokiri-software/"
+        },
+        {
+          "category": "export_ceremony",
+          "category_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "description": "Sequence encoding differs: III butsu-giri uses 'ファイル→クリップボード出力' vs BMHelper method uses '切断位置をコピー→クリップボード読込'; confusing fork wastes time.",
+          "description_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "severity": "P1",
+          "severity_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "source_url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "source_url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+        },
+        {
+          "category": "overflow",
+          "category_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "description": "Same 1296 cap; manual instruction '入らない場合は一部をBGMに回すか同じ音の定義を使い回す' pushes complexity to user wizard.",
+          "description_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "severity": "P0",
+          "severity_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "source_url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+          "source_url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+        },
+        {
+          "category": "technical_limit",
+          "category_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "description": "No longer maintained lineage; Be-Music Helper originally required II not III (later patched 2015); dependency drift causes version mismatches.",
+          "description_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "severity": "P2",
+          "severity_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "source_url": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "source_url_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "Same 1296 base-36; no base-62 toggle unlike Sayaslicer; requires manual reuse for >1296",
+        "max_slices_citation": "https://cosmic.mearie.org/f/sonorous/bmsexts",
+        "snap_denominators": "Mouse free placement + coarse snap; no explicit 1/192 arbitrary listed—BMSE rounding required",
+        "snap_denominators_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+        "bpm_handling": "Single BPM; no per-measure changes; off-grid requires manual nudging",
+        "bpm_handling_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+        "format_support": "WAV primary; BGM split rule: '1分未満になるよう数個に切り出す' (split BGM <60s to avoid LR2IR blocks)",
+        "format_support_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+      },
+      "user_settings": [
+        {
+          "value": "BPM + ずらし (shift) + フェード (fade) all zeroed for butsu-giri",
+          "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "value": "Start WAV index (base-36 01–ZZ) at clipboard export time",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "woslicerIII released May 2013, updated Sep 22 2013 to support Windows XP",
+          "issue_title_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "summary": "Last official update 2013; author explicitly deprecated II at that date—both now decade-abandoned, justifying replacement.",
+          "summary_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "url": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "url_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php"
+        }
+      ]
+    },
+    {
+      "tool_name": "BMHelper + Mid2BMS",
+      "tool_name_citation": "https://w.atwiki.jp/bmsm/pages/19.html",
+      "workflow_steps": [
+        {
+          "value": "Compose in DAW, color-code tracks: Blue=keysound, Yellow=BGM, Red/Green=automation/portamento that cannot use BMHelper",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "BMHelper: load MIDI → auto splits chords, deduplicates same pitch (e.g., 9 unique notes from arpeggio) → output new MIDI + wav concatenation",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "DAW re-renders BMHelper's MIDI to wav (must trim reverb sends, watch volume; '音量に注意')",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "Mid2BMS [1]Mid2MML step, then [2]WaveSplitter: drop wav → auto-slices per note → generates 'renamed' folder + text6_bms_blue.txt",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "On failure, rename text6_bms_blue.txt → .bms and debug '犯人捜し' (missing definition or automation lane)",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "BMHelper: 切断位置をコピー → Woslicer clip-in → 総出力 → folder full of wavs ready for BMSE definition",
+          "value_citation": "https://purureko.com/etc/post-1704/"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "technical_limit",
+          "category_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "description": "Cannot handle DAW-direct audio, compressor sidechains, or automation lanes (red/purple tracks). Docs: 'DAWに直貼りした音やコンプレッサーを使用したトラックなど、これらのソフトを使用することが出来ない音がある' — forces fallback to manual woslicer butsu-giri.",
+          "description_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "severity": "P0",
+          "severity_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url_citation": "https://yuinore.net/2017/04/otokiri-software/"
+        },
+        {
+          "category": "export_ceremony",
+          "category_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "description": "Mid2BMS failure mode opaque: '一発でうまく行かない場合があります' → manual text6_bms_blue.txt rename + folder dive. Three-app chain (Tools→Macros→Prepare to MIDI export → Mid2MML → WaveSplitter) fragile.",
+          "description_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "severity": "P1",
+          "severity_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "source_url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+          "source_url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "category": "overflow",
+          "category_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "description": "Shares 1296 WAV cap; BMHelper deduplication helps but rapid passages + chord splits still overflow; requires BGM downgrade or reuse wizard.",
+          "description_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "severity": "P1",
+          "severity_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "source_url": "https://note.com/nakaiankow/n/n03caf5d703f9",
+          "source_url_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+        },
+        {
+          "category": "ui_ux",
+          "category_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "description": "Usage declining: poll shows BMHelper users < Woslicer II+III combined; users migrating to Mid2BMS. BMHelper site is dead Geocities mirror (excln.github.io).",
+          "description_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "severity": "P2",
+          "severity_citation": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url": "https://yuinore.net/2017/04/otokiri-software/",
+          "source_url_citation": "https://yuinore.net/2017/04/otokiri-software/"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "1296 via downstream BMS; BMHelper deduplication reduces count but cannot exceed; base-62 not supported downstream without patch",
+        "max_slices_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+        "snap_denominators": "MIDI tick-derived (480ppq) → BMS 192nd translation; off-grid MIDI requires woslicer manual pass",
+        "snap_denominators_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+        "bpm_handling": "MIDI BPM respected; but wav concatenation loses per-measure visual grid in slicer—only hackish partial BPM in Sayaslicer",
+        "bpm_handling_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+        "format_support": "MIDI in, wav out; renamer array import for Mid2BMS; reverb-tail trimming must be manual ('しっかり切るのを忘れずに')",
+        "format_support_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+      },
+      "user_settings": [
+        {
+          "value": "Mid2BMS checkbox trio (bottom 3 checks must match) or 'うまく行かない'",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        },
+        {
+          "value": "BMHelper track color-coding (blue keysound vs yellow BGM vs green manual)",
+          "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "BMHelper now supports woslicerIII as of beta 4' May 21 2015 (previously II only)",
+          "issue_title_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "summary": "Dependency lock delayed adoption; shows ecosystem fragility when helper ↔ slicer versions diverge.",
+          "summary_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "url": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+          "url_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php"
+        }
+      ]
+    },
+    {
+      "tool_name": "PTSEQUENCER (DJMAX/EZ2AC internal)",
+      "tool_name_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "workflow_steps": [
+        {
+          "value": "Compose in PTSEQUENCER (used since DJMAX Online 2004-2008, still optionally used through Respect, new tool added DPC 2022 but old kept)",
+          "value_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        },
+        {
+          "value": "Assign keysounds to tracks; Respect hardware toggle 'Performance sound (key sound) playback ON/OFF' previews keysounded vs keyless stem mode",
+          "value_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT/%EC%8B%9C%EC%8A%A4%ED%85%9C"
+        },
+        {
+          "value": "Export chart with keysound refs; tool enforces cap (1023 DJMAX pre-2025, 2047 since DPC 2025; EZ2AC EV 2047, theor. 65535)",
+          "value_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        },
+        {
+          "value": "Old formats: same-track polyphony limitation—continuous same keysound in one track not interrupted but overlapping different samples cut; Technika 2+ changed to non-interfering (all inputs don't cut)",
+          "value_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "overflow",
+          "category_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "description": "Hard cap 1023 (now 2047 since DPC 2025) far below BMS 1296+base62; high-density charts (post-EV 2000+ keynotes) cause racks/sinks if cap exceeded; EZ2AC theor. 65535 artificially limited because 'system cannot afford file load'.",
+          "description_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "severity": "P0",
+          "severity_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        },
+        {
+          "category": "technical_limit",
+          "category_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "description": "Same-track cut model (pre-Technika2): new sample cuts previous in same track except same-sample retriggers; forces careful track allocation or song breaks. Technika2 fixed to non-overlap but legacy charts still bitten.",
+          "description_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "severity": "P1",
+          "severity_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        },
+        {
+          "category": "ui_ux",
+          "category_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "description": "Distributed only via DPC leaks / internal use; docs say 2004-2008 tool with minor upgrades—opaque, no public undo/zero-cross guidance, forces BMSE-like external slicing for custom stems.",
+          "description_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "severity": "P1",
+          "severity_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        },
+        {
+          "category": "file_management",
+          "category_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "description": "Respect collaborations often use keyless stems (per-hit samples replaced by phrase stems) to dodge 1023/2047 cap and cut voice—creates 1-min BGM block workflow instead of per-note keysounds.",
+          "description_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "severity": "P1",
+          "severity_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+          "source_url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "1023 (DJMAX pre-DPC2025), 2047 (DJMAX since DPC2025, EZ2AC EV), 5000/9999 in EZ2ON Reboot:R, theoretical 65535 (2^16-1) but tool-limited",
+        "max_slices_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+        "snap_denominators": "Internal ticks; TECHNIKA touch grid uses 16th/32nd; RESPECT SC 8-10k charts use dense per-tick keysounds requiring >192 resolution",
+        "snap_denominators_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+        "bpm_handling": "PTSEQUENCER supports BPM changes natively (unlike woslicer), but legacy BMS export flattens to 192nd and can introduce drift if not quantized",
+        "bpm_handling_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+        "format_support": "WAV keysounds + BGM stems; keyless charts toggle; respects 60s LR2IR block limit for long samples",
+        "format_support_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT/%EC%8B%9C%EC%8A%A4%ED%85%9C"
+      },
+      "user_settings": [
+        {
+          "value": "Key sound playback ON/OFF (RESPECT system setting, audio buffer 64–2048)",
+          "value_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT/%EC%8B%9C%EC%8A%A4%ED%85%9C"
+        },
+        {
+          "value": "Track allocation to avoid same-track cut (pre-Technika2) vs free overlap (Technika2+)",
+          "value_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "DPC 2022 incident FOX-B notes PTSEQUENCER cap 1023 < BMS 1296",
+          "issue_title_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT%20V/DPC",
+          "summary": "Public admission DJMAX cap stricter than BMS; drives need for DJMax Studio virtual slices + mode switcher.",
+          "summary_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT%20V/DPC",
+          "url": "https://en.namu.wiki/w/DJMAX%20RESPECT%20V/DPC",
+          "url_citation": "https://en.namu.wiki/w/DJMAX%20RESPECT%20V/DPC"
+        }
+      ]
+    },
+    {
+      "tool_name": "FL Studio Slicex / dtinth sound-slicer (modern reference)",
+      "tool_name_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+      "workflow_steps": [
+        {
+          "value": "Drag loop onto Slicex Channel Rack → auto beat detection (Dull/Medium/Sharp auto-slicing or grid slicing) creates regions",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "value": "Manually adjust markers (Add/Remove, Trim all noise & slice up), set cut groups so slices cut each other, tune loop, normalize (Ctrl+N)",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "value": "Assign trigger notes (Assign trigger notes to all) → KB INPUT or Piano roll: dump score to piano roll (stairs icon) → edit MIDI",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "value": "Tools→ Drum(loop) Stretcher / time-stretch settings to handle tempo warp; workaround for mp3 gap (≈20-30ms) via Edison trim → save wav",
+          "value_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+        }
+      ],
+      "pain_points": [
+        {
+          "category": "ui_ux",
+          "category_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "description": "Tempo confusion: Slicex auto-matches master tempo but has no simple tempo knob like Fruity Slicer; users 'MIS-USE' tempo entry and BGA-like time-stretch fails on mp3 due to leading gap.",
+          "description_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "severity": "P1",
+          "severity_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "source_url": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "source_url_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+        },
+        {
+          "category": "audio_artifacts",
+          "category_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+          "description": "Normalize is lossy (phase manipulation) and cut groups must be set manually or tails overlap/click; auto-slice Dull/Medium/Sharp requires trial-and-error.",
+          "description_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+          "severity": "P1",
+          "severity_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+          "source_url": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+          "source_url_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "category": "export_ceremony",
+          "category_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "description": "No direct BMS keysound export; must Edison trim → save wav → manual BMS definition. MP3 gap forces extra Edison step ('open in Edison → Trim → save as wav').",
+          "description_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "severity": "P2",
+          "severity_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "source_url": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "source_url_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+        }
+      ],
+      "technical_limits": {
+        "max_slices": "Unlimited regions (practically DAW-limited, not 1296); assigns trigger notes per slice via MIDI",
+        "max_slices_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+        "snap_denominators": "Beat detection + grid; piano roll quantize via Dump score quantize option; tempo BPM only affects piano roll placement not sample pitch",
+        "snap_denominators_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+        "bpm_handling": "Time-stretch (Resample/Pro Default/Pro Transient) to match master BPM; beats property must be set correctly or slice pitch/duration warps incorrectly",
+        "bpm_handling_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+        "format_support": "WAV primary (MP3 gap issue); decks support two samples layered; articulator filters/envelopes per slice",
+        "format_support_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+      },
+      "user_settings": [
+        {
+          "value": "Auto-slicing sensitivity Dull/Medium/Sharp + grid slice",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "value": "Cut group assignment (Set all cut groups to...)",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        },
+        {
+          "value": "Beats property (right-click BPM → set loop length) + time-stretch method",
+          "value_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+        },
+        {
+          "value": "Normalize (Ctrl+N) + Trim all noise & slice up threshold",
+          "value_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+        }
+      ],
+      "github_insights": [
+        {
+          "issue_title": "FL forum: Slicex vs Slicer tempo knob missing",
+          "issue_title_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "summary": "Users expect simple tempo drag like Fruity Slicer; Slicex requires Drum(loop) Stretcher modal—validation for Studio dual-ruler where BPM is shared not duplicated.",
+          "summary_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "url": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+          "url_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+        }
+      ]
+    }
+  ],
+  "comparative_analysis": {
+    "strengths_sayaslicer": [
+      {
+        "value": "Arbitrary 1/1–1/192 snapping with BMSE 192 rounding fallback preserves timing while fixing iBMSC high-res gamemode-break bug",
+        "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      },
+      {
+        "value": "Zero-crossing toggle + silent tail remover + fadeout in one pane eliminates clicks without external editor",
+        "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      },
+      {
+        "value": "Dual clipboard (V BMSE / Shift+V iBMSC) + K/Shift+K keysound list covers both beginner and >192 workflow",
+        "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      },
+      {
+        "value": "Undo/redo, copy/paste markers, MIDI import, project save/load—none in woslicerII/III",
+        "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      },
+      {
+        "value": "Cross-platform C++ (Win/Linux/Mac), i18n (EN/JP/KR), base-62 toggle for >1296 charts",
+        "value_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+      }
+    ],
+    "strengths_woslicer": [
+      {
+        "value": "Mouse-direct marker placement on waveform + center-line visual (III) is faster than woslicerII keyboard-only; Sayaslicer kept this",
+        "value_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+      },
+      {
+        "value": "BMHelper連携 '切断位置をコピー→クリップボード読込' auto-dedup + chord split reduces slice count intelligently (e.g., arpeggio 9 notes vs hundreds)",
+        "value_citation": "https://purureko.com/etc/post-1704/"
+      },
+      {
+        "value": "File→wosファイル読み込み + clipboard export index input enables definition reuse wizard for overflow cases",
+        "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+      },
+      {
+        "value": "総出力 one-click bulk export + BMSE drag-drop auto-define (.ogg/.wav) is familiar to veteran BMS artists",
+        "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+      },
+      {
+        "value": "Community-verified defaults documented (BPM 0 offset, fade 0 for butsu-giri, start at #001 not #000) encode tribal knowledge",
+        "value_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+      }
+    ]
+  },
+  "recommendations_for_djmax_studio": [
+    {
+      "feature_name": "Dual-ruler chart preview (waveform bottom + Studio timeline top, shared BPM/BP grid, synced playhead)",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "High",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Fixes P0 export ceremony and P1 BPM hackish: slices instantly appear as notes in Studio preview, eliminating BMSE clipboard round-trip and tempo-misalignment drift seen in auto-slicing ('ズレ譜面'). Validates virtual slices before export.",
+      "rationale_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+      "focus_area": "Timeline",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "192 quantize + BPM sync (Wave ticks ↔ Studio 192nd, per-measure BPM changes from Studio chart)",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "High",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Replaces hackish partial BPM in Sayaslicer; quantization happens on Studio's authoritative BPM map so BMSE 192 rounding and iBMSC arbitrary res both stay in sync and zero-cross nudge keeps 192 alignment.",
+      "rationale_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "focus_area": "Timeline",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "Mode switcher BMS (1296/base62) | RESPECT (1023/2047, keyless stem toggle) | TECHNIKA (non-overlap polyphony)",
+      "feature_name_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "priority": "High",
+      "priority_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "rationale": "One UI handles three ecosystems: BMS legacy cap & base-36 Zorg, Respect 1023→2047 cap + keyless stem downgrade path, Technika2+ 'does not interfere' model. Prevents cap surprises and same-track cut bugs.",
+      "rationale_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "focus_area": "Settings",
+      "focus_area_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "reference_source": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "reference_source_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+    },
+    {
+      "feature_name": "Virtual slices backend {sourceFile,startMs,endMs} with lazy wav/ogg export only on Finalize",
+      "feature_name_citation": "https://purureko.com/etc/post-1704/",
+      "priority": "High",
+      "priority_citation": "https://purureko.com/etc/post-1704/",
+      "rationale": "Eliminates P0 file_management (hundreds of wavs, 01_000.ogg spam) and overflow anxiety: unlimited virtual slices until export, deduplicate via hash, and split >60s longs automatically for LR2IR compliance.",
+      "rationale_citation": "https://wcko87.github.io/bms-checklist/",
+      "focus_area": "Backend",
+      "focus_area_citation": "https://purureko.com/etc/post-1704/",
+      "reference_source": "https://purureko.com/etc/post-1704/",
+      "reference_source_citation": "https://purureko.com/etc/post-1704/"
+    },
+    {
+      "feature_name": "Per-slice Zero-X nudge + FADE + Normalize preview with pre/post audition A/B",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "High",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Makes silent-tail/fade/zero-cross non-destructive toggles with waveform overlay (red→green cross) and audition button; solves click artifacts without moving markers out of 192 grid.",
+      "rationale_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "focus_area": "Settings",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "Round-trip Import to Studio (Slicer → project tracks with UndoRedoAction group)",
+      "feature_name_citation": "https://purureko.com/etc/post-1704/",
+      "priority": "High",
+      "priority_citation": "https://purureko.com/etc/post-1704/",
+      "rationale": "Replaces clipboard ceremony: one button creates chart notes + #WAV defs in Studio project with single undo. No BMSE drag-drop, no 36-base index typing.",
+      "rationale_citation": "https://purureko.com/etc/post-1704/",
+      "focus_area": "Backend",
+      "focus_area_citation": "https://purureko.com/etc/post-1704/",
+      "reference_source": "https://purureko.com/etc/post-1704/",
+      "reference_source_citation": "https://purureko.com/etc/post-1704/"
+    },
+    {
+      "feature_name": "Auto-advance Grid/Beat/Off with 192 snapping in Create/Delete/Place flow",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "Medium",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Borrow Sayaslicer snap controls (Up/Down, Shift+Up/Down) and keep Studio's ComputeAutoAdvanceMs+QuantizeMs so holding D/F/J/K rapid slices stays bar-aligned.",
+      "rationale_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "focus_area": "Timeline",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "Slice Library table (1380×860) with search, Lane hint (D/F/J/K), duration, Zero-X/FADE badges, P audition",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "Medium",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Modernizes woslicer's table-click-to-jump + P preview; gives creators instant feedback and lane plan without exporting.",
+      "rationale_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "focus_area": "Interface",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "Overflow guardrail: live cap meter (1296/2047) + auto reuse suggestions for repeated phrase",
+      "feature_name_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "priority": "Medium",
+      "priority_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "rationale": "Turns tribal '定義を使い回す' wizard into live UI: when virtual slices exceed mode cap, highlight duplicates and offer one-click reuse mapping or BGM-stem downgrade.",
+      "rationale_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+      "focus_area": "Interface",
+      "focus_area_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "reference_source": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "reference_source_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm"
+    },
+    {
+      "feature_name": "MP3→WAV auto-convert + Edison-style trim for leading gap, keep source intact",
+      "feature_name_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "priority": "Medium",
+      "priority_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "rationale": "Removes woslicerII pitfall 'mp3からwavに変換を忘れずに' and Slicex 20-30ms mp3 gap by auto-transcoding with gap trim preview, while preserving original for virtual slices.",
+      "rationale_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "focus_area": "Backend",
+      "focus_area_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "reference_source": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "reference_source_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+    },
+    {
+      "feature_name": "Keyboard map preserved (O/Z/C/V/B/K/M/P/Del + Ctrl+Z/Y, D/F/J/K lane hints, Home/End/Left/Right snap jumps)",
+      "feature_name_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "priority": "Medium",
+      "priority_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "rationale": "Creatures of habit: keep woslicer muscle memory; layout-aware shortcuts and Ctrl+Left/Right marker jumps minimize retraining.",
+      "rationale_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "focus_area": "Interface",
+      "focus_area_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source": "https://github.com/SayakaIsBaka/sayaslicer",
+      "reference_source_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "feature_name": "Long-sample watchdog (>60s LR2IR block + 60s BGM split suggestion)",
+      "feature_name_citation": "https://wcko87.github.io/bms-checklist/",
+      "priority": "Low",
+      "priority_citation": "https://wcko87.github.io/bms-checklist/",
+      "rationale": "Warns when BGM/stem slices exceed 60s and offers auto-split '1分未満になるよう数個に切り出す' before export, preventing LR2IR rejects.",
+      "rationale_citation": "https://wcko87.github.io/bms-checklist/",
+      "focus_area": "Backend",
+      "focus_area_citation": "https://wcko87.github.io/bms-checklist/",
+      "reference_source": "https://wcko87.github.io/bms-checklist/",
+      "reference_source_citation": "https://wcko87.github.io/bms-checklist/"
+    }
+  ],
+  "source_citations": [
+    {
+      "url": "https://github.com/SayakaIsBaka/sayaslicer",
+      "url_citation": "https://github.com/SayakaIsBaka/sayaslicer",
+      "translated_quote": "Zero-crossing markers can help reducing clicks but also moves markers, which may affect iBMSC clipboard (arbitrary resolution). If missing keysounds or gamemode change, use BMSE clipboard which rounds to 192nd.",
+      "translated_quote_citation": "https://github.com/SayakaIsBaka/sayaslicer"
+    },
+    {
+      "url": "https://github.com/SayakaIsBaka/woslicerII-english",
+      "url_citation": "https://github.com/SayakaIsBaka/woslicerII-english",
+      "translated_quote": "woslicerII_s_eng_initmod initializes fadeout, offset to 0 and disables cutting volume on startup — fixing bad legacy defaults.",
+      "translated_quote_citation": "https://github.com/SayakaIsBaka/woslicerII-english"
+    },
+    {
+      "url": "https://purureko.com/etc/post-1704/",
+      "url_citation": "https://purureko.com/etc/post-1704/",
+      "translated_quote": "If total output button cannot be pressed, filename not shown in lower textbox — click the black area on the right to show it.",
+      "translated_quote_citation": "https://purureko.com/etc/post-1704/"
+    },
+    {
+      "url": "https://purureko.com/etc/post-1704/",
+      "url_citation": "https://purureko.com/etc/post-1704/",
+      "translated_quote": "BMHelper method is recommended (easy, auto chord split, duplicate reuse) but for automation tracks use direct butsu-giri in woslicer.",
+      "translated_quote_citation": "https://purureko.com/etc/post-1704/"
+    },
+    {
+      "url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+      "url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2",
+      "translated_quote": "Auto-slicing at fixed intervals is easy but slight shifts causeズレ譜面 (drift charts); manual adjustment required.",
+      "translated_quote_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make2"
+    },
+    {
+      "url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+      "url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+      "translated_quote": "If definitions don't fit 1296, put some parts to BGM (split <1 minute) or reuse the same definition.",
+      "translated_quote_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+    },
+    {
+      "url": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+      "url_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3",
+      "translated_quote": "For woslicerIII butsu-giri, choose definition start number in base-36 (01,02…ZZ) same as Mid2BMS start WAV.",
+      "translated_quote_citation": "https://spirea3cross.wixsite.com/bmstukuru2020/how-to-make3"
+    },
+    {
+      "url": "https://note.com/tiv_03sk/n/n97ce18606798",
+      "url_citation": "https://note.com/tiv_03sk/n/n97ce18606798",
+      "translated_quote": "Don't forget to convert mp3 to wav! Then reference slice-marker copy-paste to adjust drift.",
+      "translated_quote_citation": "https://note.com/tiv_03sk/n/n97ce18606798"
+    },
+    {
+      "url": "https://yuinore.net/2017/04/otokiri-software/",
+      "url_citation": "https://yuinore.net/2017/04/otokiri-software/",
+      "translated_quote": "WoslicerIII often flagged by antivirus and deleted, so I use woslicerII — try it if you haven't.",
+      "translated_quote_citation": "https://yuinore.net/2017/04/otokiri-software/"
+    },
+    {
+      "url": "https://yuinore.net/2017/04/otokiri-software/",
+      "url_citation": "https://yuinore.net/2017/04/otokiri-software/",
+      "translated_quote": "BMHelper shares weakness: cannot handle sounds pasted directly in DAW or tracks using compressor — must use woslicer.",
+      "translated_quote_citation": "https://yuinore.net/2017/04/otokiri-software/"
+    },
+    {
+      "url": "https://note.com/nakaiankow/n/n03caf5d703f9",
+      "url_citation": "https://note.com/nakaiankow/n/n03caf5d703f9",
+      "translated_quote": "Set BPM, shift 0, fade 0, watch center line while adding markers, then Total Output; specify start WAV number in 36-base.",
+      "translated_quote_citation": "https://note.com/nakaiankow/n/n03caf5d703f9"
+    },
+    {
+      "url": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "url_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm",
+      "translated_quote": "Modern BMS supports 1295 (1296) kinds 01-ZZ; early was 256 (00-FF hex), pre-modern 576 (0-9A-F + 0-9A-Za-z).",
+      "translated_quote_citation": "https://hitkey.nekokan.dyndns.info/cmds.htm"
+    },
+    {
+      "url": "https://cosmic.mearie.org/f/sonorous/bmsexts",
+      "url_citation": "https://cosmic.mearie.org/f/sonorous/bmsexts",
+      "translated_quote": "Two-letter keys limited to 1,296 (36*36) seriously limited complex BGA overlays, leading to direct movie files.",
+      "translated_quote_citation": "https://cosmic.mearie.org/f/sonorous/bmsexts"
+    },
+    {
+      "url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "translated_quote": "Key sound count theoretically 65535 but limited to 2047 because loading too many files overwhelms system; PTSEQUENCER caps 1023 for DJMAX (now 2047 since DPC 2025).",
+      "translated_quote_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+    },
+    {
+      "url": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "url_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C",
+      "translated_quote": "In same track only one sample plays: new keysound cuts previous except same-sample overlaps are not interrupted; from Technika 2 all inputs changed to non-interfering.",
+      "translated_quote_citation": "https://en.namu.wiki/w/%ED%82%A4%EC%9D%8C"
+    },
+    {
+      "url": "https://grokipedia.com/page/Be-Music_Source",
+      "url_citation": "https://grokipedia.com/page/Be-Music_Source",
+      "translated_quote": "Modern extensions support up to 1296 slots (01 to ZZ base-36); bmson JSON has no inherent keysound limit and supports automatic stem slicing.",
+      "translated_quote_citation": "https://grokipedia.com/page/Be-Music_Source"
+    },
+    {
+      "url": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+      "url_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm",
+      "translated_quote": "Normalize increases amplitude to 100% with additional phase manipulation that can eke out more dB—considered lossy but should sound identical.",
+      "translated_quote_citation": "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Slicex%20Editor.htm"
+    },
+    {
+      "url": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "url_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0",
+      "translated_quote": "MP3s will always have a gap at beginning (20-30ms) plus added end—must open in Edison, Trim, save as wav to avoid tempo/gap trouble.",
+      "translated_quote_citation": "https://www.theflipsideforum.com/index.php?topic=23840.0"
+    },
+    {
+      "url": "https://wcko87.github.io/bms-checklist/",
+      "url_citation": "https://wcko87.github.io/bms-checklist/",
+      "translated_quote": "No keysound should exceed 60s—LR2IR blocks it. Split vocal stems into ~40s segments.",
+      "translated_quote_citation": "https://wcko87.github.io/bms-checklist/"
+    },
+    {
+      "url": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+      "url_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php",
+      "translated_quote": "woslicerIII was updated Sept 22 2013 to operate on Windows XP. CAUTION: woslicerII is not maintained any longer.",
+      "translated_quote_citation": "https://hitkey.nekokan.dyndns.info/diary1308.php"
+    }
+  ]
+}

@@ -128,8 +128,8 @@ namespace DJMaxEditor.Studio.Design
         /// <summary>Main toolbar. ptSequencer's is a single 28px row of 22px buttons; we give the
         /// icons a little more air because they are vector, not 16px bitmaps.</summary>
         public const double ToolbarHeight = 38;
-        public const double ToolButtonSize = 28;
-        public const double IconSize = 16;
+        public const double ToolButtonSize = 30;
+        public const double IconSize = 18;
 
         /// <summary>Status bar, matching ptSequencer's SEL/GRID/TOT/time readout row.</summary>
         public const double StatusBarHeight = 24;

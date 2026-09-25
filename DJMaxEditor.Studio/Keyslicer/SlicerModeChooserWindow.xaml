@@ -1,0 +1,119 @@
+<shell:StudioWindow x:Class="DJMaxEditor.Studio.Keyslicer.SlicerModeChooserWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:shell="clr-namespace:DJMaxEditor.Studio.Shell"
+                    xmlns:sh="clr-namespace:System.Windows;assembly=PresentationFramework"
+                    Title="Choose slicer mode"
+                    Width="560" Height="420"
+                    MinWidth="520" MinHeight="380"
+                    ShowInTaskbar="False"
+                    WindowStartupLocation="CenterOwner"
+                    Background="{StaticResource Brush.Abyss}"
+                    Foreground="{StaticResource Brush.TextPrimary}"
+                    FontFamily="{StaticResource Font.Ui}"
+                    FontSize="{StaticResource Font.Size.Body}">
+    <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="32"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="48"/>
+            </Grid.RowDefinitions>
+
+            <!-- title bar -->
+            <Border Grid.Row="0" Background="{StaticResource Brush.Raised}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,0,0,1" MouseLeftButtonDown="OnTitleBarDrag">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Layers}" Stroke="{StaticResource Brush.Accent}" Margin="10,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="SLICER MODE" FontFamily="{StaticResource Font.UiDisplay}" FontSize="{StaticResource Font.Size.Small}" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Style="{StaticResource Button.CaptionClose}" Command="{x:Static sh:SystemCommands.CloseWindowCommand}" ToolTip="Close (Esc)"><Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}"/></Button>
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Margin="20,16,20,10">
+                <TextBlock Text="How will these slices be used?" FontFamily="{StaticResource Font.UiDisplay}" FontSize="15" Margin="0,0,0,4"/>
+                <TextBlock Text="This controls the budget and what happens when the chart gets polyphonic. You can change it later in the toolbar — this just picks a safe default for a new project." TextWrapping="Wrap" Foreground="{StaticResource Brush.TextMuted}" FontSize="12" Margin="0,0,0,14"/>
+
+                <Border x:Name="BmsCard" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,10" Cursor="Hand" MouseLeftButtonUp="OnBmsPick">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Edge}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedMode}" Value="Bms">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+                                    <Setter Property="Background" Value="{StaticResource Brush.Inset}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <RadioButton Grid.Column="0" x:Name="BmsRadio" GroupName="Mode" VerticalAlignment="Top" Margin="0,2,10,0" IsChecked="True" Checked="OnBmsChecked"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock FontWeight="SemiBold"><Run Text="BMS"/><Run Foreground="{StaticResource Brush.TextMuted}" FontWeight="Normal" Text="  — safe default"/></TextBlock>
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextSecondary}" FontSize="12" Margin="0,2,0,0" Text="Max 1 295 slices (WAV 1294 + silent 008.wav). Polyphonic notes on the same lane cut each other, just like a real BMS player. Best if you might export a .bms."/>
+                            <TextBlock Text="Limit comes from 36-base WAV slots (LR2/BMS spec)." Foreground="{StaticResource Brush.TextMuted}" FontSize="11" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="RespectCard" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,10" Cursor="Hand" MouseLeftButtonUp="OnRespectPick">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Edge}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedMode}" Value="Respect">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+                                    <Setter Property="Background" Value="{StaticResource Brush.Inset}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <RadioButton Grid.Column="0" x:Name="RespectRadio" GroupName="Mode" VerticalAlignment="Top" Margin="0,2,10,0" Checked="OnRespectChecked"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock FontWeight="SemiBold"><Run Text="RESPECT"/><Run Foreground="{StaticResource Brush.TextMuted}" FontWeight="Normal" Text="  — DJMAX / modern"/></TextBlock>
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextSecondary}" FontSize="12" Margin="0,2,0,0" Text="Max 2 047 slices. Same polyphony as BMS but with DJMAX's extended WAV table. Use for RESPECT-style charts that need more keysounds."/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="TechnikaCard" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,10" Cursor="Hand" MouseLeftButtonUp="OnTechnikaPick">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource Brush.Surface}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Edge}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedMode}" Value="Technika">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}"/>
+                                    <Setter Property="Background" Value="{StaticResource Brush.Inset}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <RadioButton Grid.Column="0" x:Name="TechnikaRadio" GroupName="Mode" VerticalAlignment="Top" Margin="0,2,10,0" Checked="OnTechnikaChecked"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock FontWeight="SemiBold"><Run Text="Technika"/><Run Foreground="{StaticResource Brush.TextMuted}" FontWeight="Normal" Text="  — in-house / Technika"/></TextBlock>
+                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.TextSecondary}" FontSize="12" Margin="0,2,0,0" Text="No slice limit. Voices never cut — the engine mixes them. Use for Technika charts or when the source is effectively infinite and you'll Finalize to OGG/WAV later."/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <CheckBox x:Name="DontShowCheck" Margin="0,10,0,0" Content="Don't show this again (change it anytime in Preferences → Slicer → Default mode)" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"/>
+            </StackPanel>
+
+            <Border Grid.Row="2" Background="{StaticResource Brush.Surface}" BorderBrush="{StaticResource Brush.Edge}" BorderThickness="0,1,0,0">
+                <Grid Margin="12,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Button Grid.Column="1" Style="{StaticResource Button.Solid}" Content="Cancel" Width="86" Margin="0,0,8,0" VerticalAlignment="Center" IsCancel="True" Click="OnCancel"/>
+                    <Button Grid.Column="2" Style="{StaticResource Button.Accent}" Content="Use this mode" Width="128" VerticalAlignment="Center" IsDefault="True" Click="OnOk"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</shell:StudioWindow>

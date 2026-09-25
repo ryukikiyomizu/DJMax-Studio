@@ -242,6 +242,13 @@
                                       Click="OnTogglePlayfield" ToolTip="Show the TECHNIKA gameplay playfield">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Rows3}" />
                         </ToggleButton>
+                        <!-- Keysound slicer: the non-destructive virtual-keysound scene. A long
+                             source recording is sliced into intervals that become notes without ever
+                             duplicating the audio until export. Separate from the chart timeline. -->
+                        <Button Style="{StaticResource Button.Tool}" Click="OnOpenSlicer"
+                                ToolTip="Keysound Slicer - non-destructive slicer (long source -> virtual keysounds -> notes)">
+                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}" Stroke="{StaticResource Brush.Accent}" />
+                        </Button>
 
                         <Separator />
 
