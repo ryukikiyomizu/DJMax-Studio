@@ -208,14 +208,18 @@ jobs:
 
           root = Path("downloaded-pt")
           root.mkdir(parents=True, exist_ok=True)
-          downloaded = []
+          found = None
 
           with open("buckets.txt", "r", encoding="utf-8") as fh:
               buckets = [line.strip() for line in fh if line.strip()]
 
           for bucket in buckets:
-              paginator = client.get_paginator("list_objects_v2")
-              for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+              continuation = None
+              while True:
+                  kwargs = {"Bucket": bucket, "Prefix": prefix, "MaxKeys": 1000}
+                  if continuation:
+                      kwargs["ContinuationToken"] = continuation
+                  page = client.list_objects_v2(**kwargs)
                   for item in page.get("Contents", []):
                       key = item.get("Key", "")
                       if not key.lower().endswith(".pt"):
@@ -223,30 +227,33 @@ jobs:
                       destination = root / bucket / key
                       destination.parent.mkdir(parents=True, exist_ok=True)
                       client.download_file(bucket, key, str(destination))
-                      downloaded.append(f"{bucket}/{key}")
+                      found = f"{bucket}/{key}"
+                      break
+                  if found:
+                      break
+                  if not page.get("IsTruncated"):
+                      break
+                  continuation = page.get("NextContinuationToken")
+              if found:
+                  break
+
+          if not found:
+              raise RuntimeError("No .pt file was found in the scanned R2 buckets")
 
           manifest = root / "manifest.txt"
-          manifest.write_text("\n".join(downloaded) + ("\n" if downloaded else ""), encoding="utf-8")
+          manifest.write_text(found + "\n", encoding="utf-8")
 
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
                   fh.write("\n## PT download\n")
                   fh.write(f"- Prefix: `{prefix or '(entire bucket)'}`\n")
-                  fh.write(f"- Files downloaded: {len(downloaded)}\n")
-                  preview = downloaded[:50]
-                  if preview:
-                      fh.write("\n<details><summary>Downloaded files</summary>\n\n")
-                      for item in preview:
-                          fh.write(f"- `{item}`\n")
-                      if len(downloaded) > len(preview):
-                          fh.write(f"- ... and {len(downloaded) - len(preview)} more\n")
-                      fh.write("\n</details>\n")
-                  else:
-                      fh.write("\nNo `.pt` files matched the scan.\n")
+                  fh.write("- Files downloaded: 1\n")
+                  fh.write(f"- File: `{found}`\n")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"count={len(downloaded)}\n")
+              fh.write("count=1\n")
+              fh.write(f"file={found}\n")
           PY
 
       - name: Upload PT artifact
