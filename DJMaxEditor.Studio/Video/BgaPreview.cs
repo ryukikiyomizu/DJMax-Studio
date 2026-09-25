@@ -149,6 +149,11 @@ namespace DJMaxEditor.Studio.Video
                 return;
             }
 
+            if (CurrentFrameStillCovers(position, source))
+            {
+                return;
+            }
+
             if (!source.TryGetFrame(position, _frame))
             {
                 return;
@@ -231,6 +236,30 @@ namespace DJMaxEditor.Studio.Video
             }
 
             drawingContext.DrawImage(_bitmap, target);
+        }
+
+        /// <summary>
+        /// Fast path for forward playback: if the requested time is still inside the frame already on
+        /// screen, there is nothing to decode and the editor should spend that composition tick on the
+        /// chart instead of waking Media Foundation again. This is the playback stutter fix - a 30 fps
+        /// BGA under a 60 Hz compositor otherwise incurs two decoder round-trips per video frame.
+        /// </summary>
+        private bool CurrentFrameStillCovers(TimeSpan position, IBgaSource source)
+        {
+            if (_bitmap == null || _onScreen == TimeSpan.MinValue || source == null ||
+                source.FrameRate <= 0.0 || position < _onScreen)
+            {
+                return false;
+            }
+
+            double span = TimeSpan.TicksPerSecond / source.FrameRate;
+            if (span <= 1.0)
+            {
+                return false;
+            }
+
+            long frameEnd = _onScreen.Ticks + (long)Math.Round(span);
+            return position.Ticks < frameEnd;
         }
 
         private void Forget()
