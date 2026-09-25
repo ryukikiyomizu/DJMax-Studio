@@ -23,9 +23,8 @@ namespace DJMaxEditor.Studio.Shell
     /// through on change - so there is no OK button and no Cancel. That is a deliberate choice and
     /// not a shortcut: all of these are cheap and all of them are visible on the surface behind the
     /// window, so watching one happen is better feedback than a dialog that promises it. The audio
-    /// settings that cannot apply live (output device selection, driver buffer size, and the
-    /// decoded-audio budget - all constructor-time choices for the audio graph) say so on the page
-    /// instead of pretending.
+    /// settings that cannot apply live (driver buffer size and the decoded-audio budget - both
+    /// constructor-time choices for the audio graph) say so on the page instead of pretending.
     /// </para>
     /// <para>
     /// <see cref="PullFromSettings"/> and <see cref="CommitFromControls"/> are the whole contract,
@@ -433,6 +432,32 @@ namespace DJMaxEditor.Studio.Shell
             if (_ready)
             {
                 CommitFromControls();
+            }
+        }
+
+        /// <summary>
+        /// Re-reads the live device list at the moment the user opens it, so plugging headphones in
+        /// after the preferences window is already open still lets them be picked without closing and
+        /// reopening the dialog.
+        /// </summary>
+        private void OnOutputDeviceDropDownOpened(object sender, EventArgs e)
+        {
+            string selectedDeviceId = _settings?.Audio?.PreferredOutputDeviceId ?? string.Empty;
+            OutputDeviceChoice choice = OutputDeviceCombo.SelectedItem as OutputDeviceChoice;
+            if (choice != null)
+            {
+                selectedDeviceId = choice.DeviceId;
+            }
+
+            bool wasReady = _ready;
+            _ready = false;
+            try
+            {
+                RefreshOutputChoices(selectedDeviceId);
+            }
+            finally
+            {
+                _ready = wasReady;
             }
         }
 

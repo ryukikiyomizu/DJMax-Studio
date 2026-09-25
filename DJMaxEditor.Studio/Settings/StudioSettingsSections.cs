@@ -7,12 +7,12 @@ namespace DJMaxEditor.Studio.Settings
     /// <summary>
     /// Audio backend preferences.
     ///
-    /// Three of these are startup choices rather than live ones and say so in the preferences
-    /// window: <see cref="PreferredOutputDeviceId"/> decides which endpoint to try first,
-    /// <see cref="OutputLatencyMs"/> is the buffer size a driver was opened with, and
+    /// Two of these are startup choices rather than live ones and say so in the preferences
+    /// window: <see cref="OutputLatencyMs"/> is the buffer size a driver was opened with, and
     /// <see cref="KeysoundCacheBudgetMb"/> is the decoded-PCM budget the mixer was constructed with.
-    /// Rebuilding the graph under a playing chart would drop every sounding voice, so all three are
-    /// read once, at startup, by the code that builds the player.
+    /// <see cref="PreferredOutputDeviceId"/> is different: it is still read at startup, but the
+    /// shell also uses it as the live handoff target when the user picks a new playback device in
+    /// the already-open editor.
     /// </summary>
     public sealed class AudioSettings
     {
@@ -51,6 +51,8 @@ namespace DJMaxEditor.Studio.Settings
 
         /// <summary>
         /// Preferred render endpoint id, or blank to follow the computer's current default output.
+        /// When changed in the running editor the shell immediately tries to hand the live mixer to
+        /// that endpoint.
         /// </summary>
         public string PreferredOutputDeviceId { get; set; } = string.Empty;
 

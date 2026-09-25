@@ -221,6 +221,141 @@ namespace DJMaxEditor.Studio.Audio
         /// <summary>Mixer format, for callers that want to know what the graph runs at.</summary>
         public WaveFormat WaveFormat => _format;
 
+        /// <summary>
+        /// Rebinds the running mixer graph to a freshly chosen output endpoint without rebuilding the
+        /// player or clearing the loaded-sample cache.
+        /// <para>
+        /// This is the live preferences seam: when the user plugs in headphones after the studio is
+        /// already open and picks them from the device list, the graph should move there now rather
+        /// than on the next launch. The graph itself is unchanged - same mixer, same voices, same
+        /// cached samples - only the endpoint pulling from it is replaced.
+        /// </para>
+        /// <para>
+        /// The new output is prepared before the old one is stopped, so a failure to open it leaves
+        /// the current device in place instead of dropping the session to silence. Once preparation
+        /// succeeds the old output is stopped and disposed, then the new one is started if the device
+        /// was running before the switch. A parked device stays parked: changing endpoints while
+        /// transport is stopped should not start playback by itself.
+        /// </para>
+        /// </summary>
+        public bool RebindOutput(IAudioOutput output, bool ownsOutput = true)
+        {
+            if (output == null)
+            {
+                throw new ArgumentNullException(nameof(output));
+            }
+
+            if (_disposed)
+            {
+                if (ownsOutput)
+                {
+                    try
+                    {
+                        output.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return false;
+            }
+
+            bool shouldPlay;
+            IAudioOutput previous;
+            bool previousOwned;
+
+            try
+            {
+                NAudioDeviceOutput realOutput = output as NAudioDeviceOutput;
+                if (realOutput != null)
+                {
+                    realOutput.Log = message => Log?.Invoke(message);
+                }
+
+                output.Init(_group);
+
+                lock (_gate)
+                {
+                    if (_disposed)
+                    {
+                        throw new ObjectDisposedException(nameof(NAudioKeysoundPlayer));
+                    }
+
+                    shouldPlay = !_deviceStopped;
+                    previous = _output;
+                    previousOwned = _ownsOutput;
+                    _output = output;
+                    _ownsOutput = ownsOutput;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log?.Invoke("Audio output switch failed: " + ex);
+                if (ownsOutput)
+                {
+                    try
+                    {
+                        output.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return false;
+            }
+
+            if (previous != null && !ReferenceEquals(previous, output))
+            {
+                try
+                {
+                    previous.Stop();
+                }
+                catch (Exception)
+                {
+                }
+
+                if (previousOwned)
+                {
+                    try
+                    {
+                        previous.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
+            if (shouldPlay)
+            {
+                try
+                {
+                    output.Play();
+                }
+                catch (Exception ex)
+                {
+                    lock (_gate)
+                    {
+                        _deviceStopped = true;
+                    }
+                    Log?.Invoke("Audio output switch start failed: " + ex);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Convenience wrapper for swapping to a new concrete device selection while keeping the
+        /// current mixer graph alive.
+        /// </summary>
+        public bool RebindOutputDevice(int latencyMilliseconds, string preferredDeviceId)
+        {
+            return RebindOutput(
+                new NAudioDeviceOutput(latencyMilliseconds, preferredDeviceId),
+                true);
+        }
+
         #region IAudioPlayer
 
         /// <summary>

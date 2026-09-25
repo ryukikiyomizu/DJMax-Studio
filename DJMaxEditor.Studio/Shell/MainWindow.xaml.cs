@@ -98,6 +98,24 @@ namespace DJMaxEditor.Studio.Shell
         private StudioSettings _settings;
 
         /// <summary>
+        /// The output preference the live mixer is currently following. Kept separately from the
+        /// settings object because the preferences window edits settings optimistically, while the
+        /// mixer only changes endpoints when the chosen id actually differs from the one it is
+        /// already bound to.
+        /// </summary>
+        private string _appliedPreferredOutputDeviceId = string.Empty;
+
+        /// <summary>
+        /// Buffer size the live audio graph was opened with.
+        /// <para>
+        /// Output-device switching is live, but the latency slider is still restart-only: reusing
+        /// this value when an endpoint is rebound preserves that contract instead of silently
+        /// applying a yet-unrestarted buffer-size edit along with a device change.
+        /// </para>
+        /// </summary>
+        private int _liveOutputLatencyMs = 60;
+
+        /// <summary>
         /// The open preferences window, if there is one. Non-modal and single-instance: it edits the
         /// same <see cref="_settings"/> object this window holds, so a second copy would be two
         /// views of one model racing each other, and modal would stop you seeing your own change.
@@ -377,10 +395,9 @@ namespace DJMaxEditor.Studio.Shell
         /// <para>
         /// The output latency and the keysound cache budget are read from the settings here and
         /// nowhere else, because both are constructor arguments rather than properties: a device is
-        /// opened with a buffer size and a cache is created with a ceiling, and those choices - plus
-        /// the preferred output endpoint - cannot be re-negotiated afterwards without rebuilding the
-        /// whole graph. That is why the preferences window says they take effect on restart instead
-        /// of pretending otherwise.
+        /// opened with a buffer size and a cache is created with a ceiling. The preferred output
+        /// endpoint is read here too, but unlike those two it can later be handed off live by
+        /// swapping the graph onto a new output object.
         /// </para>
         /// </summary>
         private void InitialiseAudio()
@@ -389,7 +406,11 @@ namespace DJMaxEditor.Studio.Shell
             try
             {
                 long cacheBytes = (long)audio.KeysoundCacheBudgetMb * 1024L * 1024L;
-                var output = new NAudioDeviceOutput(audio.OutputLatencyMs, audio.PreferredOutputDeviceId);
+                _liveOutputLatencyMs = audio.OutputLatencyMs;
+                _appliedPreferredOutputDeviceId = string.IsNullOrWhiteSpace(audio.PreferredOutputDeviceId)
+                    ? string.Empty
+                    : audio.PreferredOutputDeviceId.Trim();
+                var output = new NAudioDeviceOutput(_liveOutputLatencyMs, _appliedPreferredOutputDeviceId);
                 _audio = new NAudioKeysoundPlayer(output, true, cacheBytes);
                 _audio.Log = message => Logs.Write(message);
                 _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
@@ -434,7 +455,8 @@ namespace DJMaxEditor.Studio.Shell
         /// Two things deliberately do not happen here. The output latency and cache budget are
         /// constructor arguments (see <see cref="InitialiseAudio"/>), and the master and audition
         /// volumes are read at the gain sites rather than pushed, because a stored gain has to apply
-        /// to notes that have not been played yet.
+        /// to notes that have not been played yet. The preferred output endpoint is the exception:
+        /// that one is re-bound live in <see cref="ApplyAudioSettings"/>.
         /// </para>
         /// </summary>
         private void ApplySettings(StudioSettings settings)
@@ -474,9 +496,30 @@ namespace DJMaxEditor.Studio.Shell
             {
                 return;
             }
-            // The only audio setting that can change under a running mixer: it decides whether a
-            // retriggered channel layers or cuts, which is a decision the graph makes per note.
+
+            // This one is genuinely live: the graph's retrigger rule is consulted per note.
             _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
+
+            string wantedDeviceId = string.IsNullOrWhiteSpace(audio.PreferredOutputDeviceId)
+                ? string.Empty
+                : audio.PreferredOutputDeviceId.Trim();
+            if (string.Equals(wantedDeviceId, _appliedPreferredOutputDeviceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (_audio.RebindOutputDevice(_liveOutputLatencyMs, wantedDeviceId))
+            {
+                _appliedPreferredOutputDeviceId = wantedDeviceId;
+                Logs.Write("Audio output switched to " + (_audio.Output?.Name ?? "none"));
+            }
+            else
+            {
+                // Remember the user's new preference even if the live handoff failed; the next
+                // launch should still try that endpoint first.
+                _appliedPreferredOutputDeviceId = wantedDeviceId;
+                Logs.Write("Audio output switch request could not be applied live; keeping current output.");
+            }
         }
 
         private void ApplyTimelineSettings(TimelineSettings timeline)
