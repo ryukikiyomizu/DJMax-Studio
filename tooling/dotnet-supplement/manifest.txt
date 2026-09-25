@@ -1,0 +1,10 @@
+root=/usr/share
+
+/home/runner/work/_temp/dotnet-supplement
+/home/runner/work/_temp/dotnet-supplement/packs
+/home/runner/work/_temp/dotnet-supplement/shared
+
+total 12K
+-rw-r--r-- 1 runner runner 200 Sep 25 07:05 dotnet-supplement.tar.xz.part-00
+-rw-r--r-- 1 runner runner 161 Sep 25 07:05 dotnet-supplement.tar.xz.sha256
+-rw-r--r-- 1 runner runner 157 Sep 25 07:05 manifest.txt
