@@ -36,9 +36,18 @@ jobs:
           install_dir="$RUNNER_TEMP/dotnet"
           sdk_version="$($install_dir/dotnet --list-sdks | awk '/^8\.0\./ {print $1}' | tail -n 1)"
           runtime_version="$($install_dir/dotnet --list-runtimes | awk '/^Microsoft.NETCore.App 8\./ {print $2}' | tail -n 1)"
-          windows_ref_version="$(find "$install_dir/packs/Microsoft.WindowsDesktop.App.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
-          netcore_ref_version="$(find "$install_dir/packs/Microsoft.NETCore.App.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
-          netstandard_ref_version="$(find "$install_dir/packs/NETStandard.Library.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
+          windows_ref_version=""
+          if [ -d "$install_dir/packs/Microsoft.WindowsDesktop.App.Ref" ]; then
+            windows_ref_version="$(find "$install_dir/packs/Microsoft.WindowsDesktop.App.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
+          fi
+          netcore_ref_version=""
+          if [ -d "$install_dir/packs/Microsoft.NETCore.App.Ref" ]; then
+            netcore_ref_version="$(find "$install_dir/packs/Microsoft.NETCore.App.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
+          fi
+          netstandard_ref_version=""
+          if [ -d "$install_dir/packs/NETStandard.Library.Ref" ]; then
+            netstandard_ref_version="$(find "$install_dir/packs/NETStandard.Library.Ref" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
+          fi
 
           stage="$RUNNER_TEMP/dotnet-minimal"
           rm -rf "$stage"
