@@ -1,0 +1,12 @@
+sdk=8.0.425
+runtime=8.0.31
+windowsDesktopRef=
+netcoreRef=8.0.31
+netstandardRef=2.1.0
+123M	/home/runner/work/DJMax-Studio/DJMax-Studio/tooling/dotnet-bundle
+total 123M
+-rw-r--r-- 1 runner runner 48M Sep 25 06:40 dotnet-minimal-8-linux-x64.tar.xz.part-00
+-rw-r--r-- 1 runner runner 48M Sep 25 06:40 dotnet-minimal-8-linux-x64.tar.xz.part-01
+-rw-r--r-- 1 runner runner 27M Sep 25 06:40 dotnet-minimal-8-linux-x64.tar.xz.part-02
+-rw-r--r-- 1 runner runner 166 Sep 25 06:40 dotnet-minimal-8-linux-x64.tar.xz.sha256
+-rw-r--r-- 1 runner runner 156 Sep 25 06:40 manifest.txt
