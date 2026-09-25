@@ -12,61 +12,31 @@ jobs:
   fetch-dotnet-sdk:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect installed .NET
+      - name: Download .NET install script
         shell: bash
         run: |
           set -euo pipefail
-          which dotnet
-          dotnet --info
-          dotnet --list-sdks
-          dotnet --list-runtimes
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$RUNNER_TEMP/dotnet-install.sh"
+          chmod +x "$RUNNER_TEMP/dotnet-install.sh"
 
-      - name: Stage .NET 8 SDK
+      - name: Install .NET 8 SDK into isolated folder
         shell: bash
         run: |
           set -euo pipefail
-          root="$(dirname "$(dirname "$(readlink -f "$(command -v dotnet)")")")"
-          sdk_version="$(dotnet --list-sdks | awk '/^8\.0\./ {print $1}' | tail -n 1)"
-          runtime_version="$(dotnet --list-runtimes | awk '/^Microsoft.NETCore.App 8\./ {print $2}' | tail -n 1)"
-          aspnet_version="$(dotnet --list-runtimes | awk '/^Microsoft.AspNetCore.App 8\./ {print $2}' | tail -n 1)"
+          install_dir="$RUNNER_TEMP/dotnet"
+          rm -rf "$install_dir"
+          "$RUNNER_TEMP/dotnet-install.sh" --channel 8.0 --quality GA --install-dir "$install_dir"
+          "$install_dir/dotnet" --info
+          "$install_dir/dotnet" --list-sdks
+          "$install_dir/dotnet" --list-runtimes
 
-          test -n "$root"
-          test -n "$sdk_version"
-          test -n "$runtime_version"
-          test -n "$aspnet_version"
-
-          stage="$RUNNER_TEMP/dotnet-root"
-          rm -rf "$stage"
-          mkdir -p "$stage"
-
-          cp -a "$root/dotnet" "$stage/"
-          for file in LICENSE.txt ThirdPartyNotices.txt; do
-            if [ -f "$root/$file" ]; then
-              cp -a "$root/$file" "$stage/"
-            fi
-          done
-
-          mkdir -p "$stage/host" "$stage/packs" "$stage/sdk" "$stage/shared" "$stage/templates" "$stage/sdk-manifests"
-          cp -a "$root/host/." "$stage/host/"
-          cp -a "$root/packs/." "$stage/packs/"
-          cp -a "$root/sdk/$sdk_version" "$stage/sdk/"
-          if [ -d "$root/templates/$sdk_version" ]; then
-            cp -a "$root/templates/$sdk_version" "$stage/templates/"
-          fi
-          if [ -d "$root/sdk-manifests/$sdk_version" ]; then
-            cp -a "$root/sdk-manifests/$sdk_version" "$stage/sdk-manifests/"
-          else
-            sdk_band="$(printf '%s' "$sdk_version" | awk -F. '{print $1 "." $2 ".100"}')"
-            if [ -d "$root/sdk-manifests/$sdk_band" ]; then
-              cp -a "$root/sdk-manifests/$sdk_band" "$stage/sdk-manifests/"
-            fi
-          fi
-          mkdir -p "$stage/shared/Microsoft.NETCore.App" "$stage/shared/Microsoft.AspNetCore.App"
-          cp -a "$root/shared/Microsoft.NETCore.App/$runtime_version" "$stage/shared/Microsoft.NETCore.App/"
-          cp -a "$root/shared/Microsoft.AspNetCore.App/$aspnet_version" "$stage/shared/Microsoft.AspNetCore.App/"
-
+      - name: Package downloaded SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/dotnet"
           mkdir -p dotnet-sdk-artifact
-          tar -C "$stage" -cf dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar .
+          tar -C "$install_dir" -cf dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar .
           sha256sum dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar | tee dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar.sha256
           split -b 95m -d -a 2 \
             dotnet-sdk-artifact/dotnet-sdk-8-linux-x64.tar \
