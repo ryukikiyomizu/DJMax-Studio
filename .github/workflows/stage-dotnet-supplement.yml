@@ -28,7 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          root="$(dirname "$(dirname "$(readlink -f "$(command -v dotnet)")")")"
+          sdk_root="$(dotnet --list-sdks | awk 'END { gsub(/[][]/, "", $2); print $2 }')"
+          root="$(dirname "$sdk_root")"
           outdir="$GITHUB_WORKSPACE/tooling/dotnet-supplement"
           stage="$RUNNER_TEMP/dotnet-supplement"
           rm -rf "$outdir" "$stage"
