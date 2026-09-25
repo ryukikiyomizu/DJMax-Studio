@@ -237,8 +237,10 @@ namespace DJMaxEditor.Studio.Video
         }
 
         /// <summary>
-        /// A button-style Portable/Trilogy PT chart: the BGA starts from song track 1 there, while
-        /// TECHNIKA uses an explicit attribute-100 marker and reuses track 1 as a playable lane.
+        /// A button-style chart whose BGA is cued from song track 1 rather than from an explicit
+        /// attribute-100 note. Portable/Trilogy PT and Respect V trailer charts both use that lane;
+        /// TECHNIKA does not, because there track 1 is a playable lane and the video cue is its own
+        /// dedicated marker event instead.
         /// </summary>
         private static bool UsesPortableBgaSync(PlayerData playerData)
         {
@@ -248,7 +250,10 @@ namespace DJMaxEditor.Studio.Video
             }
 
             ChartFormat? format = playerData.SourceFormat;
-            if (format != ChartFormat.PtffDecrypted && format != ChartFormat.PtffEncryptedTechnika)
+            bool supportedButtonFormat = format == ChartFormat.PtffDecrypted ||
+                format == ChartFormat.PtffEncryptedTechnika ||
+                format == ChartFormat.TrailerRespectV;
+            if (!supportedButtonFormat)
             {
                 return false;
             }

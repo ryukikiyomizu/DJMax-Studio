@@ -183,16 +183,15 @@ namespace DJMaxEditor.Studio.Shell
         private double _lastFrameMilliseconds;
 
         /// <summary>
-        /// True while a scrub-triggered BGA refresh has been queued onto the dispatcher.
+        /// One-shot timer that delays scrub-triggered BGA decodes until the wheel settles.
         ///
-        /// The decoder is precise but not free, and wheel-scrubbing can produce a burst of seek
-        /// requests faster than the user can see distinct frames. Coalescing those requests keeps
-        /// the timeline responsive: input moves the caret first and the BGA catches up to the most
-        /// recent tick once the dispatcher gets a moment.
+        /// The timeline should react immediately to scroll input; decoding video frames on every
+        /// notch makes the BGA preview the pacing item instead. So manual scrubs only arm this timer
+        /// and the preview catches up once the user pauses briefly. Playback does not use it.
         /// </summary>
-        private bool _bgaSyncQueued;
+        private readonly DispatcherTimer _bgaSyncTimer = new DispatcherTimer();
 
-        /// <summary>The most recent chart-time position a queued BGA refresh should show.</summary>
+        /// <summary>The most recent chart-time position a delayed BGA refresh should show.</summary>
         private TimeSpan _queuedBgaPosition = TimeSpan.Zero;
 
         /// <summary>
@@ -261,6 +260,9 @@ namespace DJMaxEditor.Studio.Shell
             _canvas.Beats = BeatDisplay.Default;
             _canvas.ShowNoteLabels = false;
             _canvas.ShowNoteAssets = AssetsToggle.IsChecked == true;
+
+            _bgaSyncTimer.Interval = TimeSpan.FromMilliseconds(45);
+            _bgaSyncTimer.Tick += OnBgaSyncTimer;
 
             // Derived rather than assigned, from the two toggles' declared states: vertical and
             // "gameplay order" is Upward. One code path decides it, so the buttons cannot start out
@@ -3444,34 +3446,28 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
-        /// Schedules a BGA refresh from the current playhead position, coalescing repeated requests.
+        /// Schedules a BGA refresh from the current playhead position, debounced for manual scrubs.
         ///
-        /// Manual scrubbing can emit wheel notches faster than the user can see unique frames. The
-        /// timeline must stay responsive under that burst, so the expensive part - decoding the
-        /// preview frame - is queued once and always uses the most recent requested position.
-        /// Playback does not go through this path: the render pump already runs at frame cadence and
-        /// asks for one BGA sync per drawn frame directly.
+        /// Wheel scrubbing can generate dozens of intermediate ticks a second. The timeline stays
+        /// responsive by moving immediately and only decoding the BGA after 45 ms without another
+        /// scrub request, always for the newest requested position.
         /// </summary>
         private void RequestBgaSync()
         {
             if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
             {
+                _bgaSyncTimer.Stop();
                 return;
             }
 
             _queuedBgaPosition = _bgaClock.TimeForVirtualTick(_viewModel.PlayheadVirtualTick);
-            if (_bgaSyncQueued)
-            {
-                return;
-            }
-
-            _bgaSyncQueued = true;
-            Dispatcher.BeginInvoke(new Action(FlushBgaSync), DispatcherPriority.Background);
+            _bgaSyncTimer.Stop();
+            _bgaSyncTimer.Start();
         }
 
-        private void FlushBgaSync()
+        private void OnBgaSyncTimer(object sender, EventArgs e)
         {
-            _bgaSyncQueued = false;
+            _bgaSyncTimer.Stop();
             if (_bga.Source == null || !_bga.Source.IsOpen || BgaPanel.Visibility != Visibility.Visible)
             {
                 return;
