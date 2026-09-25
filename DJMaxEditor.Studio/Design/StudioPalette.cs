@@ -121,14 +121,14 @@ namespace DJMaxEditor.Studio.Design
     /// </summary>
     internal static class StudioMetrics
     {
-        /// <summary>Custom title bar height. V6 uses a slim flat title bar; 32 is the smallest
-        /// height that still hits the 44x32 minimum for the caption buttons.</summary>
-        public const double TitleBarHeight = 32;
+        /// <summary>Custom title bar height. Still large enough to grab easily, but slimmer than
+        /// the first pass so the custom caption buttons stop reading oversized.</summary>
+        public const double TitleBarHeight = 30;
 
-        /// <summary>Main toolbar. ptSequencer's is a single 28px row of 22px buttons; we give the
-        /// icons a little more air because they are vector, not 16px bitmaps.</summary>
-        public const double ToolbarHeight = 38;
-        public const double ToolButtonSize = 28;
+        /// <summary>Main toolbar. Tightened a little to match the slimmer caption row while keeping
+        /// the icons comfortably clickable.</summary>
+        public const double ToolbarHeight = 36;
+        public const double ToolButtonSize = 26;
         public const double IconSize = 16;
 
         /// <summary>Status bar, matching ptSequencer's SEL/GRID/TOT/time readout row.</summary>

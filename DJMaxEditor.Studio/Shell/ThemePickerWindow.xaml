@@ -32,7 +32,7 @@
     <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32" />
+                <RowDefinition Height="30" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="46" />
             </Grid.RowDefinitions>
@@ -62,7 +62,7 @@
                     <Button Grid.Column="2" Style="{StaticResource Button.CaptionClose}"
                             Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
                             ToolTip="Close (Esc)">
-                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                        <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.X}" />
                     </Button>
                 </Grid>
             </Border>

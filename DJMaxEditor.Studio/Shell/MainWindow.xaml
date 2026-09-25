@@ -27,8 +27,8 @@
     <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32" />
-                <RowDefinition Height="38" />
+                <RowDefinition Height="30" />
+                <RowDefinition Height="36" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="24" />
             </Grid.RowDefinitions>
@@ -68,16 +68,16 @@
                         <Button Style="{StaticResource Button.Caption}"
                                 Command="{x:Static sh:SystemCommands.MinimizeWindowCommand}"
                                 ToolTip="Minimise">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Minus}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.Minus}" />
                         </Button>
                         <Button Style="{StaticResource Button.Caption}"
                                 Click="OnToggleMaximise" ToolTip="Maximise / restore">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Square}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.Square}" />
                         </Button>
                         <Button Style="{StaticResource Button.CaptionClose}"
                                 Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
                                 ToolTip="Close">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                            <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.X}" />
                         </Button>
                     </StackPanel>
                 </Grid>
