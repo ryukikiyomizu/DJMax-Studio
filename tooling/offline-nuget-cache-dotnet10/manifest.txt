@@ -1,7 +1,0 @@
-4.0K	/home/runner/work/_temp/offline-nuget-dotnet10
-
-
-total 12K
--rw-r--r-- 1 runner runner  54 Sep 25 07:15 manifest.txt
--rw-r--r-- 1 runner runner 168 Sep 25 07:15 offline-nuget-cache-dotnet10.tar.xz.part-00
--rw-r--r-- 1 runner runner 183 Sep 25 07:15 offline-nuget-cache-dotnet10.tar.xz.sha256
