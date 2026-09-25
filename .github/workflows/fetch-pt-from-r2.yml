@@ -1,6 +1,9 @@
 name: fetch-pt-from-r2
 
 on:
+  push:
+    branches:
+      - arena/01a0d381-djmax-studio
   workflow_dispatch:
     inputs:
       bucket:
