@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using NAudio.Wave;
@@ -81,6 +81,13 @@ namespace DJMaxEditor.Studio.Audio
         private long _playFailures;
         private string _lastLoadError;
         private bool _disposed;
+
+        /// <summary>
+        /// Monotonic cache generation. Incremented whenever the loaded-sample table is cleared so a
+        /// background decode finishing late for an old chart can be discarded instead of repopulating
+        /// the cache with stale sounds under the new chart's instrument numbers.
+        /// </summary>
+        private int _sampleGeneration;
 
         /// <summary>
         /// Set by <see cref="FadeOutAndSilence"/> and cleared when the teardown happens: the pause
@@ -234,6 +241,19 @@ namespace DJMaxEditor.Studio.Audio
         /// </summary>
         public bool LoadSound(uint index, string name, int mode = 0)
         {
+            return LoadSound(index, name, mode, -1);
+        }
+
+        /// <summary>
+        /// Same as <see cref="LoadSound(uint,string,int)"/>, but the decoded sample is only admitted
+        /// to the cache if <paramref name="expectedGeneration"/> still matches the live cache
+        /// generation by the time the decode finishes. This is the chart-switch seam: stale loader
+        /// tasks from the previous chart can race to completion after the new chart has already
+        /// cleared the cache, and their work must be dropped rather than resurrecting the old chart's
+        /// samples under the new chart's instrument ids.
+        /// </summary>
+        public bool LoadSound(uint index, string name, int mode, int expectedGeneration)
+        {
             if (index >= MAX_SOUND || _disposed)
             {
                 RecordLoadFailure(name, index >= MAX_SOUND ? "index out of range" : "player disposed");
@@ -251,6 +271,11 @@ namespace DJMaxEditor.Studio.Audio
             lock (_gate)
             {
                 if (_disposed)
+                {
+                    return false;
+                }
+
+                if (expectedGeneration >= 0 && expectedGeneration != _sampleGeneration)
                 {
                     return false;
                 }
@@ -278,6 +303,29 @@ namespace DJMaxEditor.Studio.Audio
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Stops every sounding voice and empties the loaded-sample table, returning the new cache
+        /// generation. The next chart-open path hands that generation back to
+        /// <see cref="LoadSound(uint,string,int,int)"/>, which is what prevents a late-finishing
+        /// loader task from an older chart from repopulating the cache after this clear.
+        /// </summary>
+        public int ResetLoadedSounds()
+        {
+            // The clear must begin from silence: otherwise a channel could still be reading from a
+            // sample slot the table is about to forget, and a reloaded instrument number would then
+            // appear to cross-fade charts. StopAllSounds owns exactly that transport edge.
+            StopAllSounds();
+
+            lock (_gate)
+            {
+                Array.Clear(_samples, 0, _samples.Length);
+                _cachedBytes = 0;
+                _cachedSounds = 0;
+                _sampleGeneration++;
+                return _sampleGeneration;
+            }
         }
 
         /// <summary>

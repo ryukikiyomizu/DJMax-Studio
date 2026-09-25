@@ -213,6 +213,13 @@ namespace DJMaxEditor.Studio.Shell
         /// </summary>
         private CancellationTokenSource _keysoundLoad;
 
+        /// <summary>
+        /// Generation token returned by <see cref="NAudioKeysoundPlayer.ResetLoadedSounds"/> for the
+        /// chart whose keysounds are currently being loaded. A late-finishing worker from an older
+        /// chart must present the generation it started under or its decoded sample is discarded.
+        /// </summary>
+        private int _keysoundCacheGeneration;
+
         public MainWindow()
         {
             // Before the XAML, let alone before the audio device: the latency and cache budget in
@@ -1175,6 +1182,11 @@ namespace DJMaxEditor.Studio.Shell
             // would land in the cache under this chart's instrument indices.
             CancelKeysoundLoad();
 
+            if (_audio != null)
+            {
+                _keysoundCacheGeneration = _audio.ResetLoadedSounds();
+            }
+
             if (model.Instruments == null || _audio == null)
             {
                 return;
@@ -1221,10 +1233,11 @@ namespace DJMaxEditor.Studio.Shell
 
             // Deliberately not awaited: adopting a document must not block on audio. Faults are
             // handled inside, so nothing escapes to the unobserved-task handler.
-            _ = LoadKeysoundsAsync(requests, _keysoundLoad.Token);
+            _ = LoadKeysoundsAsync(requests, _keysoundCacheGeneration, _keysoundLoad.Token);
         }
 
-        private async Task LoadKeysoundsAsync(List<KeysoundRequest> requests, CancellationToken token)
+        private async Task LoadKeysoundsAsync(
+            List<KeysoundRequest> requests, int cacheGeneration, CancellationToken token)
         {
             Stopwatch clock = Stopwatch.StartNew();
             int loaded = 0;
@@ -1245,7 +1258,9 @@ namespace DJMaxEditor.Studio.Shell
                         new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = token },
                         request =>
                         {
-                            if (_audio.LoadSound(request.Index, request.Path, request.Mode))
+                            token.ThrowIfCancellationRequested();
+
+                            if (_audio.LoadSound(request.Index, request.Path, request.Mode, cacheGeneration))
                             {
                                 Interlocked.Increment(ref loaded);
                             }
