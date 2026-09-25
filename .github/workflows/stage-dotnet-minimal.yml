@@ -49,9 +49,11 @@ jobs:
           mkdir -p "$stage/sdk" "$stage/shared/Microsoft.NETCore.App" "$stage/packs"
           cp -a "$install_dir/sdk/$sdk_version" "$stage/sdk/"
           cp -a "$install_dir/shared/Microsoft.NETCore.App/$runtime_version" "$stage/shared/Microsoft.NETCore.App/"
-          cp -a "$install_dir/packs/Microsoft.NETCore.App.Ref" "$stage/packs/"
-          cp -a "$install_dir/packs/NETStandard.Library.Ref" "$stage/packs/"
-          cp -a "$install_dir/packs/Microsoft.WindowsDesktop.App.Ref" "$stage/packs/"
+          for pack in Microsoft.NETCore.App.Ref NETStandard.Library.Ref Microsoft.WindowsDesktop.App.Ref; do
+            if [ -d "$install_dir/packs/$pack" ]; then
+              cp -a "$install_dir/packs/$pack" "$stage/packs/"
+            fi
+          done
           if [ -d "$install_dir/sdk-manifests" ]; then
             cp -a "$install_dir/sdk-manifests" "$stage/"
           fi
