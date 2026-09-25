@@ -1,0 +1,67 @@
+name: Stage Dotnet Supplement
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/01a0d381-djmax-studio
+    paths:
+      - .github/workflows/stage-dotnet-supplement.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stage-dotnet-supplement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/01a0d381-djmax-studio
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Package SDK supplement
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(dirname "$(dirname "$(readlink -f "$(command -v dotnet)")")")"
+          outdir="$GITHUB_WORKSPACE/tooling/dotnet-supplement"
+          stage="$RUNNER_TEMP/dotnet-supplement"
+          rm -rf "$outdir" "$stage"
+          mkdir -p "$outdir" "$stage/packs" "$stage/shared"
+
+          for dir in \
+            "$root/packs/Microsoft.AspNetCore.App.Ref" \
+            "$root/packs/Microsoft.NETCore.App.Host.linux-x64" \
+            "$root/shared/Microsoft.AspNetCore.App" \
+            "$root/templates"; do
+            if [ -e "$dir" ]; then
+              parent="$(basename "$(dirname "$dir")")"
+              mkdir -p "$stage/$parent"
+              cp -a "$dir" "$stage/$parent/"
+            fi
+          done
+
+          tar -C "$stage" -cJf "$outdir/dotnet-supplement.tar.xz" .
+          sha256sum "$outdir/dotnet-supplement.tar.xz" | tee "$outdir/dotnet-supplement.tar.xz.sha256"
+          split -b 48m -d -a 2 \
+            "$outdir/dotnet-supplement.tar.xz" \
+            "$outdir/dotnet-supplement.tar.xz.part-"
+          rm "$outdir/dotnet-supplement.tar.xz"
+          {
+            echo "root=$root"
+            echo
+            find "$stage" -maxdepth 3 | sort
+            echo
+            ls -lh "$outdir"
+          } > "$outdir/manifest.txt"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tooling/dotnet-supplement
+          git commit -m "Stage dotnet supplement [skip ci]"
+          git push origin HEAD:arena/01a0d381-djmax-studio
