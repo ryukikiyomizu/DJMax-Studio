@@ -55,8 +55,8 @@
     <!-- Caption glyphs are slightly smaller than toolbar glyphs so the custom
          minimise/maximise/close cluster does not crowd the top-right corner. -->
     <Style x:Key="Icon.Caption" TargetType="{x:Type Path}" BasedOn="{StaticResource Icon.Glyph}">
-        <Setter Property="Width" Value="14" />
-        <Setter Property="Height" Value="14" />
+        <Setter Property="Width" Value="13" />
+        <Setter Property="Height" Value="13" />
     </Style>
 
     <!-- ==== buttons ==================================================================== -->
@@ -67,7 +67,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="Padding" Value="7,2" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
@@ -111,7 +111,7 @@
     <Style x:Key="Button.Solid" TargetType="{x:Type Button}" BasedOn="{StaticResource Button.Base}">
         <Setter Property="Background" Value="{StaticResource Brush.Raised}" />
         <Setter Property="BorderBrush" Value="{StaticResource Brush.Edge}" />
-        <Setter Property="Padding" Value="14,4" />
+        <Setter Property="Padding" Value="12,3" />
     </Style>
 
     <!-- Square icon-only toolbar button. -->
@@ -154,10 +154,10 @@
         </Setter>
     </Style>
 
-    <!-- Window caption buttons: a touch narrower than the first pass so the custom
-         chrome feels closer to native Windows proportions. -->
+    <!-- Window caption buttons: slimmed down to keep the custom chrome from dominating the
+         top-right corner. -->
     <Style x:Key="Button.Caption" TargetType="{x:Type Button}">
-        <Setter Property="Width" Value="40" />
+        <Setter Property="Width" Value="38" />
         <Setter Property="Height" Value="{StaticResource Metric.TitleBarHeight}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}" />
@@ -569,7 +569,7 @@
     <!-- ==== separators, tooltips, splitters ============================================ -->
     <Style TargetType="{x:Type Separator}">
         <Setter Property="Background" Value="{StaticResource Brush.Edge}" />
-        <Setter Property="Margin" Value="5,5" />
+        <Setter Property="Margin" Value="4,4" />
         <Setter Property="Width" Value="1" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">

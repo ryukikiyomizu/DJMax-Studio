@@ -121,21 +121,21 @@ namespace DJMaxEditor.Studio.Design
     /// </summary>
     internal static class StudioMetrics
     {
-        /// <summary>Custom title bar height. Still large enough to grab easily, but slimmer than
-        /// the first pass so the custom caption buttons stop reading oversized.</summary>
-        public const double TitleBarHeight = 30;
+        /// <summary>Custom title bar height. Trimmed a little further so the custom chrome reads
+        /// closer to a native desktop window instead of a game HUD.</summary>
+        public const double TitleBarHeight = 28;
 
-        /// <summary>Main toolbar. Tightened a little to match the slimmer caption row while keeping
-        /// the icons comfortably clickable.</summary>
-        public const double ToolbarHeight = 36;
-        public const double ToolButtonSize = 26;
-        public const double IconSize = 16;
+        /// <summary>Main toolbar. Slightly denser than the first pass, but still comfortably
+        /// clickable with vector icons.</summary>
+        public const double ToolbarHeight = 34;
+        public const double ToolButtonSize = 24;
+        public const double IconSize = 15;
 
-        /// <summary>Status bar, matching ptSequencer's SEL/GRID/TOT/time readout row.</summary>
-        public const double StatusBarHeight = 24;
+        /// <summary>Status bar, matching ptSequencer's compact readout row.</summary>
+        public const double StatusBarHeight = 22;
 
         /// <summary>Panel section headers inside the docks.</summary>
-        public const double PanelHeaderHeight = 24;
+        public const double PanelHeaderHeight = 22;
 
         /// <summary>Left dock: track preset, view options, sample list.</summary>
         public const double LeftDockWidth = 260;

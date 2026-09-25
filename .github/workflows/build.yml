@@ -144,6 +144,11 @@ jobs:
               <Compile Include="..\Shared\Files\bytes\TrailerChartReader.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
               <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineEventIndex.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineItem.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineRowRange.cs" />
+              <Compile Include="..\Shared\Controls\TimelineV2\TimelineTimeRange.cs" />
+              <Compile Include="..\Shared\Controls\Vertical\VerticalTimelineProjection.cs" />
               <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
               <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
               <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
