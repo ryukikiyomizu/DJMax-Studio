@@ -143,6 +143,25 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="70" />
                                 </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Playback device"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" x:Name="OutputDeviceCombo"
+                                          MinWidth="280"
+                                          SelectionChanged="OnComboChanged"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Margin="190,2,0,0" TextWrapping="Wrap"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Brush.TextMuted}"
+                                       Text="Choose a specific output or follow the computer's system default. The selected device is used the next time the studio starts; if it is unavailable or unplugged during playback, the mixer falls back to the current system default." />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Buffer size"
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            VerticalAlignment="Center" />

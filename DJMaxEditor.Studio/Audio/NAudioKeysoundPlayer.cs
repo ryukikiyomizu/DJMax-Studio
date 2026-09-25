@@ -573,6 +573,9 @@ namespace DJMaxEditor.Studio.Audio
         /// </summary>
         private void EnsureDeviceRunning()
         {
+            IAudioOutput current = _output;
+            current?.EnsureAvailable();
+
             if (!_deviceStopped)
             {
                 return;
@@ -1160,6 +1163,12 @@ namespace DJMaxEditor.Studio.Audio
         {
             try
             {
+                NAudioDeviceOutput realOutput = output as NAudioDeviceOutput;
+                if (realOutput != null)
+                {
+                    realOutput.Log = message => Log?.Invoke(message);
+                }
+
                 output.Init(_group);
                 output.Play();
                 _output = output;

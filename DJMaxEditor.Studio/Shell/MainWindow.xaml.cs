@@ -377,9 +377,10 @@ namespace DJMaxEditor.Studio.Shell
         /// <para>
         /// The output latency and the keysound cache budget are read from the settings here and
         /// nowhere else, because both are constructor arguments rather than properties: a device is
-        /// opened with a buffer size and a cache is created with a ceiling, and neither can be
-        /// re-negotiated afterwards without tearing down every loaded sample. That is why the
-        /// preferences window says those two take effect on restart instead of pretending otherwise.
+        /// opened with a buffer size and a cache is created with a ceiling, and those choices - plus
+        /// the preferred output endpoint - cannot be re-negotiated afterwards without rebuilding the
+        /// whole graph. That is why the preferences window says they take effect on restart instead
+        /// of pretending otherwise.
         /// </para>
         /// </summary>
         private void InitialiseAudio()
@@ -388,8 +389,8 @@ namespace DJMaxEditor.Studio.Shell
             try
             {
                 long cacheBytes = (long)audio.KeysoundCacheBudgetMb * 1024L * 1024L;
-                _audio = new NAudioKeysoundPlayer(
-                    new NAudioDeviceOutput(audio.OutputLatencyMs), true, cacheBytes);
+                var output = new NAudioDeviceOutput(audio.OutputLatencyMs, audio.PreferredOutputDeviceId);
+                _audio = new NAudioKeysoundPlayer(output, true, cacheBytes);
                 _audio.Log = message => Logs.Write(message);
                 _audio.AllowOverlappingRetrigger = audio.AllowOverlappingRetrigger;
             }

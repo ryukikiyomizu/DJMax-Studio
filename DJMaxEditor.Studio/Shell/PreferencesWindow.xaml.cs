@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.Diagnostics;
+using DJMaxEditor.Studio.Audio;
 using DJMaxEditor.Studio.Editing;
 using DJMaxEditor.Studio.Settings;
 using DJMaxEditor.Studio.Tracks;
@@ -21,9 +22,10 @@ namespace DJMaxEditor.Studio.Shell
     /// It edits the shell's live settings object rather than a copy, and every control writes
     /// through on change - so there is no OK button and no Cancel. That is a deliberate choice and
     /// not a shortcut: all of these are cheap and all of them are visible on the surface behind the
-    /// window, so watching one happen is better feedback than a dialog that promises it. The two
-    /// that cannot apply live (the driver buffer size and the decoded-audio budget, both
-    /// constructor arguments to the audio graph) say so on the page instead of pretending.
+    /// window, so watching one happen is better feedback than a dialog that promises it. The audio
+    /// settings that cannot apply live (output device selection, driver buffer size, and the
+    /// decoded-audio budget - all constructor-time choices for the audio graph) say so on the page
+    /// instead of pretending.
     /// </para>
     /// <para>
     /// <see cref="PullFromSettings"/> and <see cref="CommitFromControls"/> are the whole contract,
@@ -174,6 +176,66 @@ namespace DJMaxEditor.Studio.Shell
                 VerticalTrackLayout.TechnikaMode, "TECHNIKA (4 lanes + scans)"));
             choices.Add(new LayoutChoice(VerticalTrackLayout.BmsMode, "BMS (channels)"));
             LayoutCombo.ItemsSource = choices;
+
+            RefreshOutputChoices(string.Empty);
+        }
+
+        private void RefreshOutputChoices(string selectedDeviceId)
+        {
+            string wanted = string.IsNullOrWhiteSpace(selectedDeviceId)
+                ? string.Empty
+                : selectedDeviceId.Trim();
+
+            IReadOnlyList<NAudioDeviceOutput.OutputDeviceInfo> devices =
+                NAudioDeviceOutput.EnumerateRenderDevices();
+            List<OutputDeviceChoice> choices = new List<OutputDeviceChoice>();
+
+            string defaultName = "System default";
+            foreach (NAudioDeviceOutput.OutputDeviceInfo device in devices)
+            {
+                if (device != null && device.IsDefault)
+                {
+                    defaultName = "System default (" + device.Name + ")";
+                    break;
+                }
+            }
+            choices.Add(new OutputDeviceChoice(string.Empty, defaultName));
+
+            bool matched = string.IsNullOrEmpty(wanted);
+            foreach (NAudioDeviceOutput.OutputDeviceInfo device in devices)
+            {
+                if (device == null)
+                {
+                    continue;
+                }
+
+                string label = device.Name + (device.IsDefault ? " (default)" : string.Empty);
+                choices.Add(new OutputDeviceChoice(device.Id, label));
+                if (string.Equals(device.Id, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = true;
+                }
+            }
+
+            if (!matched && !string.IsNullOrEmpty(wanted))
+            {
+                choices.Add(new OutputDeviceChoice(
+                    wanted,
+                    "Previously selected device (currently unavailable)"));
+            }
+
+            OutputDeviceCombo.ItemsSource = choices;
+
+            foreach (OutputDeviceChoice choice in choices)
+            {
+                if (string.Equals(choice.DeviceId, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    OutputDeviceCombo.SelectedItem = choice;
+                    return;
+                }
+            }
+
+            OutputDeviceCombo.SelectedIndex = choices.Count == 0 ? -1 : 0;
         }
 
         // ===================================================================================
@@ -193,6 +255,7 @@ namespace DJMaxEditor.Studio.Shell
                 _settings.Normalise();
 
                 AudioSettings audio = _settings.Audio;
+                RefreshOutputChoices(audio.PreferredOutputDeviceId);
                 LatencySlider.Value = audio.OutputLatencyMs;
                 MasterVolumeSlider.Value = audio.MasterVolume;
                 AuditionVolumeSlider.Value = audio.AuditionVolume;
@@ -282,6 +345,8 @@ namespace DJMaxEditor.Studio.Shell
             audio.MasterVolume = MasterVolumeSlider.Value;
             audio.AuditionVolume = AuditionVolumeSlider.Value;
             audio.AllowOverlappingRetrigger = OverlapCheck.IsChecked == true;
+            OutputDeviceChoice outputChoice = OutputDeviceCombo.SelectedItem as OutputDeviceChoice;
+            audio.PreferredOutputDeviceId = outputChoice == null ? string.Empty : outputChoice.DeviceId;
             audio.KeysoundCacheBudgetMb = (int)Math.Round(CacheBudgetSlider.Value);
             audio.LoadKeysoundsOnOpen = LoadKeysoundsCheck.IsChecked == true;
             audio.PlayKeysoundOnClick = PlayKeysoundOnClickCheck.IsChecked == true;
@@ -591,6 +656,24 @@ namespace DJMaxEditor.Studio.Shell
             {
                 e.Handled = true;
                 Close();
+            }
+        }
+
+        private sealed class OutputDeviceChoice
+        {
+            public OutputDeviceChoice(string deviceId, string label)
+            {
+                DeviceId = string.IsNullOrWhiteSpace(deviceId) ? string.Empty : deviceId.Trim();
+                Label = label ?? string.Empty;
+            }
+
+            public string DeviceId { get; private set; }
+
+            public string Label { get; private set; }
+
+            public override string ToString()
+            {
+                return Label;
             }
         }
 

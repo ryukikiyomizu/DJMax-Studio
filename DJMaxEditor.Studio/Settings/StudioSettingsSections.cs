@@ -7,11 +7,12 @@ namespace DJMaxEditor.Studio.Settings
     /// <summary>
     /// Audio backend preferences.
     ///
-    /// Two of these cannot be changed on a running graph and say so in the preferences window:
+    /// Three of these are startup choices rather than live ones and say so in the preferences
+    /// window: <see cref="PreferredOutputDeviceId"/> decides which endpoint to try first,
     /// <see cref="OutputLatencyMs"/> is the buffer size a driver was opened with, and
     /// <see cref="KeysoundCacheBudgetMb"/> is the decoded-PCM budget the mixer was constructed with.
-    /// Reopening the device under a playing chart would drop every sounding voice, so both are read
-    /// once, at startup, by the code that builds the player.
+    /// Rebuilding the graph under a playing chart would drop every sounding voice, so all three are
+    /// read once, at startup, by the code that builds the player.
     /// </summary>
     public sealed class AudioSettings
     {
@@ -48,6 +49,11 @@ namespace DJMaxEditor.Studio.Settings
         /// </summary>
         public bool AllowOverlappingRetrigger { get; set; } = true;
 
+        /// <summary>
+        /// Preferred render endpoint id, or blank to follow the computer's current default output.
+        /// </summary>
+        public string PreferredOutputDeviceId { get; set; } = string.Empty;
+
         /// <summary>Total decoded-PCM budget, in MiB. 512 is the player's own default.</summary>
         public int KeysoundCacheBudgetMb { get; set; } = 512;
 
@@ -65,6 +71,9 @@ namespace DJMaxEditor.Studio.Settings
             MasterVolume = StudioSettings.Clamp(MasterVolume, 0.0, 1.0, 1.0);
             AuditionVolume = StudioSettings.Clamp(AuditionVolume, 0.0, 1.0, 1.0);
             KeysoundCacheBudgetMb = StudioSettings.Clamp(KeysoundCacheBudgetMb, 32, 4096);
+            PreferredOutputDeviceId = string.IsNullOrWhiteSpace(PreferredOutputDeviceId)
+                ? string.Empty
+                : PreferredOutputDeviceId.Trim();
         }
 
         internal AudioSettings Clone()
@@ -75,6 +84,7 @@ namespace DJMaxEditor.Studio.Settings
                 MasterVolume = MasterVolume,
                 AuditionVolume = AuditionVolume,
                 AllowOverlappingRetrigger = AllowOverlappingRetrigger,
+                PreferredOutputDeviceId = PreferredOutputDeviceId,
                 KeysoundCacheBudgetMb = KeysoundCacheBudgetMb,
                 LoadKeysoundsOnOpen = LoadKeysoundsOnOpen,
                 PlayKeysoundOnClick = PlayKeysoundOnClick,
@@ -87,6 +97,7 @@ namespace DJMaxEditor.Studio.Settings
             StudioSettings.Line(text, "audio.masterVolume", MasterVolume);
             StudioSettings.Line(text, "audio.auditionVolume", AuditionVolume);
             StudioSettings.Line(text, "audio.overlappingRetrigger", AllowOverlappingRetrigger);
+            StudioSettings.Line(text, "audio.preferredOutputDeviceId", PreferredOutputDeviceId);
             StudioSettings.Line(text, "audio.cacheBudgetMb", KeysoundCacheBudgetMb);
             StudioSettings.Line(text, "audio.loadKeysoundsOnOpen", LoadKeysoundsOnOpen);
             StudioSettings.Line(text, "audio.playKeysoundOnClick", PlayKeysoundOnClick);
