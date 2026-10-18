@@ -127,6 +127,13 @@
                     <ListBoxItem Padding="8,5">
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource Icon.Glyph}"
+                                  Data="{StaticResource Icon.Layers}" Margin="0,0,8,0" />
+                            <TextBlock Text="Slicer" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Icon.Glyph}"
                                   Data="{StaticResource Icon.Info}" Margin="0,0,8,0" />
                             <TextBlock Text="Diagnostics" VerticalAlignment="Center" />
                         </StackPanel>
@@ -669,7 +676,11 @@
                             <TextBlock TextWrapping="Wrap" Margin="0,0,0,14"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
+<<<<<<< HEAD
+                                       Text="How the keysound slicer starts up and how much it may take. The mode is the same chooser you see on first open — BMS is the safe 1 295 limit, RESPECT 2 047, Technika has no table. The budget meter in the slicer toolbar turns red past the limit so you know before export." />
+=======
                                        Text="How the keysound slicer starts up and which snap it restores. BMS is the safe 1,295-keysound target, RESPECT allows 2,047, and TECHNIKA has no table limit." />
+>>>>>>> origin/master
 
                             <TextBlock Text="MODE" Style="{StaticResource Text.Section}" />
                             <Grid Margin="0,2,0,0">
@@ -685,15 +696,25 @@
                                           SelectionChanged="OnComboChanged" />
                             </Grid>
                             <CheckBox x:Name="SlicerSuppressCheck" Margin="0,10,0,0"
+<<<<<<< HEAD
+                                      Content="Don't show the BMS / RESPECT / Technika chooser on first open"
+=======
                                       Content="Don't show the mode chooser on first open"
+>>>>>>> origin/master
                                       Click="OnToggleChanged" />
                             <TextBlock Margin="20,2,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
+<<<<<<< HEAD
+                                       Text="When off, opening the slicer with an empty project asks once. Your last mode is always remembered above." />
+
+                            <Border Height="1" Background="{StaticResource Brush.Edge}" Margin="0,14,0,14" />
+=======
                                        Text="When off, opening the slicer with an empty project asks whether you want BMS, RESPECT, or TECHNIKA behaviour. The chosen default is still remembered here." />
 
                             <Border Height="1" Background="{StaticResource Brush.Edge}"
                                     Margin="0,14,0,14" />
+>>>>>>> origin/master
 
                             <TextBlock Text="GRID" Style="{StaticResource Text.Section}" />
                             <Grid Margin="0,2,0,0">
@@ -711,7 +732,11 @@
                             <TextBlock Margin="190,4,0,0" TextWrapping="Wrap"
                                        FontSize="{StaticResource Font.Size.Small}"
                                        Foreground="{StaticResource Brush.TextMuted}"
+<<<<<<< HEAD
+                                       Text="All seven the slicer toolbar shows — Free, 1/4, 1/8, 1/16, 1/32, 1/64 and 1/192. 1/192 matches iBMSC's 192nd limit; beyond that the ruler still draws ghosts." />
+=======
                                        Text="Matches the slicer toolbar: Free, 1/4, 1/8, 1/16, 1/32, 1/64, and 1/192." />
+>>>>>>> origin/master
                         </StackPanel>
                     </ScrollViewer>
 

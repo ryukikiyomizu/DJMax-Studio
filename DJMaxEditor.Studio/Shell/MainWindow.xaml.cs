@@ -28,6 +28,7 @@ using DJMaxEditor.Studio.Keyslicer;
 using DJMaxEditor.Studio.Timeline;
 using DJMaxEditor.Studio.Tracks;
 using DJMaxEditor.Studio.Video;
+using DJMaxEditor.Studio.Keyslicer;
 
 namespace DJMaxEditor.Studio.Shell
 {
@@ -132,9 +133,15 @@ namespace DJMaxEditor.Studio.Shell
         private ThemePickerWindow _themePicker;
 
         /// <summary>
+<<<<<<< HEAD
+        /// The keysound slicer scene window, if there is one. Non-modal and single-instance so the
+        /// waveform cache and project state are not duplicated - two slicers on the same sources
+        /// would be two copies of the same 30-minute recording and two answers to "where is the draft".
+=======
         /// The keysound slicer scene, if it is open. Single-instance: it owns its own project and
         /// waveform cache, and letting two copies race the same source recording would be wasteful
         /// and confusing.
+>>>>>>> origin/master
         /// </summary>
         private KeyslicerWindow _slicerWindow;
 
@@ -830,8 +837,17 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
+<<<<<<< HEAD
+        /// Opens the keysound slicer scene, or brings the open one forward.
+        /// Non-modal and single-instance: the slicer owns a waveform cache for a potentially
+        /// hour-long source recording and a project model of virtual slices. Two windows would
+        /// be two copies of that state racing each other, and modal would block the chart timeline
+        /// the user is trying to send notes into. The current EditorDocumentContext is attached
+        /// so "Send to Editor" has somewhere to go, when there is one.
+=======
         /// Opens the keysound slicer, or brings the open one forward, attaching the current chart so
         /// the slicer can send notes into it.
+>>>>>>> origin/master
         /// </summary>
         private void OnOpenSlicer(object sender, RoutedEventArgs e)
         {
@@ -839,8 +855,15 @@ namespace DJMaxEditor.Studio.Shell
             {
                 if (_slicerWindow != null)
                 {
+<<<<<<< HEAD
+                    _slicerWindow.Activate();
+                    // Keep the attachment fresh: the user may have opened a different chart since the
+                    // slicer was first shown.
+                    _slicerWindow.AttachChartContext(_document);
+=======
                     _slicerWindow.AttachChartContext(_document);
                     _slicerWindow.Activate();
+>>>>>>> origin/master
                     return;
                 }
 
@@ -852,6 +875,13 @@ namespace DJMaxEditor.Studio.Shell
             }
             catch (Exception ex)
             {
+<<<<<<< HEAD
+                Logs.Write($"Keyslicer open failed: {ex}");
+                MessageBox.Show(this,
+                    $"Keysound Slicer failed to open:\n\n{ex.GetType().Name}: {ex.Message}\n\nSee Help → Open log folder for the full trace.\n\nThe main editor will stay open.",
+                    "Keysound Slicer", MessageBoxButton.OK, MessageBoxImage.Error);
+                try { _slicerWindow?.Close(); } catch { }
+=======
                 Logs.Write("Keyslicer open failed: " + ex);
                 MessageBox.Show(
                     this,
@@ -867,6 +897,7 @@ namespace DJMaxEditor.Studio.Shell
                 catch (Exception)
                 {
                 }
+>>>>>>> origin/master
                 _slicerWindow = null;
             }
         }
@@ -875,9 +906,13 @@ namespace DJMaxEditor.Studio.Shell
         {
             KeyslicerWindow window = sender as KeyslicerWindow;
             if (window != null)
+<<<<<<< HEAD
+                window.Closed -= OnSlicerClosed;
+=======
             {
                 window.Closed -= OnSlicerClosed;
             }
+>>>>>>> origin/master
             _slicerWindow = null;
         }
 
@@ -982,6 +1017,11 @@ namespace DJMaxEditor.Studio.Shell
         {
             if (_slicerWindow != null)
             {
+<<<<<<< HEAD
+                try { _slicerWindow.Close(); } catch { }
+                _slicerWindow = null;
+            }
+=======
                 try
                 {
                     _slicerWindow.Close();
@@ -992,6 +1032,7 @@ namespace DJMaxEditor.Studio.Shell
                 _slicerWindow = null;
             }
 
+>>>>>>> origin/master
             // First, and before the harvest below: the preferences window writes on its own close,
             // and letting it do that after the shell has already saved would put a file on disk
             // without the toolbar state in it.
@@ -1261,10 +1302,17 @@ namespace DJMaxEditor.Studio.Shell
                 : "Ready";
             long tPanels = adopt.ElapsedMilliseconds;
 
+<<<<<<< HEAD
+            // Keep the slicer scene attached to the live document so "Send to Editor" always has the
+            // right chart, even after the user opened a new file while the slicer was already open.
+            if (_slicerWindow != null)
+                _slicerWindow.AttachChartContext(_document);
+=======
             if (_slicerWindow != null)
             {
                 _slicerWindow.AttachChartContext(_document);
             }
+>>>>>>> origin/master
 
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
