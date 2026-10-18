@@ -60,15 +60,15 @@ namespace DJMaxEditor.Files.Tech
 
         // Source tracks the TECHNIKA layout already reserves: lanes 0-3, end-of-scan marker
         // tracks 4-7, the tempo slot at 8; occupied invisible/keysound format lanes are
-        // compacted onto overflow tracks 9..50.
+        // compacted onto overflow tracks 9..70 (all 60 format lanes 4..63 plus a backing track).
         private const int LaneCount = 4;
         private const int FirstMarkerTrack = 4;
         private const int TempoTrack = 8;
         private const int FirstOverflowTrack = 9;
-        private const int MaxModelTrackIndex = 50;
-        // Highest format lane an overflow track can hold: lanes 0-3 are fixed and each of
-        // the 42 model tracks 9..50 takes one occupied format lane from 4 upward.
-        private const int MaxExtraFormatLane = LaneCount + (MaxModelTrackIndex - FirstOverflowTrack + 1) - 1;
+        private const int MaxModelTrackIndex = 70;
+        // Highest format lane an overflow track can hold: TECHMANIA supports lanes 0..63
+        // (0..3 playable, 4..63 hidden keysound lanes).
+        private const int MaxExtraFormatLane = 63;
         // A save cannot name a lane the import could not have read.
         private const int MaxWritableFormatLane = MaxExtraFormatLane;
 
@@ -659,6 +659,10 @@ namespace DJMaxEditor.Files.Tech
                 instrument = existing;
             }
 
+            byte clampedVolume = (byte)Math.Max(0, Math.Min(100, note.Volume));
+            byte vel = (byte)Math.Max(0, Math.Min(127, (int)Math.Round(clampedVolume * 127.0 / 100.0,
+                MidpointRounding.AwayFromZero)));
+
             evt = new EventData
             {
                 EventType = EventType.Note,
@@ -666,7 +670,8 @@ namespace DJMaxEditor.Files.Tech
                 VirtualTick = ToVirtual(note.Pulse),
                 VirtualDuration = (ushort)Math.Max(0, Math.Min(ushort.MaxValue, virtualDuration)),
                 Instrument = instrument,
-                Volume = (byte)Math.Max(0, Math.Min(100, note.Volume)),
+                Volume = clampedVolume,
+                Vel = vel,
                 Pan = (byte)Math.Max(0, Math.Min(127, (int)Math.Round(64 + (note.Pan * 0.64),
                     MidpointRounding.AwayFromZero)))
             };

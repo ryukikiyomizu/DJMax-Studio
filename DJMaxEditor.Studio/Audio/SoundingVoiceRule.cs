@@ -257,11 +257,19 @@ namespace DJMaxEditor.Studio.Audio
                     continue;
                 }
 
+                ushort sound = ev.Instrument != null ? ev.Instrument.InsNum : (ushort)0;
+                if (sound == 0)
+                {
+                    // Silent notes never trigger PlayNote and never steal the channel, even when
+                    // AllowOverlappingRetrigger is off.
+                    continue;
+                }
+
                 double offset;
                 if (StillSounding(ev, nativeTick, out offset))
                 {
                     into.Add(new RestorableVoice(ev, offset));
-                    if (into.Count >= maxVoices)
+                    if (maxVoices == 1)
                     {
                         break;
                     }
@@ -272,6 +280,28 @@ namespace DJMaxEditor.Studio.Audio
                     // its silence is the track's silence.
                     break;
                 }
+            }
+
+            if (into.Count > maxVoices && maxVoices > 1)
+            {
+                // Keep the (maxVoices - 1) newest voices plus the older voice with the longest
+                // remaining playback time (such as a full-song BGM or stem placed on the same lane
+                // at tick 0 in a .tech chart).
+                int bestOlderIndex = maxVoices - 1;
+                double bestRemaining = -1.0;
+                for (int i = maxVoices - 1; i < into.Count; i++)
+                {
+                    ushort sound = into[i].Note.Instrument != null ? into[i].Note.Instrument.InsNum : (ushort)0;
+                    double remaining = _sampleLengthMilliseconds(sound) - into[i].OffsetMilliseconds;
+                    if (remaining > bestRemaining)
+                    {
+                        bestRemaining = remaining;
+                        bestOlderIndex = i;
+                    }
+                }
+
+                into[maxVoices - 1] = into[bestOlderIndex];
+                into.RemoveRange(maxVoices, into.Count - maxVoices);
             }
 
             // Collected newest first; the caller needs oldest first.

@@ -599,6 +599,55 @@ jobs:
           Check(blankOut.Contains("Basic|0|0|") && !blankOut.Contains("E|Basic"),
                 "model-default volume/pan pack as a compact note");
 
+          // Backing sounds across E1-T19 (tracks 4..19) must be saved as hidden-lane Basic
+          // notes in .tech (even when Duration > 6 from .pt sample lengths or Attribute == 100),
+          // while silent E1-E4 markers still fold into end-of-scan flags on lanes 0..3.
+          var e1ToT19 = new PlayerData();
+          e1ToT19.Instruments.Add(new InstrumentData { InsNum = 0, Name = "none" });
+          var lane0 = new TrackData(0) { TrackName = "lane 1" };
+          lane0.AddEvent(new EventData
+          {
+              EventType = EventType.Note,
+              VirtualTick = 288,
+              Instrument = new InstrumentData { InsNum = 1, Name = "lead.ogg" }
+          });
+          e1ToT19.Instruments.Add(lane0.Events.First().Instrument);
+          e1ToT19.Tracks.AddTrack(lane0);
+          for (uint ti = 1; ti <= 3; ti++)
+              e1ToT19.Tracks.AddTrack(new TrackData(ti));
+          for (uint ti = 4; ti <= 19; ti++)
+          {
+              var bt = new TrackData(ti);
+              if (ti == 4)
+              {
+                  // Silent EOS marker at tick 288 for lane 0.
+                  bt.AddEvent(new EventData { EventType = EventType.Note, VirtualTick = 288 });
+              }
+              var ins = new InstrumentData { InsNum = (ushort)(ti + 10), Name = "bg_" + ti + ".ogg" };
+              e1ToT19.Instruments.Add(ins);
+              bt.AddEvent(new EventData
+              {
+                  EventType = EventType.Note,
+                  VirtualTick = (int)(ti * 288),
+                  Duration = 48,
+                  Attribute = (byte)(ti == 17 ? 100 : 0),
+                  Instrument = ins
+              });
+              e1ToT19.Tracks.AddTrack(bt);
+          }
+          string e1ToT19Out = TechmaniaChartSerializer.Serialize(e1ToT19);
+          Check(e1ToT19Out.Contains("E|Basic|240|0|100|0|1|lead.ogg"),
+                "silent E1 marker sets end-of-scan on lane 0");
+          for (int ti = 4; ti <= 19; ti++)
+          {
+              Check(e1ToT19Out.Contains("|bg_" + ti + ".ogg") &&
+                    !e1ToT19Out.Contains("Drag|" + (ti * 240)),
+                    "backing sound on track " + ti + " (E1-T19) is saved as a Basic hidden-lane note");
+          }
+          PlayerData e1ToT19Round = TechmaniaChartSerializer.Parse(Encoding.UTF8.GetBytes(e1ToT19Out));
+          Check(e1ToT19Round.Tracks.Count == 9 + 16,
+                "all 16 E1-T19 backing tracks survive .tech round trip");
+
           // Multi-difficulty container: stitch a second, untouched pattern (MX) behind
           // the opened one (NM). The editor edits slot 0; slot 1 must come back verbatim.
           var multiDoc = JsonNode.Parse(tech);
