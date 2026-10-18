@@ -60,11 +60,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
                 // Downmix to mono for peak building — 24/32-bit float is already normalized by NAudio.
                 if (srcCh > 1)
-<<<<<<< HEAD
-                    reader = new StereoToMonoSampleProvider(reader) { LeftVolume = 0.5f, RightVolume = 0.5f };
-=======
                     reader = KeyslicerAudioReader.DownmixToMono(reader);
->>>>>>> origin/master
 
                 reader = BoundReader(reader, readerDisp);
 
@@ -255,42 +251,15 @@ namespace DJMaxEditor.Studio.Keyslicer
                     if (afr.TotalTime.Ticks > 0)
                         return (long)(afr.TotalTime.TotalSeconds * srcRate);
                 }
-<<<<<<< HEAD
-=======
                 if (disp is MediaFoundationReader mfr && mfr.TotalTime.Ticks > 0)
                     return (long)(mfr.TotalTime.TotalSeconds * srcRate);
->>>>>>> origin/master
             } catch {}
             return 0;
         }
 
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
-<<<<<<< HEAD
-            string ext = Path.GetExtension(path) ?? string.Empty;
-            bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".opus", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(ext, ".flac", StringComparison.OrdinalIgnoreCase);
-            // Opus/Ogg/FLAC: Vorbis reader first (handles Ogg Opus, FLAC via Vorbis path may fail → fallback)
-            if (isVorbisExt)
-            {
-                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch {}
-            }
-            try
-            {
-                var a = new AudioFileReader(path);
-                disposable = a;
-                return a;
-            }
-            catch
-            {
-                // Last resort try Vorbis for any mis-detected container
-                try { var v = new VorbisWaveReader(path); disposable = v; return v; } catch (Exception ex) { throw new InvalidOperationException("unsupported audio format: " + path + " — " + ex.Message, ex); }
-            }
-=======
             return KeyslicerAudioReader.OpenSampleProvider(path, out disposable);
->>>>>>> origin/master
         }
 
         private static ISampleProvider BoundReader(ISampleProvider source, IDisposable reader)

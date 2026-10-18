@@ -484,49 +484,27 @@ namespace DJMaxEditor.Studio.Settings
     }
 
     /// <summary>
-<<<<<<< HEAD
-    /// Keysound slicer preferences — which platform the slicer targets and whether
-    /// to show the first-launch mode chooser.
-    /// BM S is the safe default (1295 max); RESPECT allows 2047; Technika is
-    /// unbounded for in-house charts. SuppressModeChooser maps to the
-    /// “Don't show again” tick in the chooser and is surfaced in
-    /// Preferences → Slicer → Default mode.
-=======
-    /// Keysound slicer defaults: which export target it opens in and which snap division it restores.
->>>>>>> origin/master
+    /// Keysound slicer preferences: the startup mode chooser, export-target limits, and the
+    /// default snap division restored by a new project. BMS is the safe 1,295-keysound target,
+    /// RESPECT allows 2,047, and TECHNIKA has no table limit.
     /// </summary>
     public sealed class KeyslicerSettings
     {
         /// <summary>
         /// Default slicer mode for a new project or when the chooser is suppressed:
-<<<<<<< HEAD
-        /// 0 = BMS (1295), 1 = RESPECT (2047), 2 = Technika (unbounded).
-        /// </summary>
-        public int DefaultSlicerMode { get; set; } = 0;
-
-        /// <summary>Don't show the BMS/RESPECT/Technika chooser on first open.</summary>
-        public bool SuppressModeChooser { get; set; } = false;
-
-        /// <summary>Default snap denominator to restore (0 Free, 4/8/16/32).</summary>
-=======
         /// 0 = BMS (1295), 1 = RESPECT (2047), 2 = TECHNIKA (no limit).
         /// </summary>
         public int DefaultSlicerMode { get; set; } = 0;
 
-        /// <summary>Whether to skip the first-open mode chooser.</summary>
+        /// <summary>Whether to skip the first-open BMS/RESPECT/TECHNIKA chooser.</summary>
         public bool SuppressModeChooser { get; set; } = false;
 
         /// <summary>Default slicer snap denominator: 0, 4, 8, 16, 32, 64 or 192.</summary>
->>>>>>> origin/master
         public int DefaultSnapDenominator { get; set; } = 16;
 
         internal void Clamp()
         {
             DefaultSlicerMode = StudioSettings.Clamp(DefaultSlicerMode, 0, 2);
-<<<<<<< HEAD
-            if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 && DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 && DefaultSnapDenominator != 32 && DefaultSnapDenominator != 64 && DefaultSnapDenominator != 192)
-                DefaultSnapDenominator = 16;
-=======
             if (DefaultSnapDenominator != 0 && DefaultSnapDenominator != 4 &&
                 DefaultSnapDenominator != 8 && DefaultSnapDenominator != 16 &&
                 DefaultSnapDenominator != 32 && DefaultSnapDenominator != 64 &&
@@ -534,7 +512,6 @@ namespace DJMaxEditor.Studio.Settings
             {
                 DefaultSnapDenominator = 16;
             }
->>>>>>> origin/master
         }
 
         internal KeyslicerSettings Clone()

@@ -242,19 +242,12 @@
                                       Click="OnTogglePlayfield" ToolTip="Show the TECHNIKA gameplay playfield">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Rows3}" />
                         </ToggleButton>
-<<<<<<< HEAD
                         <!-- Keysound slicer: the non-destructive virtual-keysound scene. A long
                              source recording is sliced into intervals that become notes without ever
                              duplicating the audio until export. Separate from the chart timeline. -->
                         <Button Style="{StaticResource Button.Tool}" Click="OnOpenSlicer"
                                 ToolTip="Keysound Slicer - non-destructive slicer (long source -> virtual keysounds -> notes)">
                             <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}" Stroke="{StaticResource Brush.Accent}" />
-=======
-                        <Button Style="{StaticResource Button.Tool}" Click="OnOpenSlicer"
-                                ToolTip="Keysound Slicer - non-destructive slicer (long source to virtual keysounds to notes)">
-                            <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.Scissors}"
-                                  Stroke="{StaticResource Brush.Accent}" />
->>>>>>> origin/master
                         </Button>
 
                         <Separator />
@@ -747,6 +740,69 @@
                                            Style="{StaticResource Text.Readout}"
                                            Foreground="{StaticResource Brush.TextSecondary}"
                                            TextWrapping="Wrap" />
+
+                                <TextBlock Text="FILE INFO" Style="{StaticResource Text.Section}"
+                                           Margin="0,14,0,2" />
+                                <Border x:Name="InspectorFileInfoCard"
+                                        Background="{StaticResource Brush.Inset}"
+                                        BorderBrush="{StaticResource Brush.Edge}"
+                                        BorderThickness="1" CornerRadius="3" Padding="8,7">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="FileInfoFormat" Text="Chart format"
+                                                       Foreground="{StaticResource Brush.Accent}"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Grid.Column="1" x:Name="FileInfoExtension"
+                                                       Text="--" Style="{StaticResource Text.Readout}"
+                                                       Foreground="{StaticResource Brush.TextMuted}"
+                                                       Margin="6,0,0,0" />
+                                        </Grid>
+                                        <Grid Margin="0,5,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="FileInfoName" Text="No file"
+                                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="Chart file name" />
+                                            <TextBlock Grid.Column="1" x:Name="FileInfoSavedState"
+                                                       Text="UNSAVED" Style="{StaticResource Text.Readout}"
+                                                       Foreground="{StaticResource Brush.Warn}"
+                                                       Margin="6,0,0,0" />
+                                        </Grid>
+                                        <TextBlock x:Name="FileInfoPath" Text="Open a chart to see its file information."
+                                                   Foreground="{StaticResource Brush.TextMuted}"
+                                                   FontSize="{StaticResource Font.Size.Small}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   MaxHeight="42" Margin="0,3,0,0" />
+                                        <Border Height="1" Background="{StaticResource Brush.Edge}"
+                                                Margin="0,7,0,3" />
+                                        <ItemsControl x:Name="FileInfoFields">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Key}"
+                                                                   Foreground="{StaticResource Brush.TextMuted}"
+                                                                   FontSize="{StaticResource Font.Size.Small}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                                                   Foreground="{StaticResource Brush.TextSecondary}"
+                                                                   FontSize="{StaticResource Font.Size.Small}"
+                                                                   TextAlignment="Right" TextWrapping="Wrap"
+                                                                   Margin="8,0,0,0" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
 
                                 <TextBlock Text="LANE" Style="{StaticResource Text.Section}" Margin="0,14,0,2" />
                                 <TextBlock x:Name="InspectorLane" Text="--"

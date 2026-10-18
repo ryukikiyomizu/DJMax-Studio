@@ -38,6 +38,12 @@ namespace DJMaxEditor.Editor
 
         public string SourcePath { get; private set; }
 
+        /// <summary>Updates the document's current path after a successful Save As.</summary>
+        public void UpdateSourcePath(string sourcePath)
+        {
+            SourcePath = sourcePath;
+        }
+
         public DocumentCapabilities Capabilities { get; private set; }
 
         public UndoManager UndoManager { get; private set; }

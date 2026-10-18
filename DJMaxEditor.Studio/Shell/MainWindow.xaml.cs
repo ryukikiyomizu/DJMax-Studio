@@ -16,6 +16,7 @@ using DJMaxEditor.Diagnostics;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Editor;
 using DJMaxEditor.Files.FormatDetection;
+using DJMaxEditor.Files.bms;
 using DJMaxEditor.Files.Tech;
 using DJMaxEditor.Preview;
 using DJMaxEditor.Studio.Audio;
@@ -133,15 +134,9 @@ namespace DJMaxEditor.Studio.Shell
         private ThemePickerWindow _themePicker;
 
         /// <summary>
-<<<<<<< HEAD
         /// The keysound slicer scene window, if there is one. Non-modal and single-instance so the
-        /// waveform cache and project state are not duplicated - two slicers on the same sources
-        /// would be two copies of the same 30-minute recording and two answers to "where is the draft".
-=======
-        /// The keysound slicer scene, if it is open. Single-instance: it owns its own project and
-        /// waveform cache, and letting two copies race the same source recording would be wasteful
-        /// and confusing.
->>>>>>> origin/master
+        /// waveform cache and project state are not duplicated. Keeping it attached to the current
+        /// document gives "Send to Editor" a stable target without copying a long recording.
         /// </summary>
         private KeyslicerWindow _slicerWindow;
 
@@ -837,17 +832,10 @@ namespace DJMaxEditor.Studio.Shell
         }
 
         /// <summary>
-<<<<<<< HEAD
         /// Opens the keysound slicer scene, or brings the open one forward.
         /// Non-modal and single-instance: the slicer owns a waveform cache for a potentially
         /// hour-long source recording and a project model of virtual slices. Two windows would
-        /// be two copies of that state racing each other, and modal would block the chart timeline
-        /// the user is trying to send notes into. The current EditorDocumentContext is attached
-        /// so "Send to Editor" has somewhere to go, when there is one.
-=======
-        /// Opens the keysound slicer, or brings the open one forward, attaching the current chart so
-        /// the slicer can send notes into it.
->>>>>>> origin/master
+        /// duplicate that state; attaching the current document gives "Send to Editor" its target.
         /// </summary>
         private void OnOpenSlicer(object sender, RoutedEventArgs e)
         {
@@ -855,15 +843,8 @@ namespace DJMaxEditor.Studio.Shell
             {
                 if (_slicerWindow != null)
                 {
-<<<<<<< HEAD
-                    _slicerWindow.Activate();
-                    // Keep the attachment fresh: the user may have opened a different chart since the
-                    // slicer was first shown.
-                    _slicerWindow.AttachChartContext(_document);
-=======
                     _slicerWindow.AttachChartContext(_document);
                     _slicerWindow.Activate();
->>>>>>> origin/master
                     return;
                 }
 
@@ -875,13 +856,6 @@ namespace DJMaxEditor.Studio.Shell
             }
             catch (Exception ex)
             {
-<<<<<<< HEAD
-                Logs.Write($"Keyslicer open failed: {ex}");
-                MessageBox.Show(this,
-                    $"Keysound Slicer failed to open:\n\n{ex.GetType().Name}: {ex.Message}\n\nSee Help → Open log folder for the full trace.\n\nThe main editor will stay open.",
-                    "Keysound Slicer", MessageBoxButton.OK, MessageBoxImage.Error);
-                try { _slicerWindow?.Close(); } catch { }
-=======
                 Logs.Write("Keyslicer open failed: " + ex);
                 MessageBox.Show(
                     this,
@@ -897,7 +871,6 @@ namespace DJMaxEditor.Studio.Shell
                 catch (Exception)
                 {
                 }
->>>>>>> origin/master
                 _slicerWindow = null;
             }
         }
@@ -906,13 +879,9 @@ namespace DJMaxEditor.Studio.Shell
         {
             KeyslicerWindow window = sender as KeyslicerWindow;
             if (window != null)
-<<<<<<< HEAD
-                window.Closed -= OnSlicerClosed;
-=======
             {
                 window.Closed -= OnSlicerClosed;
             }
->>>>>>> origin/master
             _slicerWindow = null;
         }
 
@@ -1017,11 +986,6 @@ namespace DJMaxEditor.Studio.Shell
         {
             if (_slicerWindow != null)
             {
-<<<<<<< HEAD
-                try { _slicerWindow.Close(); } catch { }
-                _slicerWindow = null;
-            }
-=======
                 try
                 {
                     _slicerWindow.Close();
@@ -1031,8 +995,6 @@ namespace DJMaxEditor.Studio.Shell
                 }
                 _slicerWindow = null;
             }
-
->>>>>>> origin/master
             // First, and before the harvest below: the preferences window writes on its own close,
             // and letting it do that after the shell has already saved would put a file on disk
             // without the toolbar state in it.
@@ -1296,23 +1258,19 @@ namespace DJMaxEditor.Studio.Shell
                 : model.Instruments.Count.ToString(CultureInfo.InvariantCulture);
 
             DocumentLabel.Text = Path.GetFileName(path) + (model.IsReadOnly ? "  (read-only)" : "");
-            InspectorChart.Text = DescribeChart(model);
+            InspectorChart.Text = DescribeChart(model, path);
+            RefreshFileInfo(model, path);
             StatusHint.Text = model.IsReadOnly
                 ? "Read-only: this format cannot be written back"
                 : "Ready";
             long tPanels = adopt.ElapsedMilliseconds;
 
-<<<<<<< HEAD
             // Keep the slicer scene attached to the live document so "Send to Editor" always has the
             // right chart, even after the user opened a new file while the slicer was already open.
-            if (_slicerWindow != null)
-                _slicerWindow.AttachChartContext(_document);
-=======
             if (_slicerWindow != null)
             {
                 _slicerWindow.AttachChartContext(_document);
             }
->>>>>>> origin/master
 
             _canvas.InvalidateAll();
             _volumeLane.InvalidateVisual();
@@ -1558,7 +1516,7 @@ namespace DJMaxEditor.Studio.Shell
             internal int Mode { get; }
         }
 
-        private static string DescribeChart(PlayerData model)
+        private static string DescribeChart(PlayerData model, string path)
         {
             if (model == null)
             {
@@ -1566,13 +1524,291 @@ namespace DJMaxEditor.Studio.Shell
             }
 
             int notes = CountNotes(model);
+            ChartFormat? format = FileFormatFor(model, path);
+            string formatName = FileFormatName(format);
 
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "{0} tracks - {1} notes\n{2} BPM - {3} ticks/measure\n{4}",
                 model.Tracks.Count, notes, model.Tempo.ToString("0.##", CultureInfo.InvariantCulture),
-                model.TickPerMinute,
-                model.SourceFormat.HasValue ? model.SourceFormat.Value.ToString() : "unknown format");
+                model.TickPerMinute, formatName);
+        }
+
+        private void RefreshDocumentFileInfo()
+        {
+            if (_document == null)
+            {
+                return;
+            }
+
+            InspectorChart.Text = DescribeChart(_document.Model, _document.SourcePath);
+            RefreshFileInfo(_document.Model, _document.SourcePath);
+        }
+
+        private void RefreshFileInfo(PlayerData model, string path)
+        {
+            string safePath = path ?? string.Empty;
+            string extension = Path.GetExtension(safePath);
+            ChartFormat? format = FileFormatFor(model, safePath);
+            bool saved = false;
+
+            try
+            {
+                saved = Path.IsPathRooted(safePath) && File.Exists(safePath);
+            }
+            catch (Exception)
+            {
+                // Invalid or unavailable paths read as an unsaved document in the inspector.
+            }
+
+            FileInfoFormat.Text = FileFormatName(format);
+            FileInfoExtension.Text = string.IsNullOrEmpty(extension)
+                ? SuggestedExtension(format)
+                : extension.ToUpperInvariant();
+            FileInfoName.Text = string.IsNullOrEmpty(Path.GetFileName(safePath))
+                ? "Untitled chart"
+                : Path.GetFileName(safePath);
+            FileInfoName.ToolTip = safePath;
+
+            if (model != null && model.IsReadOnly)
+            {
+                FileInfoSavedState.Text = "READ-ONLY";
+                FileInfoSavedState.Foreground = (Brush)FindResource("Brush.Danger");
+                FileInfoSavedState.Visibility = Visibility.Visible;
+            }
+            else if (!saved)
+            {
+                FileInfoSavedState.Text = "UNSAVED";
+                FileInfoSavedState.Foreground = (Brush)FindResource("Brush.Warn");
+                FileInfoSavedState.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                FileInfoSavedState.Visibility = Visibility.Collapsed;
+            }
+
+            FileInfoPath.Text = saved
+                ? Path.GetFullPath(safePath)
+                : "Not saved yet — use Save to choose a location.";
+            FileInfoPath.ToolTip = safePath;
+            FileInfoFields.ItemsSource = BuildFileInfoFields(model, format, safePath);
+        }
+
+        private static ChartFormat? FileFormatFor(PlayerData model, string path)
+        {
+            string extension = (Path.GetExtension(path ?? string.Empty) ?? string.Empty)
+                .ToLowerInvariant();
+            switch (extension)
+            {
+                case ".pt":
+                    return ChartFormat.PtffDecrypted;
+                case ".bms":
+                case ".bme":
+                case ".bml":
+                case ".pms":
+                    return ChartFormat.BmsClassic;
+                case ".bmson":
+                    return ChartFormat.Bmson;
+                case ".tech":
+                    return ChartFormat.TechmaniaTrack;
+                case ".bytes":
+                    return ChartFormat.TrailerRespectV;
+                case ".xml":
+                    return ChartFormat.CyclonXml;
+                default:
+                    return model == null ? (ChartFormat?)null : model.SourceFormat;
+            }
+        }
+
+        private static string FileFormatName(ChartFormat? format)
+        {
+            if (!format.HasValue)
+            {
+                return "New chart";
+            }
+
+            switch (format.Value)
+            {
+                case ChartFormat.PtffDecrypted:
+                    return "PTFF chart";
+                case ChartFormat.PtffEncryptedTechnika:
+                    return "Encrypted PTFF";
+                case ChartFormat.BmsClassic:
+                    return "Classic BMS";
+                case ChartFormat.Bmson:
+                    return "BMSON";
+                case ChartFormat.TechmaniaTrack:
+                    return "TECHMANIA";
+                case ChartFormat.TrailerRespectV:
+                    return "RESPECT V / TQ";
+                case ChartFormat.CyclonXml:
+                    return "Cyclon XML";
+                case ChartFormat.Malformed:
+                    return "Malformed chart";
+                default:
+                    return "Unknown chart format";
+            }
+        }
+
+        private static string SuggestedExtension(ChartFormat? format)
+        {
+            if (!format.HasValue) return string.Empty;
+            switch (format.Value)
+            {
+                case ChartFormat.PtffDecrypted:
+                case ChartFormat.PtffEncryptedTechnika:
+                    return ".PT";
+                case ChartFormat.BmsClassic:
+                    return ".BMS";
+                case ChartFormat.Bmson:
+                    return ".BMSON";
+                case ChartFormat.TechmaniaTrack:
+                    return ".TECH";
+                case ChartFormat.TrailerRespectV:
+                    return ".BYTES";
+                case ChartFormat.CyclonXml:
+                    return ".XML";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private static List<KeyValuePair<string, string>> BuildFileInfoFields(
+            PlayerData model, ChartFormat? format, string path)
+        {
+            List<KeyValuePair<string, string>> fields =
+                new List<KeyValuePair<string, string>>();
+            if (model == null)
+            {
+                return fields;
+            }
+
+            if (format == ChartFormat.BmsClassic || format == ChartFormat.Bmson)
+            {
+                BmsMetadata bms = model.BmsMetadata;
+                if (bms != null)
+                {
+                    AddFileInfoField(fields, "Title", bms.Title);
+                    AddFileInfoField(fields, "Artist", bms.Artist);
+                    AddFileInfoField(fields, "Genre", bms.Genre);
+                    if (bms.PlayLevel > 0)
+                    {
+                        AddFileInfoField(fields, "Play level", bms.PlayLevel.ToString(CultureInfo.InvariantCulture));
+                    }
+                    if (bms.Player > 0)
+                    {
+                        AddFileInfoField(fields, "Player mode", bms.Player.ToString(CultureInfo.InvariantCulture));
+                    }
+                    if (bms.Rank > 0)
+                    {
+                        AddFileInfoField(fields, "Judge rank", bms.Rank.ToString(CultureInfo.InvariantCulture));
+                    }
+                    if (bms.Total > 0)
+                    {
+                        AddFileInfoField(fields, "Total", bms.Total.ToString("0.##", CultureInfo.InvariantCulture));
+                    }
+                    if (bms.TrackChannels.Count > 0)
+                    {
+                        AddFileInfoField(fields, "BMS channels", bms.TrackChannels.Count.ToString(CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+            else if (format == ChartFormat.TechmaniaTrack)
+            {
+                TechMetadata tech = model.TechMetadata;
+                if (tech != null)
+                {
+                    AddFileInfoField(fields, "Title", tech.Title);
+                    AddFileInfoField(fields, "Artist", tech.Artist);
+                    AddFileInfoField(fields, "Genre", tech.Genre);
+                    AddFileInfoField(fields, "Pattern", tech.PatternName);
+                    if (tech.Level > 0)
+                    {
+                        AddFileInfoField(fields, "Level", tech.Level.ToString(CultureInfo.InvariantCulture));
+                    }
+                    AddFileInfoField(fields, "Control scheme", ControlSchemeName(tech.ControlScheme));
+                    AddFileInfoField(fields, "Playable lanes", tech.PlayableLanes.ToString(CultureInfo.InvariantCulture));
+                    AddFileInfoField(fields, "Beats / scan", tech.Bps.ToString(CultureInfo.InvariantCulture));
+                    AddFileInfoField(fields, "Backing track", tech.BackingTrack);
+                    if (tech.TimeStops.Count > 0)
+                    {
+                        AddFileInfoField(fields, "Time stops", tech.TimeStops.Count.ToString(CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+            else if (format == ChartFormat.PtffDecrypted || format == ChartFormat.PtffEncryptedTechnika)
+            {
+                AddFileInfoField(fields, "PT version", model.Version.ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (model.TrackDuration > 0 && !float.IsNaN(model.TrackDuration) &&
+                !float.IsInfinity(model.TrackDuration))
+            {
+                AddFileInfoField(fields, "Track length",
+                    model.TrackDuration.ToString("0.0", CultureInfo.InvariantCulture) + " s");
+            }
+
+            AddFileInfoField(fields, "Tempo",
+                model.Tempo.ToString("0.##", CultureInfo.InvariantCulture) + " BPM");
+            AddFileInfoField(fields, "Ticks / measure",
+                model.TickPerMinute.ToString(CultureInfo.InvariantCulture));
+            AddFileInfoField(fields, "Tracks", model.Tracks.Count.ToString(CultureInfo.InvariantCulture));
+            AddFileInfoField(fields, "Notes", CountNotes(model).ToString(CultureInfo.InvariantCulture));
+
+            int keysounds = 0;
+            if (model.Instruments != null)
+            {
+                foreach (InstrumentData instrument in model.Instruments)
+                {
+                    if (instrument != null && instrument.InsNum != 0)
+                    {
+                        keysounds++;
+                    }
+                }
+            }
+            AddFileInfoField(fields, "Keysounds", keysounds.ToString(CultureInfo.InvariantCulture));
+
+            try
+            {
+                if (Path.IsPathRooted(path) && File.Exists(path))
+                {
+                    long bytes = new FileInfo(path).Length;
+                    AddFileInfoField(fields, "File size", FormatFileSize(bytes));
+                }
+            }
+            catch (Exception)
+            {
+                // Size is supplemental; an unavailable path should not hide the chart metadata.
+            }
+
+            return fields;
+        }
+
+        private static string ControlSchemeName(int controlScheme)
+        {
+            switch (controlScheme)
+            {
+                case 0: return "Touch";
+                case 1: return "Keys";
+                case 2: return "KM";
+                default: return "Unknown (" + controlScheme.ToString(CultureInfo.InvariantCulture) + ")";
+            }
+        }
+
+        private static string FormatFileSize(long bytes)
+        {
+            if (bytes < 1024) return bytes.ToString(CultureInfo.InvariantCulture) + " B";
+            if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.0", CultureInfo.InvariantCulture) + " KB";
+            return (bytes / (1024.0 * 1024.0)).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+        }
+
+        private static void AddFileInfoField(
+            ICollection<KeyValuePair<string, string>> fields, string key, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                fields.Add(new KeyValuePair<string, string>(key, value.Trim()));
+            }
         }
 
         /// <summary>
@@ -2019,6 +2255,7 @@ namespace DJMaxEditor.Studio.Shell
             _volumeLane.InvalidateVisual();
             RefreshStatus();
             RefreshInspector();
+            RefreshDocumentFileInfo();
         }
 
         /// <summary>
@@ -2188,6 +2425,7 @@ namespace DJMaxEditor.Studio.Shell
             _volumeLane.InvalidateVisual();
             RefreshStatus();
             RefreshInspector();
+            RefreshDocumentFileInfo();
         }
 
         // ===================================================================================
@@ -2448,11 +2686,61 @@ namespace DJMaxEditor.Studio.Shell
 
         private void OnNew(object sender, RoutedEventArgs e)
         {
+            PlayerData model = CreateNewChartModel();
+            int initialLayout = _viewModel.ModeOverride == 0 ? 4 : _viewModel.ModeOverride;
+            AdoptDocument(model, "untitled.pt");
+            SelectPresetMode(initialLayout);
+            StatusHint.Text = "New chart";
+        }
+
+        /// <summary>
+        /// Builds an editable PT-style blank chart. The timeline's 4B/5B/6B/8B presets address
+        /// tracks through 40, and the PT writer expects instrument slot 0 to be the silent
+        /// placeholder, so create that empty structure up front instead of handing the renderer
+        /// a model with no tracks or a save file with an invalid instrument count.
+        /// </summary>
+        private static PlayerData CreateNewChartModel()
+        {
             PlayerData model = new PlayerData();
             model.TickPerMinute = 192;
             model.Tempo = 120f;
-            AdoptDocument(model, "untitled.pt");
-            StatusHint.Text = "New chart";
+            model.Instruments.Add(new InstrumentData { InsNum = 0, Name = "none" });
+
+            const uint trackCount = 41;
+            for (uint i = 0; i < trackCount; i++)
+            {
+                TrackData track = new TrackData(i) { TrackName = string.Empty };
+                model.Tracks.AddTrack(track);
+            }
+
+            return model;
+        }
+
+        /// <summary>
+        /// The Auto layout has nothing to detect in a brand-new empty chart. Select a concrete
+        /// preset so the user gets an immediately usable grid and can place the first note.
+        /// </summary>
+        private void SelectPresetMode(int mode)
+        {
+            List<PresetChoice> choices = PresetCombo.ItemsSource as List<PresetChoice>;
+            if (choices != null)
+            {
+                foreach (PresetChoice choice in choices)
+                {
+                    if (choice.KeyCount == mode)
+                    {
+                        bool wasSuppressed = _suppressComboEvents;
+                        _suppressComboEvents = true;
+                        PresetCombo.SelectedItem = choice;
+                        _suppressComboEvents = wasSuppressed;
+                        break;
+                    }
+                }
+            }
+
+            _viewModel.ModeOverride = mode;
+            _canvas.InvalidateAll();
+            _volumeLane.InvalidateVisual();
         }
 
         private async void OnOpen(object sender, RoutedEventArgs e)
@@ -2572,7 +2860,10 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
 
+            _document.UpdateSourcePath(dialog.FileName);
             DocumentLabel.Text = Path.GetFileName(dialog.FileName);
+            InspectorChart.Text = DescribeChart(_document.Model, dialog.FileName);
+            RefreshFileInfo(_document.Model, dialog.FileName);
             StatusHint.Text = "Saved " + Path.GetFileName(dialog.FileName);
         }
 

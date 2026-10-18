@@ -176,10 +176,6 @@ namespace DJMaxEditor.Studio.Shell
             choices.Add(new LayoutChoice(VerticalTrackLayout.BmsMode, "BMS (channels)"));
             LayoutCombo.ItemsSource = choices;
 
-<<<<<<< HEAD
-            SlicerModeCombo.ItemsSource = new[] { "BMS — 1295 (safe)", "RESPECT — 2047", "TECHNIKA — no limit" };
-            SlicerSnapCombo.ItemsSource = new[] { "Free", "1/4", "1/8", "1/16", "1/32", "1/64", "1/192" };
-=======
             SlicerModeCombo.ItemsSource = new[]
             {
                 "BMS — 1295 (safe)",
@@ -256,7 +252,6 @@ namespace DJMaxEditor.Studio.Shell
             }
 
             OutputDeviceCombo.SelectedIndex = choices.Count == 0 ? -1 : 0;
->>>>>>> origin/master
         }
 
         // ===================================================================================
@@ -321,14 +316,6 @@ namespace DJMaxEditor.Studio.Shell
                 VolumeLaneCheck.IsChecked = workspace.ShowVolumeLane;
                 PerfReadoutCheck.IsChecked = workspace.ShowPerformanceReadout;
 
-<<<<<<< HEAD
-                KeyslicerSettings ks = _settings.Keyslicer;
-                SlicerModeCombo.SelectedIndex = Math.Max(0, Math.Min(2, ks.DefaultSlicerMode));
-                SlicerSuppressCheck.IsChecked = ks.SuppressModeChooser;
-                // snap denom 0=>0, 4=>1, 8=>2, 16=>3, 32=>4, 64=>5, 192=>6
-                int snapIdx = ks.DefaultSnapDenominator == 0 ? 0 : ks.DefaultSnapDenominator == 4 ? 1 : ks.DefaultSnapDenominator == 8 ? 2 : ks.DefaultSnapDenominator == 16 ? 3 : ks.DefaultSnapDenominator == 32 ? 4 : ks.DefaultSnapDenominator == 64 ? 5 : ks.DefaultSnapDenominator == 192 ? 6 : 3;
-                SlicerSnapCombo.SelectedIndex = snapIdx;
-=======
                 KeyslicerSettings slicer = _settings.Keyslicer;
                 SlicerModeCombo.SelectedIndex = Math.Max(0, Math.Min(2, slicer.DefaultSlicerMode));
                 SlicerSuppressCheck.IsChecked = slicer.SuppressModeChooser;
@@ -341,7 +328,6 @@ namespace DJMaxEditor.Studio.Shell
                     : slicer.DefaultSnapDenominator == 192 ? 6
                     : 3;
                 SlicerSnapCombo.SelectedIndex = snapIndex;
->>>>>>> origin/master
             }
             finally
             {
@@ -442,14 +428,6 @@ namespace DJMaxEditor.Studio.Shell
             workspace.ShowVolumeLane = VolumeLaneCheck.IsChecked == true;
             workspace.ShowPerformanceReadout = PerfReadoutCheck.IsChecked == true;
 
-<<<<<<< HEAD
-            KeyslicerSettings ks2 = _settings.Keyslicer;
-            if (SlicerModeCombo.SelectedIndex >= 0) ks2.DefaultSlicerMode = SlicerModeCombo.SelectedIndex;
-            ks2.SuppressModeChooser = SlicerSuppressCheck.IsChecked == true;
-            int[] snapMap = new[] { 0, 4, 8, 16, 32, 64, 192 };
-            if (SlicerSnapCombo.SelectedIndex >= 0 && SlicerSnapCombo.SelectedIndex < snapMap.Length)
-                ks2.DefaultSnapDenominator = snapMap[SlicerSnapCombo.SelectedIndex];
-=======
             KeyslicerSettings slicer = _settings.Keyslicer;
             if (SlicerModeCombo.SelectedIndex >= 0)
             {
@@ -461,7 +439,6 @@ namespace DJMaxEditor.Studio.Shell
             {
                 slicer.DefaultSnapDenominator = snapMap[SlicerSnapCombo.SelectedIndex];
             }
->>>>>>> origin/master
 
             _settings.Normalise();
             UpdateReadouts();
