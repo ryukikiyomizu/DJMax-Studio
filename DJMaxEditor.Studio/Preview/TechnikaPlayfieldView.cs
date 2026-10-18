@@ -957,10 +957,11 @@ namespace DJMaxEditor.Studio.Preview
 
             DrawTrail(dc, note, size, brushes);
 
-            // The head draws only while its own scan is on screen. A hold whose head the sweep
-            // has passed but whose tail is still ahead stays Active for its body (see the
-            // projector), and drawing its head at a stale scan position would park a struck
-            // note on the field behind the line. The trail above is the whole of it then.
+            // The head draws only while its own scan is on screen. A repeat head stays Active
+            // until its last connected tick is passed (see the projector), so it remains visible
+            // after its own hit while this scan is still on stage. No head is drawn at a stale
+            // position once its scan is behind the field; a hold whose tail is still ahead stays
+            // Active and its trail above is the whole of it then.
             bool headVisible = note.ScanIndex == _frame.CurrentIntScan ||
                 note.ScanIndex == _frame.CurrentIntScan + 1;
             if (headVisible)
