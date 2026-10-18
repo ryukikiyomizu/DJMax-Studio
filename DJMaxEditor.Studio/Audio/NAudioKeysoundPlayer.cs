@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using NAudio.Wave;
@@ -81,6 +81,13 @@ namespace DJMaxEditor.Studio.Audio
         private long _playFailures;
         private string _lastLoadError;
         private bool _disposed;
+
+        /// <summary>
+        /// Monotonic cache generation. Incremented whenever the loaded-sample table is cleared so a
+        /// background decode finishing late for an old chart can be discarded instead of repopulating
+        /// the cache with stale sounds under the new chart's instrument numbers.
+        /// </summary>
+        private int _sampleGeneration;
 
         /// <summary>
         /// Set by <see cref="FadeOutAndSilence"/> and cleared when the teardown happens: the pause
@@ -214,6 +221,141 @@ namespace DJMaxEditor.Studio.Audio
         /// <summary>Mixer format, for callers that want to know what the graph runs at.</summary>
         public WaveFormat WaveFormat => _format;
 
+        /// <summary>
+        /// Rebinds the running mixer graph to a freshly chosen output endpoint without rebuilding the
+        /// player or clearing the loaded-sample cache.
+        /// <para>
+        /// This is the live preferences seam: when the user plugs in headphones after the studio is
+        /// already open and picks them from the device list, the graph should move there now rather
+        /// than on the next launch. The graph itself is unchanged - same mixer, same voices, same
+        /// cached samples - only the endpoint pulling from it is replaced.
+        /// </para>
+        /// <para>
+        /// The new output is prepared before the old one is stopped, so a failure to open it leaves
+        /// the current device in place instead of dropping the session to silence. Once preparation
+        /// succeeds the old output is stopped and disposed, then the new one is started if the device
+        /// was running before the switch. A parked device stays parked: changing endpoints while
+        /// transport is stopped should not start playback by itself.
+        /// </para>
+        /// </summary>
+        public bool RebindOutput(IAudioOutput output, bool ownsOutput = true)
+        {
+            if (output == null)
+            {
+                throw new ArgumentNullException(nameof(output));
+            }
+
+            if (_disposed)
+            {
+                if (ownsOutput)
+                {
+                    try
+                    {
+                        output.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return false;
+            }
+
+            bool shouldPlay;
+            IAudioOutput previous;
+            bool previousOwned;
+
+            try
+            {
+                NAudioDeviceOutput realOutput = output as NAudioDeviceOutput;
+                if (realOutput != null)
+                {
+                    realOutput.Log = message => Log?.Invoke(message);
+                }
+
+                output.Init(_group);
+
+                lock (_gate)
+                {
+                    if (_disposed)
+                    {
+                        throw new ObjectDisposedException(nameof(NAudioKeysoundPlayer));
+                    }
+
+                    shouldPlay = !_deviceStopped;
+                    previous = _output;
+                    previousOwned = _ownsOutput;
+                    _output = output;
+                    _ownsOutput = ownsOutput;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log?.Invoke("Audio output switch failed: " + ex);
+                if (ownsOutput)
+                {
+                    try
+                    {
+                        output.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return false;
+            }
+
+            if (previous != null && !ReferenceEquals(previous, output))
+            {
+                try
+                {
+                    previous.Stop();
+                }
+                catch (Exception)
+                {
+                }
+
+                if (previousOwned)
+                {
+                    try
+                    {
+                        previous.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+
+            if (shouldPlay)
+            {
+                try
+                {
+                    output.Play();
+                }
+                catch (Exception ex)
+                {
+                    lock (_gate)
+                    {
+                        _deviceStopped = true;
+                    }
+                    Log?.Invoke("Audio output switch start failed: " + ex);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Convenience wrapper for swapping to a new concrete device selection while keeping the
+        /// current mixer graph alive.
+        /// </summary>
+        public bool RebindOutputDevice(int latencyMilliseconds, string preferredDeviceId)
+        {
+            return RebindOutput(
+                new NAudioDeviceOutput(latencyMilliseconds, preferredDeviceId),
+                true);
+        }
+
         #region IAudioPlayer
 
         /// <summary>
@@ -234,6 +376,19 @@ namespace DJMaxEditor.Studio.Audio
         /// </summary>
         public bool LoadSound(uint index, string name, int mode = 0)
         {
+            return LoadSound(index, name, mode, -1);
+        }
+
+        /// <summary>
+        /// Same as <see cref="LoadSound(uint,string,int)"/>, but the decoded sample is only admitted
+        /// to the cache if <paramref name="expectedGeneration"/> still matches the live cache
+        /// generation by the time the decode finishes. This is the chart-switch seam: stale loader
+        /// tasks from the previous chart can race to completion after the new chart has already
+        /// cleared the cache, and their work must be dropped rather than resurrecting the old chart's
+        /// samples under the new chart's instrument ids.
+        /// </summary>
+        public bool LoadSound(uint index, string name, int mode, int expectedGeneration)
+        {
             if (index >= MAX_SOUND || _disposed)
             {
                 RecordLoadFailure(name, index >= MAX_SOUND ? "index out of range" : "player disposed");
@@ -251,6 +406,11 @@ namespace DJMaxEditor.Studio.Audio
             lock (_gate)
             {
                 if (_disposed)
+                {
+                    return false;
+                }
+
+                if (expectedGeneration >= 0 && expectedGeneration != _sampleGeneration)
                 {
                     return false;
                 }
@@ -278,6 +438,29 @@ namespace DJMaxEditor.Studio.Audio
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Stops every sounding voice and empties the loaded-sample table, returning the new cache
+        /// generation. The next chart-open path hands that generation back to
+        /// <see cref="LoadSound(uint,string,int,int)"/>, which is what prevents a late-finishing
+        /// loader task from an older chart from repopulating the cache after this clear.
+        /// </summary>
+        public int ResetLoadedSounds()
+        {
+            // The clear must begin from silence: otherwise a channel could still be reading from a
+            // sample slot the table is about to forget, and a reloaded instrument number would then
+            // appear to cross-fade charts. StopAllSounds owns exactly that transport edge.
+            StopAllSounds();
+
+            lock (_gate)
+            {
+                Array.Clear(_samples, 0, _samples.Length);
+                _cachedBytes = 0;
+                _cachedSounds = 0;
+                _sampleGeneration++;
+                return _sampleGeneration;
+            }
         }
 
         /// <summary>
@@ -525,6 +708,9 @@ namespace DJMaxEditor.Studio.Audio
         /// </summary>
         private void EnsureDeviceRunning()
         {
+            IAudioOutput current = _output;
+            current?.EnsureAvailable();
+
             if (!_deviceStopped)
             {
                 return;
@@ -1112,6 +1298,12 @@ namespace DJMaxEditor.Studio.Audio
         {
             try
             {
+                NAudioDeviceOutput realOutput = output as NAudioDeviceOutput;
+                if (realOutput != null)
+                {
+                    realOutput.Log = message => Log?.Invoke(message);
+                }
+
                 output.Init(_group);
                 output.Play();
                 _output = output;

@@ -126,11 +126,30 @@ namespace DJMaxEditor.Studio.Video
         /// Shows the frame at <paramref name="position"/>. Cheap to call at composition rate: when
         /// the position still maps to the frame already on screen this touches nothing, which is the
         /// whole reason the source reports a timestamp with the pixels.
+        ///
+        /// <para>
+        /// A negative position means "the chart has not reached the BGA's own start point yet".
+        /// The decoder itself clamps such a request to frame 0, because codecs have no concept of
+        /// "before the file starts"; the preview is where that distinction is restored by drawing a
+        /// blank panel until the mapped clock reaches zero. Without this the first BGA frame appears
+        /// as soon as timeline playback begins, even when the chart authors a later start marker.
+        /// </para>
         /// </summary>
         public void Seek(TimeSpan position)
         {
             IBgaSource source = _source;
             if (source == null || !source.IsOpen)
+            {
+                return;
+            }
+
+            if (position < TimeSpan.Zero)
+            {
+                BlankFrame();
+                return;
+            }
+
+            if (CurrentFrameStillCovers(position, source))
             {
                 return;
             }
@@ -219,12 +238,47 @@ namespace DJMaxEditor.Studio.Video
             drawingContext.DrawImage(_bitmap, target);
         }
 
+        /// <summary>
+        /// Fast path for forward playback: if the requested time is still inside the frame already on
+        /// screen, there is nothing to decode and the editor should spend that composition tick on the
+        /// chart instead of waking Media Foundation again. This is the playback stutter fix - a 30 fps
+        /// BGA under a 60 Hz compositor otherwise incurs two decoder round-trips per video frame.
+        /// </summary>
+        private bool CurrentFrameStillCovers(TimeSpan position, IBgaSource source)
+        {
+            if (_bitmap == null || _onScreen == TimeSpan.MinValue || source == null ||
+                source.FrameRate <= 0.0 || position < _onScreen)
+            {
+                return false;
+            }
+
+            double span = TimeSpan.TicksPerSecond / source.FrameRate;
+            if (span <= 1.0)
+            {
+                return false;
+            }
+
+            long frameEnd = _onScreen.Ticks + (long)Math.Round(span);
+            return position.Ticks < frameEnd;
+        }
+
         private void Forget()
         {
+            BlankFrame();
+            _error = null;
+        }
+
+        private void BlankFrame()
+        {
+            if (_bitmap == null && _onScreen == TimeSpan.MinValue)
+            {
+                return;
+            }
+
             _bitmap = null;
             _frame.Clear();
             _onScreen = TimeSpan.MinValue;
-            _error = null;
+            InvalidateVisual();
         }
 
         private static string FormatDuration(TimeSpan duration)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using NAudio.Wave;
 
 namespace DJMaxEditor.Studio.Audio
@@ -37,6 +37,16 @@ namespace DJMaxEditor.Studio.Audio
 
         /// <summary>Starts pulling from the source bound by <see cref="Init"/>.</summary>
         void Play();
+
+        /// <summary>
+        /// Gives the output a chance to recover from a disappeared endpoint.
+        /// <para>
+        /// Real-device implementations use this to fall back from a selected endpoint that was
+        /// unplugged to the system default without restarting the editor; silent outputs simply do
+        /// nothing.
+        /// </para>
+        /// </summary>
+        void EnsureAvailable();
 
         /// <summary>Stops pulling. Must be safe to call when never started.</summary>
         void Stop();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Threading;
 using NAudio.Wave;
@@ -100,6 +100,12 @@ namespace DJMaxEditor.Studio.Audio
                 Priority = ThreadPriority.AboveNormal
             };
             _pumpThread.Start();
+        }
+
+        /// <inheritdoc/>
+        public void EnsureAvailable()
+        {
+            // No real device to lose or recover.
         }
 
         /// <inheritdoc/>

@@ -7,8 +7,8 @@ namespace DJMaxEditor.Files.Tech
     /// TECHMANIA track.tech information the generic DJMAX event model cannot otherwise
     /// retain. Keeping this beside PlayerData makes .tech -> edit -> .tech preserve the
     /// container's identity (GUIDs, titles), pattern setup (control scheme, lane count,
-    /// beats per scan) and fields the editor does not interpret but must not destroy
-    /// (time stops, AV file names, offsets). The importer fills it for the one pattern it
+    /// beats per scan) and fields the editor must preserve whether or not a given surface
+    /// interprets them (time stops, AV file names, offsets). The importer fills it for the one pattern it
     /// imports; the exporter writes it back when present.
     /// </summary>
     public sealed class TechMetadata
@@ -44,7 +44,10 @@ namespace DJMaxEditor.Files.Tech
         public string BackingTrack { get; set; } = "";
         public string BackImage { get; set; } = "";
         public string Bga { get; set; } = "";
+
+        /// <summary>Seconds after the backing track begins to start the BGA.</summary>
         public double BgaOffset { get; set; }
+
         public bool WaitForEndOfBga { get; set; }
         public bool PlayBgaOnLoop { get; set; }
 

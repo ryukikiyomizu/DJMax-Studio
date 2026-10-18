@@ -32,9 +32,9 @@
     <Border Padding="{Binding MaximizedPadding, RelativeSource={RelativeSource AncestorType=shell:StudioWindow}}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32" />
+                <RowDefinition Height="28" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="46" />
+                <RowDefinition Height="42" />
             </Grid.RowDefinitions>
 
             <!-- ============================ title bar ============================ -->
@@ -51,7 +51,7 @@
                     <Path Grid.Column="0" Style="{StaticResource Icon.Glyph}"
                           Data="{StaticResource Icon.Palette}"
                           Stroke="{StaticResource Brush.Accent}"
-                          Margin="10,0,8,0" VerticalAlignment="Center" />
+                          Margin="8,0,6,0" VerticalAlignment="Center" />
 
                     <TextBlock Grid.Column="1" Text="CHART THEMES"
                                FontFamily="{StaticResource Font.UiDisplay}"
@@ -62,13 +62,13 @@
                     <Button Grid.Column="2" Style="{StaticResource Button.CaptionClose}"
                             Command="{x:Static sh:SystemCommands.CloseWindowCommand}"
                             ToolTip="Close (Esc)">
-                        <Path Style="{StaticResource Icon.Glyph}" Data="{StaticResource Icon.X}" />
+                        <Path Style="{StaticResource Icon.Caption}" Data="{StaticResource Icon.X}" />
                     </Button>
                 </Grid>
             </Border>
 
             <!-- ============================== list ============================== -->
-            <ListBox Grid.Row="1" x:Name="ThemeList" Margin="10"
+            <ListBox Grid.Row="1" x:Name="ThemeList" Margin="8"
                      Background="{StaticResource Brush.Inset}"
                      BorderBrush="{StaticResource Brush.Edge}" BorderThickness="1"
                      SelectionChanged="OnThemeSelectionChanged"

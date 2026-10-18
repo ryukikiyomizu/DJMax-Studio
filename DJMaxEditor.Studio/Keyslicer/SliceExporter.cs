@@ -275,6 +275,7 @@ namespace DJMaxEditor.Studio.Keyslicer
 
         private static ISampleProvider OpenReader(string path, out IDisposable disposable)
         {
+<<<<<<< HEAD
             string ext = Path.GetExtension(path) ?? string.Empty;
             bool isVorbisExt = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase) ||
                                string.Equals(ext, ".oga", StringComparison.OrdinalIgnoreCase) ||
@@ -308,6 +309,9 @@ namespace DJMaxEditor.Studio.Keyslicer
                 }
                 catch (Exception ex) { throw new InvalidOperationException("unsupported audio format for " + path + ": " + ex.Message, ex); }
             }
+=======
+            return KeyslicerAudioReader.OpenSampleProvider(path, out disposable);
+>>>>>>> origin/master
         }
 
         private static void WriteSamples(float[] samples, int sampleRate, int channels, string outPath, ExportFormat format)

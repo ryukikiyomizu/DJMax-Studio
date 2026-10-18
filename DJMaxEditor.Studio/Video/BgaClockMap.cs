@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DJMaxEditor.Controls.Vertical;
 using DJMaxEditor.DJMax;
+using DJMaxEditor.Files.FormatDetection;
 
 namespace DJMaxEditor.Studio.Video
 {
@@ -57,7 +59,8 @@ namespace DJMaxEditor.Studio.Video
 
         /// <summary>
         /// The virtual tick the video's first frame belongs to: the chart's own
-        /// <see cref="EventAttribute.VideoStart"/> marker, or 0 when it carries none.
+        /// <see cref="EventAttribute.VideoStart"/> marker when there is one, otherwise the earliest
+        /// BGA sync trigger a button-style PT chart carries, or 0 when the chart names neither.
         ///
         /// <para>
         /// A TECHNIKA chart does not start its video at the top of the timeline. It authors one
@@ -146,12 +149,69 @@ namespace DJMaxEditor.Studio.Video
             }
 
             // After the segments, because the marker's wall time is read through them.
-            _videoStartVirtualTick = EarliestVideoStart(events);
+            _videoStartVirtualTick = VideoStartFor(playerData, events);
             _videoStartMs = MsForVirtualTick(_videoStartVirtualTick);
         }
 
         /// <summary>
-        /// The earliest <see cref="EventAttribute.VideoStart"/> marker's virtual tick, or 0 when the
+        /// The tick that should count as "video time zero" for this chart.
+        /// <para>
+        /// TECHNIKA/T3 charts author an explicit <see cref="EventAttribute.VideoStart"/> note. The
+        /// older button-style PT schema does not; it cues the BGA off the BGA SYNC lane instead,
+        /// song track 1 in every DPC preset. Supporting both is what makes a BGA wait for the yellow
+        /// BGA-lane note the editor draws instead of always starting at chart tick 0.
+        /// </para>
+        /// </summary>
+        private static int VideoStartFor(PlayerData playerData, EventData[] events)
+        {
+            int byAttribute = EarliestVideoStart(events);
+            if (byAttribute >= 0)
+            {
+                return byAttribute;
+            }
+
+            if (!UsesPortableBgaSync(playerData) || playerData.Tracks == null)
+            {
+                return 0;
+            }
+
+            TrackData syncTrack = null;
+            foreach (TrackData track in playerData.Tracks)
+            {
+                if (track != null && track.Idx == 1)
+                {
+                    syncTrack = track;
+                    break;
+                }
+            }
+            if (syncTrack == null)
+            {
+                return 0;
+            }
+
+            int earliest = -1;
+            IReadOnlyList<EventData> ordered = syncTrack.OrderedEvents;
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                EventData candidate = ordered[i];
+                if (candidate == null ||
+                    (candidate.EventType != EventType.Note && candidate.EventType != EventType.Beat))
+                {
+                    continue;
+                }
+
+                int tick = Math.Max(0, candidate.VirtualTick);
+                if (earliest < 0 || tick < earliest)
+                {
+                    earliest = tick;
+                }
+            }
+
+            return earliest < 0 ? 0 : earliest;
+        }
+
+        /// <summary>
+        /// The earliest <see cref="EventAttribute.VideoStart"/> marker's virtual tick, or -1 when the
         /// chart has none. See <see cref="VideoStartVirtualTick"/> for why the attribute and not the
         /// track is the discriminator.
         /// </summary>
@@ -173,7 +233,32 @@ namespace DJMaxEditor.Studio.Video
                     earliest = tick;
                 }
             }
-            return earliest < 0 ? 0 : earliest;
+            return earliest;
+        }
+
+        /// <summary>
+        /// A button-style chart whose BGA is cued from song track 1 rather than from an explicit
+        /// attribute-100 note. Portable/Trilogy PT and Respect V trailer charts both use that lane;
+        /// TECHNIKA does not, because there track 1 is a playable lane and the video cue is its own
+        /// dedicated marker event instead.
+        /// </summary>
+        private static bool UsesPortableBgaSync(PlayerData playerData)
+        {
+            if (playerData == null)
+            {
+                return false;
+            }
+
+            ChartFormat? format = playerData.SourceFormat;
+            bool supportedButtonFormat = format == ChartFormat.PtffDecrypted ||
+                format == ChartFormat.PtffEncryptedTechnika ||
+                format == ChartFormat.TrailerRespectV;
+            if (!supportedButtonFormat)
+            {
+                return false;
+            }
+
+            return !VerticalTimelineProjection.IsTechnikaShaped(playerData);
         }
 
         public void Clear()
@@ -183,12 +268,14 @@ namespace DJMaxEditor.Studio.Video
             _ticksPerMeasure = 192 * EventData.VirtualTickSize;
             _videoStartVirtualTick = 0;
             _videoStartMs = 0.0;
+            Offset = TimeSpan.Zero;
         }
 
         /// <summary>
         /// Wall time of <paramref name="virtualTick"/> in the video's own clock: measured from
         /// <see cref="VideoStartVirtualTick"/>, and including <see cref="Offset"/>. Negative before
-        /// the chart's start marker, or when a negative offset is set; the source clamps.
+        /// the chart's start marker, or when a negative offset is set; the preview treats that as
+        /// "no frame yet" and only asks the decoder once the mapped time reaches zero.
         /// </summary>
         public TimeSpan TimeForVirtualTick(int virtualTick)
         {
