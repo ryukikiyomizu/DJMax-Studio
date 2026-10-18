@@ -65,26 +65,37 @@ namespace DJMaxEditor.Files.Tech
             TechMetadata retained = player.TechMetadata;
             int dropped = 0;
             var ordered = new List<KeyValuePair<int, EventData>>();
-            // Lanes 0-3 are fixed; marker tracks 4-7 and the tempo slot 8 are not notes;
-            // overflow tracks 9..50 hold the format's invisible/keysound lanes and map back
-            // to their original format lane through the retained metadata.
-            for (int trackIndex = 0; trackIndex <= MaxModelTrackIndex; trackIndex++)
+
+            var usedFormatLanes = new HashSet<int>();
+            if (retained != null)
             {
-                if (trackIndex >= FirstMarkerTrack && trackIndex < FirstOverflowTrack)
+                foreach (KeyValuePair<int, int> pair in retained.FormatLaneByTrack)
                 {
-                    continue;
+                    if (pair.Value >= LaneCount && pair.Value <= MaxWritableFormatLane)
+                    {
+                        usedFormatLanes.Add(pair.Value);
+                    }
                 }
+            }
+            int nextFormatLane = LaneCount;
+
+            int maxTrackIndex = MaxModelTrackIndex;
+            foreach (TrackData existingTrack in player.Tracks)
+            {
+                if (existingTrack != null && (int)existingTrack.Idx > maxTrackIndex)
+                {
+                    maxTrackIndex = (int)existingTrack.Idx;
+                }
+            }
+
+            // Lanes 0-3 are fixed playable lanes; tracks 4+ (E1-E4, T8, T9-T19, T20+)
+            // carry backing/keysound notes on hidden format lanes >= 4.
+            for (int trackIndex = 0; trackIndex <= maxTrackIndex; trackIndex++)
+            {
                 // The synthesized backing-track trigger is editor-only scaffolding: the
                 // backing file stays in pattern metadata and must never appear as a packed
                 // note (the original chart deliberately had no such note).
                 if (retained != null && trackIndex == retained.BackingTrackModelTrack)
-                {
-                    continue;
-                }
-                // Overflow tracks only exist for an imported .tech, whose metadata carries
-                // their original format lane. A chart converted from another format keeps
-                // the historical behaviour: its four fixed lanes are all that is written.
-                if (trackIndex >= FirstOverflowTrack && retained == null)
                 {
                     continue;
                 }
@@ -93,16 +104,76 @@ namespace DJMaxEditor.Files.Tech
                 {
                     continue;
                 }
-                int formatLane = retained != null
-                    ? retained.FormatLaneForTrack(trackIndex)
-                    : trackIndex;
+
+                var trackNotes = new List<EventData>();
                 foreach (EventData evt in track.Events)
                 {
-                    if (evt == null || evt.EventType != EventType.Note ||
-                        evt.Attribute == 100)
+                    if (evt == null || evt.EventType != EventType.Note)
                     {
                         continue;
                     }
+                    bool hasKeysound = evt.Instrument != null &&
+                        evt.Instrument.InsNum != 0 &&
+                        !string.IsNullOrEmpty(evt.Instrument.Name) &&
+                        evt.Instrument.Name != "none";
+                    if (trackIndex < LaneCount)
+                    {
+                        if (evt.Attribute == 100 && !hasKeysound)
+                        {
+                            continue;
+                        }
+                        trackNotes.Add(evt);
+                    }
+                    else if (trackIndex >= FirstMarkerTrack &&
+                             trackIndex < FirstMarkerTrack + LaneCount)
+                    {
+                        // On E1-E4 (tracks 4-7), silent events are end-of-scan markers,
+                        // whereas events with keysounds are backing sound notes.
+                        if (!hasKeysound)
+                        {
+                            continue;
+                        }
+                        trackNotes.Add(evt);
+                    }
+                    else
+                    {
+                        // On T8+ (tracks 8+), skip silent annotation markers (attr 100 or
+                        // silent VideoStart attr 1), and keep all backing sound notes.
+                        if (!hasKeysound && (evt.Attribute == 100 || evt.Attribute == 1))
+                        {
+                            continue;
+                        }
+                        trackNotes.Add(evt);
+                    }
+                }
+
+                if (trackNotes.Count == 0)
+                {
+                    continue;
+                }
+
+                int formatLane;
+                if (trackIndex < LaneCount)
+                {
+                    formatLane = trackIndex;
+                }
+                else
+                {
+                    formatLane = retained != null ? retained.FormatLaneForTrack(trackIndex) : -1;
+                    if (formatLane < LaneCount)
+                    {
+                        while (usedFormatLanes.Contains(nextFormatLane))
+                        {
+                            nextFormatLane++;
+                        }
+                        formatLane = nextFormatLane;
+                        usedFormatLanes.Add(formatLane);
+                        nextFormatLane++;
+                    }
+                }
+
+                foreach (EventData evt in trackNotes)
+                {
                     if (formatLane < 0 || formatLane > MaxWritableFormatLane)
                     {
                         dropped++;
@@ -129,12 +200,21 @@ namespace DJMaxEditor.Files.Tech
                 EventData evt = entry.Value;
                 int pulse = ToPulse(evt.VirtualTick);
                 int duration = ToPulse(evt.VirtualDuration);
-                int volume = OutVolume(evt.Volume);
+                int volume = OutVolume(evt);
                 int pan = OutPan(evt.Pan);
-                bool eos = endOfScan.Contains(Key(lane, pulse));
+                bool eos = lane < LaneCount && endOfScan.Contains(Key(lane, pulse));
                 string sound = evt.Instrument != null && evt.Instrument.Name != "none"
                     ? evt.Instrument.Name ?? string.Empty
                     : string.Empty;
+
+                // Hidden lanes (4+) in TECHMANIA are non-playable keysound lanes and only
+                // take Basic notes in packedNotes (regardless of .pt sample Duration or Attribute).
+                if (lane >= LaneCount)
+                {
+                    packedNotes.Add(
+                        PackNote(TechnikaNoteKind.Basic.ToString(), pulse, lane, volume, pan, false, sound));
+                    continue;
+                }
 
                 TechnikaNoteKind kind = TechnikaNoteClassifier.Classify(evt);
                 switch (kind)
@@ -382,8 +462,15 @@ namespace DJMaxEditor.Files.Tech
                 int lane = markerTrack - FirstMarkerTrack;
                 foreach (EventData marker in track.Events)
                 {
-                    if (marker == null || marker.EventType != EventType.Note ||
-                        marker.Attribute != 100)
+                    if (marker == null || marker.EventType != EventType.Note)
+                    {
+                        continue;
+                    }
+                    bool hasKeysound = marker.Instrument != null &&
+                        marker.Instrument.InsNum != 0 &&
+                        !string.IsNullOrEmpty(marker.Instrument.Name) &&
+                        marker.Instrument.Name != "none";
+                    if (hasKeysound || (marker.Attribute != 100 && player.TechMetadata != null))
                     {
                         continue;
                     }
@@ -609,8 +696,24 @@ namespace DJMaxEditor.Files.Tech
             public string Keysound;
         }
 
-        private static int OutVolume(byte model)
+        private static int OutVolume(EventData evt)
         {
+            byte model = evt.Volume;
+            byte vel = evt.Vel;
+            if (model <= 100)
+            {
+                byte expectedVel = (byte)Math.Max(0, Math.Min(127, (int)Math.Round(model * 127.0 / 100.0,
+                    MidpointRounding.AwayFromZero)));
+                if (vel == expectedVel || vel == ModelDefaultVolume)
+                {
+                    return model;
+                }
+            }
+            if (vel != ModelDefaultVolume)
+            {
+                return Math.Max(0, Math.Min(100, (int)Math.Round(Math.Min(127, (int)vel) * 100.0 / 127.0,
+                    MidpointRounding.AwayFromZero)));
+            }
             if (model == ModelDefaultVolume)
             {
                 return TechDefaultVolume;

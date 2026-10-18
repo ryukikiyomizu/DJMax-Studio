@@ -147,14 +147,26 @@ namespace DJMaxEditor.Studio.Keyslicer
             var player = new DJMaxEditor.DJMax.PlayerData();
             player.Tempo = (float)vm.Bpm;
             var lanes = new System.Collections.Generic.List<DJMaxEditor.DJMax.TrackData>();
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < 4; i++)
             {
-                var t = new DJMaxEditor.DJMax.TrackData((uint)i) { TrackName = i < 4 ? "Lane " + (i + 1) : "Overflow " + (i - 3) };
-                lanes.Add(t); player.Tracks.AddTrack(t);
+                var t = new DJMaxEditor.DJMax.TrackData((uint)i) { TrackName = "Lane " + (i + 1) };
+                lanes.Add(t);
+                player.Tracks.AddTrack(t);
+            }
+            for (int i = 4; i < 8; i++)
+            {
+                var marker = new DJMaxEditor.DJMax.TrackData((uint)i) { TrackName = "EOS " + (i - 3) };
+                player.Tracks.AddTrack(marker);
             }
             var tempoTrack = new DJMaxEditor.DJMax.TrackData(8) { TrackName = "Tempo" };
             tempoTrack.AddEvent(new DJMaxEditor.DJMax.EventData { EventType = DJMaxEditor.DJMax.EventType.Tempo, Tempo = (float)vm.Bpm, VirtualTick = 0 });
             player.Tracks.AddTrack(tempoTrack);
+            for (int i = 0; i < 4; i++)
+            {
+                var overflow = new DJMaxEditor.DJMax.TrackData((uint)(9 + i)) { TrackName = "Overflow " + (i + 1) };
+                lanes.Add(overflow);
+                player.Tracks.AddTrack(overflow);
+            }
             var byId = new System.Collections.Generic.Dictionary<string,string>(StringComparer.Ordinal);
             foreach (var f in exp.Files) if (!string.IsNullOrEmpty(f.SliceId) && !string.IsNullOrEmpty(f.FileName)) byId[f.SliceId] = f.FileName;
             var instrBy = new System.Collections.Generic.Dictionary<string, DJMaxEditor.DJMax.InstrumentData>(StringComparer.OrdinalIgnoreCase);
@@ -165,7 +177,7 @@ namespace DJMaxEditor.Studio.Keyslicer
                 var ins = GetInstr(fn);
                 int vt = n.VirtualTick; if (vt<=0) { double bpm=Math.Max(30,vm.Bpm); double msPerTick=60000.0/(bpm*48.0); vt=(int)Math.Round((n.ChartTimeMs/msPerTick)*6.0); }
                 int lane=Math.Max(0,Math.Min(7,n.Lane));
-                var evt=new DJMaxEditor.DJMax.EventData{EventType=DJMaxEditor.DJMax.EventType.Note, Instrument=ins, Attribute=0, VirtualTick=Math.Max(0,vt), VirtualDuration=36, Volume=127, Pan=64};
+                var evt=new DJMaxEditor.DJMax.EventData{EventType=DJMaxEditor.DJMax.EventType.Note, Instrument=ins, Attribute=0, VirtualTick=Math.Max(0,vt), VirtualDuration=36, Volume=100, Vel=127, Pan=64};
                 lanes[lane].AddEvent(evt);
             }
             player.TechMetadata=null;

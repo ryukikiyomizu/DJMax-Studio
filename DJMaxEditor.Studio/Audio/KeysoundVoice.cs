@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using NAudio.Wave;
 
@@ -136,6 +136,33 @@ namespace DJMaxEditor.Studio.Audio
         /// is merely paused is still active, exactly like a paused FMOD channel.
         /// </summary>
         internal bool IsActive => !_stopped && !_finished;
+
+        /// <summary>
+        /// Remaining frames before this voice finishes playing. Used when the ringing-out voice
+        /// pool exceeds its capacity so the voice closest to finishing is evicted instead of a
+        /// long BGM or stem voice that still has most of the song ahead of it.
+        /// </summary>
+        internal int RemainingFrames
+        {
+            get
+            {
+                if (!IsActive)
+                {
+                    return 0;
+                }
+
+                int endSample = _limit > 0 && _limit < _sample.Samples.Length
+                    ? _limit
+                    : _sample.Samples.Length;
+                int remainingSamples = endSample - Volatile.Read(ref _position);
+                if (remainingSamples <= 0)
+                {
+                    return 0;
+                }
+
+                return remainingSamples / Math.Max(1, _channels);
+            }
+        }
 
         /// <summary>
         /// Playback position in the unit the legacy backend used: PCM frames counted at the

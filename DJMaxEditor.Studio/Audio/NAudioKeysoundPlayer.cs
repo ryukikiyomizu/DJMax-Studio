@@ -1116,6 +1116,36 @@ namespace DJMaxEditor.Studio.Audio
         }
 
         /// <summary>
+        /// True when any active voice (on its channel or ringing out) is currently playing
+        /// <paramref name="soundIndex"/>.
+        /// </summary>
+        internal bool IsSoundActive(uint soundIndex)
+        {
+            lock (_gate)
+            {
+                for (int i = 0; i < _channels.Length; i++)
+                {
+                    KeysoundVoice voice = _channels[i];
+                    if (voice != null && voice.IsActive && voice.SoundIndex == soundIndex)
+                    {
+                        return true;
+                    }
+                }
+
+                for (int i = 0; i < _ringingOut.Count; i++)
+                {
+                    KeysoundVoice voice = _ringingOut[i];
+                    if (voice != null && voice.IsActive && voice.SoundIndex == soundIndex)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
         /// The decoded sample in a cache slot, or null when the slot is empty. For diagnostics that
         /// need the PCM itself - measuring where a voice was truncated, for instance - rather than
         /// only what the mixer produced.
@@ -1370,6 +1400,8 @@ namespace DJMaxEditor.Studio.Audio
         /// <summary>Frees a channel for a new voice, honouring <see cref="AllowOverlappingRetrigger"/>.</summary>
         private void ReleaseChannelLocked(uint index)
         {
+            ReapFinishedVoicesLocked();
+
             KeysoundVoice existing = _channels[index];
             if (existing == null)
             {
@@ -1403,11 +1435,33 @@ namespace DJMaxEditor.Studio.Audio
             // strictly more generous while still keeping the mixer's input list finite.
             while (_ringingOut.Count > MAX_CHANNEL)
             {
-                KeysoundVoice oldest = _ringingOut[0];
-                _ringingOut.RemoveAt(0);
-                oldest.Stop();
-                _mixer.RemoveMixerInput(oldest);
+                int evictIndex = PickVoiceToEvictLocked();
+                KeysoundVoice evicted = _ringingOut[evictIndex];
+                _ringingOut.RemoveAt(evictIndex);
+                evicted.Stop();
+                _mixer.RemoveMixerInput(evicted);
             }
+        }
+
+        private int PickVoiceToEvictLocked()
+        {
+            int bestIndex = 0;
+            int bestRemaining = int.MaxValue;
+            for (int i = 0; i < _ringingOut.Count; i++)
+            {
+                int remaining = _ringingOut[i].RemainingFrames;
+                if (remaining < bestRemaining)
+                {
+                    bestRemaining = remaining;
+                    bestIndex = i;
+                    if (remaining <= 0)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return bestIndex;
         }
 
         /// <summary>

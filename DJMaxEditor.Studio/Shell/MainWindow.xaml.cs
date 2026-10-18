@@ -1333,6 +1333,7 @@ namespace DJMaxEditor.Studio.Shell
 
             // Snapshotted on the UI thread. The worker must not walk a list the editor can mutate,
             // and resolving the mode here keeps the ordering rule ("index 0 is the MR") in one place.
+            string backingTrackName = model.TechMetadata != null ? model.TechMetadata.BackingTrack : null;
             List<KeysoundRequest> requests = new List<KeysoundRequest>(model.Instruments.Count);
             for (int i = 0; i < model.Instruments.Count; i++)
             {
@@ -1342,8 +1343,19 @@ namespace DJMaxEditor.Studio.Shell
                     continue;
                 }
 
-                requests.Add(new KeysoundRequest(
-                    instrument.InsNum, Path.Combine(directory, instrument.Name), i == 0 ? 1 : 0));
+                bool isBacking = i == 0 ||
+                    (!string.IsNullOrEmpty(backingTrackName) &&
+                     string.Equals(instrument.Name, backingTrackName, StringComparison.OrdinalIgnoreCase));
+                var req = new KeysoundRequest(
+                    instrument.InsNum, Path.Combine(directory, instrument.Name), isBacking ? 1 : 0);
+                if (isBacking && requests.Count > 0)
+                {
+                    requests.Insert(0, req);
+                }
+                else
+                {
+                    requests.Add(req);
+                }
             }
 
             if (requests.Count == 0)
@@ -1442,7 +1454,7 @@ namespace DJMaxEditor.Studio.Shell
             // same call a seek makes, and it skips the tracks that are already sounding.
             if (loaded > 0 && _player != null && _player.IsPlaying)
             {
-                RestoreSoundingVoices(_player.GetCurrentTick());
+                RestoreSoundingVoices(_player.GetCurrentTick(), true);
             }
         }
 
@@ -1615,7 +1627,7 @@ namespace DJMaxEditor.Studio.Shell
         /// in that order so the channel ends up owned by the newest exactly as it was before the stop.
         /// </para>
         /// </summary>
-        private void RestoreSoundingVoices(int nativeTick)
+        private void RestoreSoundingVoices(int nativeTick, bool onlyMissingVoices = false)
         {
             if (nativeTick <= 0 || _audio == null || _document == null)
             {
@@ -1634,11 +1646,13 @@ namespace DJMaxEditor.Studio.Shell
 
             foreach (TrackData track in model.Tracks)
             {
-                // Never restart a channel that is already sounding. After a seek this never bites -
-                // Play empties the graph through StopAllSounds before anything gets here - but the
-                // keysound loader calls this too, and there the point is to fill the tracks that came
-                // up empty without stealing the channel from one that is already playing correctly.
-                if (_audio.IsChannelBusy(track.Idx))
+                // Never restart a channel that is already sounding when overlapping retrigger is off.
+                // When overlapping retrigger is on and we are catching up after background keysound
+                // decoding (onlyMissingVoices), a short keysound on the same lane may already be
+                // playing while an earlier long keysound/BGM on that lane just finished decoding;
+                // check each candidate against IsSoundActive instead of skipping the whole track.
+                bool channelBusy = _audio.IsChannelBusy(track.Idx);
+                if (channelBusy && (!onlyMissingVoices || !_audio.AllowOverlappingRetrigger))
                 {
                     continue;
                 }
@@ -1649,6 +1663,11 @@ namespace DJMaxEditor.Studio.Shell
                 {
                     EventData sounding = restorable[i].Note;
                     ushort soundIndex = sounding.Instrument.InsNum;
+                    if (onlyMissingVoices && _audio.IsSoundActive(soundIndex))
+                    {
+                        continue;
+                    }
+
                     float gain = MasterGain * track.Volume * NoteVelocityGain(sounding.Vel);
                     if (!_audio.PlayNote(track.Idx, soundIndex, gain, sounding.Pan,
                             restorable[i].OffsetMilliseconds, 0.0))

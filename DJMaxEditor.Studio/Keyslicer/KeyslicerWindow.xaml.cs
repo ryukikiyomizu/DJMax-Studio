@@ -1606,18 +1606,29 @@ namespace DJMaxEditor.Studio.Keyslicer
         {
             var player = new PlayerData();
             player.Tempo = (float)_vm.Bpm;
-            // Create tracks.
+            // Create tracks: 0..3 playable lanes, 4..7 EOS marker tracks, 8 Tempo, 9..12 overflow lanes.
             var laneTracks = new List<TrackData>();
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < 4; i++)
             {
-                var t = new TrackData((uint)i) { TrackName = i < 4 ? "Lane " + (i + 1) : "Overflow " + (i - 3) };
+                var t = new TrackData((uint)i) { TrackName = "Lane " + (i + 1) };
                 laneTracks.Add(t);
                 player.Tracks.AddTrack(t);
+            }
+            for (int i = 4; i < 8; i++)
+            {
+                var marker = new TrackData((uint)i) { TrackName = "EOS " + (i - 3) };
+                player.Tracks.AddTrack(marker);
             }
             // Tempo track.
             var tempoTrack = new TrackData(8) { TrackName = "Tempo" };
             tempoTrack.AddEvent(new EventData { EventType = EventType.Tempo, Tempo = (float)_vm.Bpm, VirtualTick = 0 });
             player.Tracks.AddTrack(tempoTrack);
+            for (int i = 0; i < 4; i++)
+            {
+                var overflow = new TrackData((uint)(9 + i)) { TrackName = "Overflow " + (i + 1) };
+                laneTracks.Add(overflow);
+                player.Tracks.AddTrack(overflow);
+            }
 
             // Map exported file names by slice id.
             var fileById = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1661,14 +1672,15 @@ namespace DJMaxEditor.Studio.Keyslicer
                     Attribute = 0,
                     VirtualTick = Math.Max(0, vt),
                     VirtualDuration = 36, // default tap
-                    Volume = 127,
+                    Volume = 100,
+                    Vel = 127,
                     Pan = 64
                 };
                 laneTracks[lane].AddEvent(evt);
             }
 
             // TechMetadata is optional; leaving it null lets the serializer create a clean container
-            // from the 8 playable lanes + tempo above. No need to stash slicer metadata there.
+            // from the playable + overflow lanes + tempo above. No need to stash slicer metadata there.
             player.TechMetadata = null;
 
             return player;
@@ -1691,8 +1703,11 @@ namespace DJMaxEditor.Studio.Keyslicer
             // and will need the exported files beside the chart to actually play.
             int added = 0;
             var player = _chartContext.Model;
+            bool isTechModel = player.SourceFormat == DJMaxEditor.Files.FormatDetection.ChartFormat.TechmaniaTrack ||
+                player.TechMetadata != null;
+            int minTracks = isTechModel ? 13 : 9;
             // Ensure enough tracks.
-            while (player.Tracks.Count < 9)
+            while (player.Tracks.Count < minTracks)
                 player.Tracks.AddTrack(new TrackData((uint)player.Tracks.Count));
 
             var usedIds = new HashSet<string>(_vm.Project.Notes.Select(n => n.KeysoundId));
@@ -1716,7 +1731,9 @@ namespace DJMaxEditor.Studio.Keyslicer
             {
                 string fn = n.KeysoundId + ".wav";
                 if (!instrByKs.TryGetValue(fn, out var instr)) continue;
-                int lane = Math.Max(0, Math.Min((int)player.Tracks.Count - 1, n.Lane));
+                int rawLane = Math.Max(0, n.Lane);
+                int targetTrack = isTechModel && rawLane >= 4 ? rawLane + 5 : rawLane;
+                int lane = Math.Max(0, Math.Min((int)player.Tracks.Count - 1, targetTrack));
                 var track = player.Tracks.GetTrackAtIndex((uint)lane);
                 if (track == null) continue;
                 var evt = new EventData
@@ -1726,7 +1743,8 @@ namespace DJMaxEditor.Studio.Keyslicer
                     Attribute = 0,
                     VirtualTick = n.VirtualTick,
                     VirtualDuration = 36,
-                    Volume = 127
+                    Volume = 100,
+                    Vel = 127
                 };
                 track.AddEvent(evt);
                 added++;

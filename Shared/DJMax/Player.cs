@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 
 namespace DJMaxEditor.DJMax
@@ -47,6 +47,7 @@ namespace DJMaxEditor.DJMax
             m_curEventIdx = 0;
             m_curTick = 0;
             m_curMsTime = 0;
+            m_maxActiveEndTick = 0;
             m_period = 1.0;
             m_curTempo = m_playerData?.Tempo ?? 120.0f;
             if (m_curTempo > 0.0f)
@@ -141,6 +142,7 @@ namespace DJMaxEditor.DJMax
 
             UpdateTimer();
             UpdateAutoPlayEvents();
+            CheckEndReached();
         }
 
         // Set thhe player tempo
@@ -197,6 +199,8 @@ namespace DJMaxEditor.DJMax
 
         private int m_curTick;
 
+        private int m_maxActiveEndTick;
+
         private long m_curEventIdx;
 
         private long m_beforeMsTime;
@@ -243,8 +247,17 @@ namespace DJMaxEditor.DJMax
             }
 
             m_curMsTime += msInterval;
+        }
 
-            if (m_curTick > m_playerData.MaxTick)
+        private void CheckEndReached()
+        {
+            if (m_playerData == null)
+            {
+                return;
+            }
+
+            int endTick = Math.Max(m_playerData.MaxTick, m_maxActiveEndTick);
+            if (m_curTick > endTick)
             {
                 IsStopped = true;
                 TriggerStatusChange();
@@ -275,6 +288,15 @@ namespace DJMaxEditor.DJMax
                 if (scoreEvent.Tick > m_curTick)
                 {
                     break;
+                }
+
+                if (scoreEvent.EventType == EventType.Note)
+                {
+                    int noteEnd = scoreEvent.Tick + scoreEvent.Duration;
+                    if (noteEnd > m_maxActiveEndTick)
+                    {
+                        m_maxActiveEndTick = noteEnd;
+                    }
                 }
 
                 // Then the other events
@@ -338,6 +360,13 @@ namespace DJMaxEditor.DJMax
 
                 switch (scoreEvent.EventType)
                 {
+                    case EventType.Note:
+                        int noteEnd = scoreEvent.Tick + scoreEvent.Duration;
+                        if (noteEnd > m_maxActiveEndTick)
+                        {
+                            m_maxActiveEndTick = noteEnd;
+                        }
+                        break;
                     case EventType.Tempo:
                         elapsedMs += (scoreEvent.Tick - lastTick) * m_period;
                         lastTick = scoreEvent.Tick;
