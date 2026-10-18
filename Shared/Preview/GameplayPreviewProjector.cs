@@ -104,6 +104,12 @@ namespace DJMaxEditor.Preview
                 kind == GameplayPreviewNoteKind.RepeatHold ||
                 kind == GameplayPreviewNoteKind.RepeatHeadHold;
         }
+
+        public static bool IsRepeatHead(GameplayPreviewNoteKind kind)
+        {
+            return kind == GameplayPreviewNoteKind.RepeatHead ||
+                kind == GameplayPreviewNoteKind.RepeatHeadHold;
+        }
     }
 
     public enum GameplayPreviewLaneRole
@@ -201,6 +207,9 @@ namespace DJMaxEditor.Preview
         public int Pulse { get; internal set; }
 
         public int DurationPulse { get; internal set; }
+
+        /// <summary>Last pulse in this repeat head's connected series, including the head.</summary>
+        public int RepeatSeriesEndPulse { get; internal set; }
 
         public GameplayPreviewNoteKind Kind { get; internal set; }
 
@@ -400,13 +409,12 @@ namespace DJMaxEditor.Preview
                 {
                     double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
                     double noteFloatScan = note.Pulse / pulsesPerScan;
-                    // Only a hold answers for its tail: every note carries a keysound-length
-                    // duration, so reading the raw tail for a tap would keep it lit behind the
-                    // sweep until its sample "ends". A tap is Resolved the instant the sweep
-                    // clears its head, which is also what the hit-effect pass assumes.
-                    double endFloatScan = GameplayPreviewNoteKinds.HasHoldTrail(note.Kind)
-                        ? (note.Pulse + note.DurationPulse) / pulsesPerScan
-                        : noteFloatScan;
+                    // Only a hold or repeat head answers for a later end point. Every note carries
+                    // a keysound-length duration, so reading the raw tail for a tap would keep it lit
+                    // behind the sweep until its sample "ends". A repeat head stays active through
+                    // its final connected tick, so it does not disappear while the rest of the series
+                    // is still being played.
+                    double endFloatScan = ActiveEndPulse(note) / pulsesPerScan;
                     double distance = currentScan - noteFloatScan;
 
                     if (currentScan > endFloatScan)
@@ -490,6 +498,21 @@ namespace DJMaxEditor.Preview
             return new GameplayPreviewFrame(currentTick, currentScan, notes.AsReadOnly());
         }
 
+        private static double ActiveEndPulse(ProjectedGameplayNote note)
+        {
+            double endPulse = note.Pulse;
+            if (GameplayPreviewNoteKinds.HasHoldTrail(note.Kind))
+            {
+                endPulse = Math.Max(endPulse,
+                    (double)note.Pulse + note.DurationPulse);
+            }
+            if (GameplayPreviewNoteKinds.IsRepeatHead(note.Kind))
+            {
+                endPulse = Math.Max(endPulse, note.RepeatSeriesEndPulse);
+            }
+            return endPulse;
+        }
+
         private bool IsInRenderableWindow(
             ProjectedGameplayNote note,
             int currentTick,
@@ -505,13 +528,12 @@ namespace DJMaxEditor.Preview
                 // scan past it. The far edge sits at the start of the scan AFTER the waiting
                 // one (float scan current+2); an edge at current+1 admitted only notes exactly
                 // on the handover boundary, so the waiting half showed just its first note and
-                // swallowed every other one until the sweep reached it. Taps answer for their
-                // head alone (see CreateFrame for why the raw duration is not a tail).
+                // swallowed every other one until the sweep reached it. Repeat heads stay in
+                // the window through their final connected tick; ordinary taps answer for their
+                // head alone (raw duration is not a tail).
                 double pulsesPerScan = 240.0 * Math.Max(1, _beatsPerScan);
                 double headFloatScan = note.Pulse / pulsesPerScan;
-                double tailFloatScan = GameplayPreviewNoteKinds.HasHoldTrail(note.Kind)
-                    ? (note.Pulse + note.DurationPulse) / pulsesPerScan
-                    : headFloatScan;
+                double tailFloatScan = ActiveEndPulse(note) / pulsesPerScan;
                 return tailFloatScan >= currentIntScan &&
                     headFloatScan < currentIntScan + 2;
             }
@@ -1143,10 +1165,12 @@ namespace DJMaxEditor.Preview
             IList<string> diagnostics)
         {
             var openByLane = new bool[4];
+            var headByLane = new ProjectedGameplayNote[4];
             // The legacy dialect tags the single closing tick with Repeat/RepeatHold, while a
             // .tech series names every post-head marker Repeat (a held RepeatHold may sit among
             // them). An end marker therefore joins the series but does not close it; only a fresh
-            // head or a non-repeat note on the same lane does.
+            // head or a non-repeat note on the same lane does. Keep the head's lifecycle open
+            // through the last joined tick so it does not vanish while the series is still active.
             var endSeenByLane = new bool[4];
             foreach (ProjectedGameplayNote note in notes)
             {
@@ -1159,11 +1183,15 @@ namespace DJMaxEditor.Preview
                         note.Kind = note.Kind == GameplayPreviewNoteKind.RepeatHeadHold
                             ? GameplayPreviewNoteKind.RepeatHold
                             : GameplayPreviewNoteKind.Repeat;
+                        headByLane[note.Lane].RepeatSeriesEndPulse = Math.Max(
+                            headByLane[note.Lane].RepeatSeriesEndPulse, note.Pulse);
                     }
                     else
                     {
                         openByLane[note.Lane] = true;
                         endSeenByLane[note.Lane] = false;
+                        headByLane[note.Lane] = note;
+                        note.RepeatSeriesEndPulse = note.Pulse;
                     }
                 }
                 else if (note.Kind == GameplayPreviewNoteKind.Repeat ||
@@ -1172,6 +1200,8 @@ namespace DJMaxEditor.Preview
                     if (openByLane[note.Lane])
                     {
                         endSeenByLane[note.Lane] = true;
+                        headByLane[note.Lane].RepeatSeriesEndPulse = Math.Max(
+                            headByLane[note.Lane].RepeatSeriesEndPulse, note.Pulse);
                     }
                     else
                     {
@@ -1187,6 +1217,7 @@ namespace DJMaxEditor.Preview
                     // anything happening in other lanes is irrelevant.
                     openByLane[note.Lane] = false;
                     endSeenByLane[note.Lane] = false;
+                    headByLane[note.Lane] = null;
                 }
             }
 
