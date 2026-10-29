@@ -21,7 +21,7 @@ namespace DJMaxEditor.Linux
         private static readonly IBrush WindowBrush = Brush("#0B1117");
         private static readonly IBrush PanelBrush = Brush("#121C26");
         private static readonly IBrush PanelAltBrush = Brush("#0E1720");
-        private static readonly IBrush BorderBrush = Brush("#263544");
+        private static readonly IBrush LineBrush = Brush("#263544");
         private static readonly IBrush TextBrush = Brush("#EAF2F7");
         private static readonly IBrush MutedBrush = Brush("#8DA0AE");
         private static readonly IBrush AccentBrush = Brush("#4DD6C5");
@@ -97,7 +97,7 @@ namespace DJMaxEditor.Linux
             var status = new Border
             {
                 Background = PanelAltBrush,
-                BorderBrush = BorderBrush,
+                BorderBrush = LineBrush,
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 Padding = new Thickness(18, 9),
                 Child = _statusText
@@ -202,7 +202,7 @@ namespace DJMaxEditor.Linux
             help.Children.Add(new Border
             {
                 Background = PanelAltBrush,
-                BorderBrush = BorderBrush,
+                BorderBrush = LineBrush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(9),
                 Padding = new Thickness(11),
@@ -227,7 +227,7 @@ namespace DJMaxEditor.Linux
             panel.Children.Add(new Border
             {
                 Height = 1,
-                Background = BorderBrush,
+                Background = LineBrush,
                 Margin = new Thickness(0, 1, 0, 1)
             });
             panel.Children.Add(InfoRow("FORMAT", _formatValue));
@@ -290,7 +290,7 @@ namespace DJMaxEditor.Linux
             return new Border
             {
                 Background = PanelBrush,
-                BorderBrush = BorderBrush,
+                BorderBrush = LineBrush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(15),
@@ -532,7 +532,7 @@ namespace DJMaxEditor.Linux
                     {
                         Width = 1,
                         Height = 28,
-                        Background = BorderBrush,
+                        Background = LineBrush,
                         Opacity = gridLine == 0 || gridLine == 4 ? 0.65 : 0.35
                     };
                     Canvas.SetLeft(line, (TimelineWidth - 1) * gridLine / 4.0);
@@ -746,7 +746,7 @@ namespace DJMaxEditor.Linux
             return new Border
             {
                 Background = PanelBrush,
-                BorderBrush = BorderBrush,
+                BorderBrush = LineBrush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(15),
@@ -839,7 +839,7 @@ namespace DJMaxEditor.Linux
                 },
                 Background = background,
                 Foreground = foreground,
-                BorderBrush = BorderBrush,
+                BorderBrush = LineBrush,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(14, 9),
                 CornerRadius = new CornerRadius(8),
