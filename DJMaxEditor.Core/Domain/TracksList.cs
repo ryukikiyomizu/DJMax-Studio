@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,7 +12,9 @@ namespace DJMaxEditor.DJMax
         {
             get
             {
-                return m_trackData.Max(x => x.MaxTick);
+                // A freshly-created chart may not have any tracks yet. LINQ Max throws on an
+                // empty sequence, so treat an empty chart as ending at tick zero instead.
+                return m_trackData.Count == 0 ? 0 : m_trackData.Max(x => x.MaxTick);
             }
         }
 
@@ -49,6 +51,7 @@ namespace DJMaxEditor.DJMax
         public void Clear()
         {
             m_trackData.Clear();
+            Events = Array.Empty<EventData>();
         }
 
         public TrackData GetTrackAtIndex(UInt32 trackIndex)
@@ -80,7 +83,7 @@ namespace DJMaxEditor.DJMax
 
         private List<TrackData> m_trackData = new List<TrackData>();
 
-        public EventData[] Events;
+        public EventData[] Events = Array.Empty<EventData>();
 
         private void NoteAdded(object sender, EventArgs e)
         {

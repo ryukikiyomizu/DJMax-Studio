@@ -125,19 +125,11 @@ namespace DJMaxEditor.Studio.Design
         /// closer to a native desktop window instead of a game HUD.</summary>
         public const double TitleBarHeight = 28;
 
-<<<<<<< HEAD
-        /// <summary>Main toolbar. ptSequencer's is a single 28px row of 22px buttons; we give the
-        /// icons a little more air because they are vector, not 16px bitmaps.</summary>
-        public const double ToolbarHeight = 38;
-        public const double ToolButtonSize = 30;
-        public const double IconSize = 18;
-=======
         /// <summary>Main toolbar. Slightly denser than the first pass, but still comfortably
         /// clickable with vector icons.</summary>
         public const double ToolbarHeight = 34;
         public const double ToolButtonSize = 24;
         public const double IconSize = 15;
->>>>>>> origin/master
 
         /// <summary>Status bar, matching ptSequencer's compact readout row.</summary>
         public const double StatusBarHeight = 22;

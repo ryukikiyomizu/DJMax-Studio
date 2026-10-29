@@ -22,7 +22,7 @@ namespace DJMaxEditor.Diagnostics
                 if (_path == null)
                 {
                     string dir;
-                    try { dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location); }
+                    try { dir = AppContext.BaseDirectory; }
                     catch { dir = null; }
                     if (string.IsNullOrEmpty(dir)) dir = Directory.GetCurrentDirectory();
                     _path = Path.Combine(dir, "djmaxeditor-diagnostics.log");

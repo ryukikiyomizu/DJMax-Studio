@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>12</LangVersion>
+    <AssemblyName>DJMaxEditor.Linux</AssemblyName>
+    <RootNamespace>DJMaxEditor.Linux</RootNamespace>
+    <DefineConstants>$(DefineConstants);DJMAX_LINUX</DefineConstants>
+    <UseAppHost>true</UseAppHost>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DJMaxEditor.Core/DJMaxEditor.Core.csproj" />
+    <ProjectReference Include="../libs/UnpackMe.SDK.Standard/UnpackMe.SDK.Standard.csproj" />
+    <PackageReference Include="Avalonia" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Shared platform-neutral chart codecs">
+    <Compile Include="../Shared/Logs.cs" Link="Shared/Logs.cs" />
+    <Compile Include="../Shared/libs/ByteArrayStream.cs" Link="Shared/ByteArrayStream.cs" />
+    <Compile Include="../Shared/Diagnostics/DiagnosticLog.cs" Link="Shared/DiagnosticLog.cs" />
+    <Compile Include="../Shared/Files/File.cs" Link="Shared/Files/File.cs" />
+    <Compile Include="../Shared/Files/IOpenFile.cs" Link="Shared/Files/IOpenFile.cs" />
+    <Compile Include="../Shared/Files/ISaveFile.cs" Link="Shared/Files/ISaveFile.cs" />
+    <Compile Include="../Shared/Files/ChartLoadException.cs" Link="Shared/Files/ChartLoadException.cs" />
+    <Compile Include="../Shared/Files/FormatDetection/ChartFormatDetector.cs" Link="Shared/Files/ChartFormatDetector.cs" />
+    <Compile Include="../Shared/Files/FormatDetection/FormatDetectionResult.cs" Link="Shared/Files/FormatDetectionResult.cs" />
+    <Compile Include="../Shared/Files/pt/PtCodec.cs" Link="Shared/Files/PtCodec.cs" />
+    <Compile Include="../Shared/Files/pt/PTFile.cs" Link="Shared/Files/PTFile.cs" />
+    <Compile Include="../Shared/Files/pt/PTOpenFile.cs" Link="Shared/Files/PTOpenFile.cs" />
+    <Compile Include="../Shared/Files/pt/PTSaveFile.cs" Link="Shared/Files/PTSaveFile.cs" />
+    <Compile Include="../Shared/Files/bms/BmsChartSerializer.cs" Link="Shared/Files/BmsChartSerializer.cs" />
+    <Compile Include="../Shared/Files/bms/BmsonChartSerializer.cs" Link="Shared/Files/BmsonChartSerializer.cs" />
+    <Compile Include="../Shared/Files/bms/BmsonChartParser.cs" Link="Shared/Files/BmsonChartParser.cs" />
+    <Compile Include="../Shared/Files/bms/BmsonLaneMap.cs" Link="Shared/Files/BmsonLaneMap.cs" />
+    <Compile Include="../Shared/Files/tech/TechmaniaChartSerializer.cs" Link="Shared/Files/TechmaniaChartSerializer.cs" />
+    <Compile Include="../Shared/Files/tech/TechmaniaChartWriter.cs" Link="Shared/Files/TechmaniaChartWriter.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TechnikaNoteClassifier.cs" Link="Shared/Timeline/TechnikaNoteClassifier.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TechnikaSeriesClassifier.cs" Link="Shared/Timeline/TechnikaSeriesClassifier.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TimelineEventIndex.cs" Link="Shared/Timeline/TimelineEventIndex.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TimelineItem.cs" Link="Shared/Timeline/TimelineItem.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TimelineRowRange.cs" Link="Shared/Timeline/TimelineRowRange.cs" />
+    <Compile Include="../Shared/Controls/TimelineV2/TimelineTimeRange.cs" Link="Shared/Timeline/TimelineTimeRange.cs" />
+    <Compile Include="../Shared/Controls/Vertical/VerticalTimelineProjection.cs" Link="Shared/Vertical/VerticalTimelineProjection.cs" />
+    <Compile Include="../Shared/Controls/Vertical/VerticalTrackLayout.cs" Link="Shared/Vertical/VerticalTrackLayout.cs" />
+  </ItemGroup>
+</Project>

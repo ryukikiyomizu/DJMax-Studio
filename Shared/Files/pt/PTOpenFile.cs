@@ -1,10 +1,9 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.IO;
 using DJMaxEditor.Files;
 using DJMaxEditor.DJMax;
 using DJMaxEditor.Files.pt;
-using System.Windows.Forms;
 
 namespace DJMaxEditor
 {
@@ -500,9 +499,5 @@ namespace DJMaxEditor
             return "pt";
         }
 
-        public Form GetSettingsForm()
-        {
-            return null;
-        }
     }
 }

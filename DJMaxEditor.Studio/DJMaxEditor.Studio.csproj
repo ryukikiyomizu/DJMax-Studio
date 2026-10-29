@@ -12,15 +12,16 @@
     awareness and swappable theme dictionaries - the four things the GDI+ WinForms surfaces
     could not give us no matter how much the paint path was tuned.
 
-    UseWindowsForms is on for interop only: the legacy chart loaders we share below expose a
-    `System.Windows.Forms.Form GetSettingsForm()` on IFile. Nothing in this app's UI is
-    WinForms; the flag just keeps the shared loader sources compiling unmodified so the
-    legacy editor and the studio shell keep reading charts through one implementation.
+    UseWindowsForms is on for the optional legacy PT save-options dialog. Chart handlers expose
+    platform-neutral load/save contracts; only that optional settings capability uses WinForms,
+    so the same codecs can be hosted by the Linux frontend without pulling in Windows UI types.
   -->
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Enable WindowsDesktop reference-pack restore when cross-building this Windows-only UI on Linux. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>disable</Nullable>
@@ -124,6 +125,7 @@
   <ItemGroup Label="Shared: chart formats">
     <Compile Include="..\Shared\Files\ChartLoadException.cs" Link="Shared\Files\ChartLoadException.cs" />
     <Compile Include="..\Shared\Files\File.cs" Link="Shared\Files\File.cs" />
+    <Compile Include="..\Shared\Files\IWinFormsFileSettings.cs" Link="Shared\Files\IWinFormsFileSettings.cs" />
     <Compile Include="..\Shared\Files\IOpenFile.cs" Link="Shared\Files\IOpenFile.cs" />
     <Compile Include="..\Shared\Files\ISaveFile.cs" Link="Shared\Files\ISaveFile.cs" />
     <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" Link="Shared\Files\ChartFormatDetector.cs" />
@@ -137,11 +139,10 @@
     <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" Link="Shared\Files\BmsonChartParser.cs" />
     <Compile Include="..\Shared\Files\bms\BmsonLaneMap.cs" Link="Shared\Files\BmsonLaneMap.cs" />
     <Compile Include="..\Shared\Files\bytes\TrailerChartReader.cs" Link="Shared\Files\TrailerChartReader.cs" />
-    <!-- The open/save wrappers and the handler registry. These only touch WinForms through
-         IFile's `Form GetSettingsForm()` return type, which compiles because UseWindowsForms is
-         on; none of them shows a window except PTSaveFile, and the shell never calls that.
-         Linking them is what lets the studio open every format the legacy editor can, through
-         the same code, rather than growing a second half-finished loader set. -->
+    <!-- The open/save wrappers and handler registry. The shared IFile/IOpenFile/ISaveFile
+         contracts are platform-neutral; the optional IWinFormsFileSettings capability holds
+         the one legacy PT save dialog. Linking the handlers lets the studio use the same chart
+         codecs as the Linux frontend instead of growing a second loader set. -->
     <Compile Include="..\Shared\Files\FilesHandler.cs" Link="Shared\Files\FilesHandler.cs" />
     <Compile Include="..\Shared\Files\Loadhandler.cs" Link="Shared\Files\LoadHandler.cs" />
     <Compile Include="..\Shared\Files\SaveHandler.cs" Link="Shared\Files\SaveHandler.cs" />
