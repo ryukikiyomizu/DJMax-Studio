@@ -1,8 +1,8 @@
 name: build
 
-# The sandbox this work was written in has no .NET toolchain, so the first build
-# happens here: a real Windows runner with the real WindowsDesktop targeting packs,
-# which is the only platform this solution's WinForms/WPF surfaces build on cleanly.
+# The Studio UI remains Windows-only (WPF/WinForms), so its distributable is built
+# on Windows. Linux CI cross-builds the same Windows target with the WindowsDesktop
+# targeting packs and runs the platform-neutral functional smoke suite there.
 #
 # The sandbox's network is GitHub-allowlisted and cannot fetch Actions log archives,
 # so on failure this workflow surfaces the errors two ways that survive the trip
@@ -105,13 +105,28 @@ jobs:
           git commit -m "ci logs for $($env:GITHUB_SHA.Substring(0,8)) [skip ci]"
           git push origin ci-logs
 
+  linux-cross-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Cross-build Windows-targeted solution on Linux
+        run: dotnet build DJMaxEditor.sln -c Release --nologo
+
   # The BMS/bmson import path is plain C# with no Windows surface, so it can be
-  # exercised end to end here: parse a classic chart that carries deliberately
+  # exercised end to end on Linux: parse a classic chart that carries deliberately
   # corrupt lines (per-line tolerance), then round-trip it through the bmson
   # writer and the new bmson reader. The project is generated in the workflow,
   # not committed - the repo grows no test harness for it.
   smoke:
-    runs-on: windows-latest
+    needs: linux-cross-build
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -134,30 +149,30 @@ jobs:
               <LangVersion>12</LangVersion>
             </PropertyGroup>
             <ItemGroup>
-              <ProjectReference Include="..\DJMaxEditor.Core\DJMaxEditor.Core.csproj" />
-              <Compile Include="..\Shared\Files\bms\BmsChartSerializer.cs" />
-              <Compile Include="..\Shared\Files\bms\BmsonChartSerializer.cs" />
-              <Compile Include="..\Shared\Files\bms\BmsonChartParser.cs" />
-              <Compile Include="..\Shared\Files\bms\BmsonLaneMap.cs" />
-              <Compile Include="..\Shared\Files\tech\TechmaniaChartSerializer.cs" />
-              <Compile Include="..\Shared\Files\tech\TechmaniaChartWriter.cs" />
-              <Compile Include="..\Shared\Files\bytes\TrailerChartReader.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaNoteClassifier.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TechnikaSeriesClassifier.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TimelineEventIndex.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TimelineItem.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TimelineRowRange.cs" />
-              <Compile Include="..\Shared\Controls\TimelineV2\TimelineTimeRange.cs" />
-              <Compile Include="..\Shared\Controls\Vertical\VerticalTimelineProjection.cs" />
-              <Compile Include="..\Shared\Controls\Vertical\VerticalTrackLayout.cs" />
-              <Compile Include="..\Shared\Preview\GameplayPreviewProjector.cs" />
-              <Compile Include="..\Shared\Preview\RespectGameplayLayout.cs" />
-              <Compile Include="..\Shared\Files\ChartLoadException.cs" />
-              <Compile Include="..\Shared\Files\FormatDetection\ChartFormatDetector.cs" />
-              <Compile Include="..\Shared\Files\FormatDetection\FormatDetectionResult.cs" />
-              <Compile Include="..\DJMaxEditor.Studio\Video\BgaClockMap.cs" />
-              <Compile Include="..\Shared\Logs.cs" />
-              <Compile Include="..\Shared\Diagnostics\DiagnosticLog.cs" />
+              <ProjectReference Include="../DJMaxEditor.Core/DJMaxEditor.Core.csproj" />
+              <Compile Include="../Shared/Files/bms/BmsChartSerializer.cs" />
+              <Compile Include="../Shared/Files/bms/BmsonChartSerializer.cs" />
+              <Compile Include="../Shared/Files/bms/BmsonChartParser.cs" />
+              <Compile Include="../Shared/Files/bms/BmsonLaneMap.cs" />
+              <Compile Include="../Shared/Files/tech/TechmaniaChartSerializer.cs" />
+              <Compile Include="../Shared/Files/tech/TechmaniaChartWriter.cs" />
+              <Compile Include="../Shared/Files/bytes/TrailerChartReader.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TechnikaNoteClassifier.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TechnikaSeriesClassifier.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TimelineEventIndex.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TimelineItem.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TimelineRowRange.cs" />
+              <Compile Include="../Shared/Controls/TimelineV2/TimelineTimeRange.cs" />
+              <Compile Include="../Shared/Controls/Vertical/VerticalTimelineProjection.cs" />
+              <Compile Include="../Shared/Controls/Vertical/VerticalTrackLayout.cs" />
+              <Compile Include="../Shared/Preview/GameplayPreviewProjector.cs" />
+              <Compile Include="../Shared/Preview/RespectGameplayLayout.cs" />
+              <Compile Include="../Shared/Files/ChartLoadException.cs" />
+              <Compile Include="../Shared/Files/FormatDetection/ChartFormatDetector.cs" />
+              <Compile Include="../Shared/Files/FormatDetection/FormatDetectionResult.cs" />
+              <Compile Include="../DJMaxEditor.Studio/Video/BgaClockMap.cs" />
+              <Compile Include="../Shared/Logs.cs" />
+              <Compile Include="../Shared/Diagnostics/DiagnosticLog.cs" />
             </ItemGroup>
           </Project>
           SMOKE_CSPROJ_EOF
@@ -795,16 +810,7 @@ jobs:
           cp -R test-fixtures/r2/* smoke/r2/
           ls -la smoke/
       - name: Run smoke test
-        shell: pwsh
+        shell: bash
         run: |
-          $out = dotnet run --project smoke -c Debug 2>&1
-          $out | Tee-Object -FilePath smoke-run.log | ForEach-Object { Write-Host $_ }
-          $code = $LASTEXITCODE
-          if ($code -ne 0) {
-            # The exception trace lands on stderr and PowerShell merges it ahead of
-            # the buffered stdout, so a plain tail hides it; grep it out explicitly.
-            Select-String -Path smoke-run.log -Pattern 'assert failed|Exception|error [A-Z]+[0-9]+' |
-              Select-Object -First 20 |
-              ForEach-Object { Write-Output ("::error::" + $_.Line) }
-            exit $code
-          }
+          set -o pipefail
+          dotnet run --project smoke -c Debug --no-launch-profile 2>&1 | tee smoke-run.log
