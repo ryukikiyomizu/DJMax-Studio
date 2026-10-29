@@ -2837,10 +2837,12 @@ namespace DJMaxEditor.Studio.Shell
                 return;
             }
 
-            // The .pt writer still carries its WinForms options dialog. It is the one legacy window
-            // left in this app; it is functional, and replacing it with a native panel is a
-            // separate piece of work from getting the shell to save at all.
-            System.Windows.Forms.Form settings = handler.GetSettingsForm();
+            // Keep the optional legacy PT encryption dialog separate from the platform-neutral
+            // save contract. Cross-platform frontends simply use the writer's default settings.
+            DJMaxEditor.Files.IWinFormsFileSettings withSettings =
+                handler as DJMaxEditor.Files.IWinFormsFileSettings;
+            System.Windows.Forms.Form settings =
+                withSettings == null ? null : withSettings.GetSettingsForm();
             if (settings != null)
             {
                 settings.Text = "Save options";

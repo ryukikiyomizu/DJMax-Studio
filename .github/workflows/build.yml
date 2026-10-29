@@ -1,8 +1,9 @@
 name: build
 
-# The Studio UI remains Windows-only (WPF/WinForms), so its distributable is built
-# on Windows. Linux CI cross-builds the same Windows target with the WindowsDesktop
-# targeting packs and runs the platform-neutral functional smoke suite there.
+# The legacy Studio UI remains Windows-only (WPF/WinForms), so its distributable is built
+# on Windows. DJMaxEditor.Linux is a separate Avalonia desktop frontend that reuses the
+# platform-neutral chart codecs and is published as a self-contained Linux executable.
+# Linux CI also cross-builds the Windows target and runs the platform-neutral smoke suite.
 #
 # The sandbox's network is GitHub-allowlisted and cannot fetch Actions log archives,
 # so on failure this workflow surfaces the errors two ways that survive the trip
@@ -118,6 +119,41 @@ jobs:
 
       - name: Cross-build Windows-targeted solution on Linux
         run: dotnet build DJMaxEditor.sln -c Release --nologo
+
+  linux-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained Linux desktop executable
+        run: >
+          dotnet publish DJMaxEditor.Linux/DJMaxEditor.Linux.csproj
+          -c Release -r linux-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -o artifacts/linux-x64
+
+      - name: Smoke-test Linux executable
+        run: |
+          test -x artifacts/linux-x64/DJMaxEditor.Linux
+          artifacts/linux-x64/DJMaxEditor.Linux --version
+
+      - name: Package Linux executable
+        run: tar -czf artifacts/DJMaxStudio-linux-x64.tar.gz -C artifacts/linux-x64 DJMaxEditor.Linux
+
+      - name: Upload Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: DJMaxStudio-linux-x64
+          path: artifacts/DJMaxStudio-linux-x64.tar.gz
+          retention-days: 30
 
   # The BMS/bmson import path is plain C# with no Windows surface, so it can be
   # exercised end to end on Linux: parse a classic chart that carries deliberately

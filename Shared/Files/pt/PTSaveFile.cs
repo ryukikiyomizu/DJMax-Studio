@@ -1,12 +1,17 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
+#if !DJMAX_LINUX
 using System.Windows.Forms;
+#endif
 using DJMaxEditor.DJMax;
 
 namespace DJMaxEditor.Files.pt
 {
     internal class PTSaveFile : PTFile, ISaveFile
+#if !DJMAX_LINUX
+        , IWinFormsFileSettings
+#endif
     {
         public string GetName()
         {
@@ -23,10 +28,12 @@ namespace DJMaxEditor.Files.pt
             return "pt";
         }
 
+#if !DJMAX_LINUX
         public Form GetSettingsForm()
         {
             return m_settingsDialog;
         }
+#endif
 
         public bool Save(string filename, PlayerData playerData)
         {
@@ -226,8 +233,8 @@ namespace DJMaxEditor.Files.pt
 
             byte[] ptffData = stream.GetData();
 
+#if !DJMAX_LINUX
             int sizeIn = ptffData.Count();
-
             if (m_settingsDialog.EncryptFile/*playerData.Encrypted*/)
             {
                 ptffData = EncryptDataOnline(ptffData);
@@ -236,12 +243,14 @@ namespace DJMaxEditor.Files.pt
                     return false;
                 }
             }
+#endif
 
             File.WriteAllBytes(filename, ptffData);
 
             return true;
         }
 
+#if !DJMAX_LINUX
         private byte[] EncryptDataOnline(byte[] data)
         {
             byte[] result = null;
@@ -250,5 +259,6 @@ namespace DJMaxEditor.Files.pt
         }
 
         private SaveSettingsDialog m_settingsDialog = new SaveSettingsDialog();
+#endif
     }
 }
